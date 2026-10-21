@@ -49,6 +49,7 @@ import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import { paperOf, pressuresOn } from '../domain/pressures.js';
 import { ACT_WORDS } from '../domain/acts.js';
+import { lineCrossable } from '../domain/line-reach.js';
 import {
   serializeCharacter,
   serializePrinciples,
@@ -739,6 +740,12 @@ export async function resolveAction(
     relevanceCost = check.costUsd;
     relevant = check.relevant;
     if (!check.relevant) classified = null;
+  }
+  // A line that forbids only going back on paper the power does not hold
+  // cannot be crossed by anything it does now, whatever the two calls said.
+  if (classified && actor && !lineCrossable(state, actor.id, classified.principle)) {
+    notes.push(`"${classified.principle}" names paper ${actor.name} does not hold, so this act cannot cross it.`);
+    classified = null;
   }
 
   // `admissible: false` is the one exit that charges nothing at all, which makes

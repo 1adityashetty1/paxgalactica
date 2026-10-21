@@ -22,6 +22,15 @@ const { MemoryCampaignStore } = await import('../src/engine/store.js');
 const { serializeOutcome, campaignOutcome } = await import('../src/engine/epilogue.js');
 
 const CONTRACT = 'will not repudiate a contract it has signed, even a ruinous one; its whole value rests on that';
+const LANE = 'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer';
+const ruledOnLane = {
+  admissible: true,
+  reason: '',
+  stat: 'influence',
+  difficulty: 12,
+  rationale: '',
+  breach: { kind: 'red_line', principles: [LANE], how: 'it shuts the lane', by: 'the Trade Council', reason: 'Our lanes stay open.' },
+};
 const ruledOnContract = {
   admissible: true,
   reason: '',
@@ -62,14 +71,14 @@ describe('the counsellor', () => {
         { counsel: 'The note is worth more to the Combine.', recommendation: 'Trade the note to the Combine.' },
         { counsel: 'Torrek still matters.', recommendation: 'Hold Torrek.' },
       ],
-      appraisal: [ruledOnContract],
+      appraisal: [ruledOnLane],
       breach_relevance: [{ relevant: true, why: '' }],
     };
     await session.advisor('What should we do?');
     const out = await session.action('Trade the note to the Combine.');
     expect(out.refusal).not.toBeNull();
     const last = session.snapshot()!.lastCounsel!;
-    expect(last.followed).toMatch(/^"Trade the note to the Combine\." — refused by the Trade Council, on the line "will not repudiate/);
+    expect(last.followed).toMatch(/^"Trade the note to the Combine\." — refused by the Trade Council, on the line "will not close a lane/);
     await askAdvisor(createSeedState('meridian'), 'meridian', 'And now?', last);
     const second = calls.filter((c) => c.kind === 'advisor')[1]!;
     expect(second.user).toMatch(/What came of the next order your leader gave: "Trade the note/);
