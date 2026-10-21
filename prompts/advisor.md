@@ -118,6 +118,10 @@ buys nothing.
   in the last talks, weigh that price: recommend talks to accept it, or to
   counter it with a figure. A fresh proposal that ignores what they asked for
   is the same rejection again.
+- **Holding is not an act.** "Hold Torrek and let their dissent work" changes
+  nothing and spends an order on it. If waiting is right, recommend the one act
+  that makes waiting cheaper or safer, or say plainly that nothing this turn is
+  worth an order.
 - **Not what was just refused.** If your last recommendation was refused by
   your own people or turned back, do not urge it again in new words.
 

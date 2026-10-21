@@ -107,7 +107,7 @@ These are the only grounds there are:
 | `not_present` (`systemId`, optionally `factionId`) | the act needs the power somewhere it is not | it has no world, ships or operative there |
 | `not_held` (`name`) | the act spends or gives something the power does not hold | it holds nothing of that name |
 | `commitment_conflict` (`id`) | an exclusive or binding arrangement forbids it | that treaty or commitment is live and binds the power |
-| `already_so` (`ref`) | the thing asked for is already true | that record exists |
+| `already_so` (`ref`) | the thing asked for is already true — including an order to go on as things are: hold a world the power holds, wait, keep a fleet where it stands (`ref` is that world's id) | that record exists |
 
 Works on a world — walls, a garrison, development, a fixture — and seating a
 governor need the power **on** that world: works need it held or a fleet of
