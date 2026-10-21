@@ -1,7 +1,8 @@
 import { buildAdjacency } from './graph.js';
 import { HULL_SPEC, LIFTER_CARRY } from './hulls.js';
 import { statModifier } from './checks.js';
-import { effectiveStats, getFaction, orbitalWeightAt, stackAt, systemIncome, type WorldState } from './state.js';
+import { effectiveStats, getFaction, ledgerFor, orbitalWeightAt, stackAt, systemIncome, type WorldState } from './state.js';
+import { driftingCompulsions } from './compulsions.js';
 import { NOTE_TITLE, isNote } from './diplomacy.js';
 
 /**
@@ -143,6 +144,19 @@ export function paperOf(state: WorldState, me: string): string[] {
     debts.length > 0
       ? `Debts: ${debts.map((d) => (d.debtorFactionId === me ? `you owe ${name(d.creditorFactionId)} ${d.balance}, paid ${d.perTurn} a turn` : `${name(d.debtorFactionId)} owes you ${d.balance}, paid ${d.perTurn} a turn`)).join('; ')}. A debt is not a note.`
       : 'Debts: none.',
+  );
+  // The ledger and which demands of its institutions are pressing, computed:
+  // the counsellor told a power netting +301 that "the Board will not accept
+  // another quarter of red ink" (loop 6), reading a compulsion as live.
+  const ledger = ledgerFor(state, me);
+  out.push(
+    `Your ledger: ${ledger.net >= 0 ? '+' : ''}${ledger.net} a turn net (${ledger.gross} in, ${ledger.upkeep} upkeep${ledger.debtService ? `, ${-ledger.debtService} debt service` : ''}); ${ledger.net > 0 ? 'the quarter is in the black' : 'the quarter is running at a loss'}.`,
+  );
+  const drifting = driftingCompulsions(state, me);
+  out.push(
+    drifting.length > 0
+      ? `Demands of your institutions not being met now: ${drifting.map((d) => `"${d.text}" — ${d.why}`).join('; ')}.`
+      : 'Demands of your institutions not being met now: none. Every standing demand on your sheet is satisfied this turn.',
   );
   return out;
 }

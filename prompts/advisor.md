@@ -114,6 +114,10 @@ buys nothing.
   nobody is won by an envoy, a marriage or a fleet, never by appointing to it.
 - **Not reading your own reports.** What your listeners and operatives see is
   already in the state block; acting on it is an act, reading it is not.
+- **Answer terms already on the table.** When the other power named its price
+  in the last talks, weigh that price: recommend talks to accept it, or to
+  counter it with a figure. A fresh proposal that ignores what they asked for
+  is the same rejection again.
 - **Not what was just refused.** If your last recommendation was refused by
   your own people or turned back, do not urge it again in new words.
 
