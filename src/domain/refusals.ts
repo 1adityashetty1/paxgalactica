@@ -144,32 +144,29 @@ export function prizesAsRuled(
  * mechanism that ruling chose, which the reducer then holds it to. A
  * commitment the arbiter never ruled is dropped.
  */
-/** Ops whose act already has a mechanism, so a record commitment beside them is a duplicate. */
-const ACT_HAS_A_HOME = new Set([
-  'move', 'fortify', 'raise_garrison', 'develop', 'found_fixture', 'repair_fixture', 'send_envoy',
-  'blockade', 'raid', 'sweep', 'build_ships', 'suborn_crews', 'scuttle_ships', 'post_bounty',
-  'issue_ultimatum', 'back_ultimatum', 'deploy_agent', 'lay_groundwork', 'set_toll_policy', 'pay', 'gift',
-]);
-
 export function commitmentsAsRuled(
   ops: readonly unknown[],
   establishes: { kind: string; mechanism?: string } | undefined,
 ): { ops: unknown[]; dropped: string[] } {
   const kept: unknown[] = [];
   const dropped: string[] = [];
-  // A record and nothing more is redundant beside an act that already has a
-  // mechanism: the order, the bounty or the ultimatum IS the record. Three
-  // ordinary acts minted one each in one campaign — a fortification, a fleet
-  // movement, a bounty — and every later reader took them for promises
-  // (playtest 2026-10-19, S1).
-  const expressed = ops.some((op) => ACT_HAS_A_HOME.has((op as { op?: string } | null)?.op ?? ''));
+  // A record binds nobody. Beside an act with a mechanism it was a duplicate —
+  // a fortification, a fleet movement and a bounty each minted one, and every
+  // later reader took them for promises (playtest 2026-10-19, S1) — and on its
+  // own it is no better: a declaration cannot bind another
+  // power, so it is only ever the actor's statement of policy, and every one
+  // was later read back as a contract. "Hold Var Hollow" became
+  // `torrek_watch_position`, and leaving Var Hollow was refused as repudiating
+  // it; `development_talks` the same in loop 9, and `neth_accession_secured`
+  // stood for a world that never joined in loop 10 (loops 9, 10, 15). Only a
+  // ruled income — a charter on a world — is recorded from a declaration.
   for (const op of ops) {
     const o = op as { op?: string; kind?: string } | null;
     if (o?.op !== 'establish_commitment') {
       kept.push(op);
       continue;
     }
-    if (expressed && (establishes?.mechanism ?? 'record') === 'record') {
+    if ((establishes?.mechanism ?? 'record') === 'record') {
       dropped.push(o.kind ?? 'an arrangement');
       continue;
     }

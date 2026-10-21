@@ -348,7 +348,9 @@ turn) or `record` (nothing more). `commitmentsAsRuled` keeps only the
 commitment the ruling named and stamps the mechanism on it; the reducer refuses
 a ruled income left unwritten, and leaves out an unruled one with a note — in
 the saved campaigns five declared commitments paid their own power an income
-nobody ruled. A share or a contingency binds a second party, so neither
+nobody ruled. **A `record` is no longer kept from a declaration at all**: it
+binds nobody, and three playtest loops read one back as a contract the player
+could not walk away from (`docs/audit-2026-10-19.md`, loop 15). A share or a contingency binds a second party, so neither
 survives a declaration: an act that needs one is a negotiation. An accord's
 commitment carries no mechanism and is held to its consent, as before.
 
