@@ -170,6 +170,16 @@ export function paperOf(state: WorldState, me: string): string[] {
         .join('; ')}.`,
     );
   }
+  // What is actually under way, computed: the counsellor urged "complete the
+  // Ithaal development … we paid for the fortifications" when only envoys had
+  // gone (loop 9).
+  const mine = state.pendingOrders.filter((o) => o.factionId === me);
+  const where = (id: string) => state.systems.find((x) => x.id === id)?.name ?? id;
+  out.push(
+    mine.length > 0
+      ? `Your work under way (nothing else is): ${mine.map((o) => `${o.label || o.type.replace(/_/g, ' ')} at ${where(o.targetId)}, ${o.durationTurns - o.progress} turn${o.durationTurns - o.progress === 1 ? '' : 's'} to go`).join('; ')}.`
+      : 'Your work under way: none. No programme, envoy or fleet of yours is in progress.',
+  );
   const drifting = driftingCompulsions(state, me);
   out.push(
     drifting.length > 0

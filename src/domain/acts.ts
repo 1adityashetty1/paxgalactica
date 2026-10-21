@@ -254,7 +254,9 @@ export const ACT_WORDS: Record<ActKind, string> = {
   match_betrayed: 'betray a match',
   favour_repudiated: 'refuse a favour it owes',
   loan_defaulted: 'keep what it was lent',
-  commitment_walked: 'walk away from an arrangement',
+  // Charged only where two or more were bound: a power's own statement of
+  // policy is not on this list, and the relevance check is shown these words.
+  commitment_walked: 'walk away from an arrangement sworn with another power',
   pact_attack_ordered: 'send a fleet against a power it is at peace with',
   blockade_ordered: 'close a lane by blockade',
   raid_ordered: 'raid shipping',

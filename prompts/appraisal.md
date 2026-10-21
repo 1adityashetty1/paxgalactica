@@ -454,7 +454,11 @@ a commitment already have a home**, and that home is the ruling, not
 - an attack, an assault or a push, however many turns it runs — a `move`;
 - a build or construction programme — `build_ships`, `fortify`, `develop` and
   the other work ops, which already run for turns and deliver;
-- an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`.
+- an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`;
+- talks, an offer or an approach to a world or a power — nothing; an envoy is
+  `send_envoy`, and an offer nobody has accepted binds nobody. A
+  `development_talks` record was later read as a contract Meridian could not
+  walk away from (playtest 2026-10-19, loop 9).
 
 A record of any of those is read back to you on later turns as a standing
 arrangement, and it is not one: a `kalzir_assault` or a
