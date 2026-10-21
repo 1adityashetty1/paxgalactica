@@ -659,7 +659,9 @@ export async function resolveAction(
     !(actor && classifyPrinciple(actor, priced.appraisal.reason))
   ) {
     const wrong =
-      checkGround(state, state.playerFactionId, priced.appraisal.ground) ?? sendingIsTheAct(state, action, priced.appraisal.ground);
+      priced.appraisal.ground.kind === 'already_so' && standingOrder(action)
+        ? null
+        : (checkGround(state, state.playerFactionId, priced.appraisal.ground) ?? sendingIsTheAct(state, action, priced.appraisal.ground));
     if (wrong) {
       const again = await appraiseAction(state, action, undefined, {
         note: [
@@ -1555,6 +1557,16 @@ export function handedTo(state: WorldState, action: string): string | null {
  * Anchorage (loop 20). When the act's words send ships and the power has ships
  * to send, the ground is not so.
  */
+/**
+ * An order to go on as things are — "do not move against the Vigil this turn",
+ * "hold Torrek", "wait" — is already so whatever record the arbiter cited for
+ * it. It cited an invented one, the check sent it back, and the re-ruling
+ * rolled the non-act and charged 40 credits for it (loop 21).
+ */
+export function standingOrder(action: string): boolean {
+  return /^\s*(?:do not|don't|hold\b|wait\b|stand fast|stand pat|keep\b|stay\b|make no|take no|leave\b.*\bas (?:it|they) (?:is|are))/i.test(action);
+}
+
 export function sendingIsTheAct(state: WorldState, action: string, ground: { kind: string }): string | null {
   if (ground.kind !== 'not_present') return null;
   if (!/\b(?:land|lands|landing|sail|sails|send|sends|move|moves|attack|storm|invade|strike|garrison|station|take)\b/i.test(action)) return null;
