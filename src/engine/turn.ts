@@ -935,6 +935,29 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   );
   staged.notes.unshift(...resolution.notes, ...routed.notes);
 
+  // Work on a world the power has nothing at, refused by the reducer and
+  // nothing else in the act: there was nowhere to stand, so it was never an
+  // attempt. Twice the counsellor urged fortifying unaligned Ithaal, the
+  // arbiter rolled it, a critical success landed nothing and the action was
+  // spent (loops 5 and 7) — the prompt rules did not hold, so code does.
+  const nowhere = staged.rejections.find((r) => r.code === 'no_presence');
+  const landed = campaign.opsStagedSince(before).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
+  if (nowhere && landed.length === 0 && !staged.refused) {
+    campaign.withdrawAttempt(before);
+    const why = `Nothing of yours stands there to build on: ${nowhere.message}`;
+    return {
+      narrative: why,
+      inadmissible: why,
+      staged: 0,
+      notes: ['No action spent: the work had nowhere to stand.'],
+      rejections: staged.rejections,
+      costUsd: resolution.costUsd + staged.costUsd,
+      check: null,
+      refusal: null,
+      ops: [],
+    };
+  }
+
   // A red line the ops cross: refused as the arbiter's red line is — the action
   // spent, `REFUSAL_DISSENT` charged, nothing of the order staged.
   if (staged.refused) {

@@ -7,7 +7,7 @@ import { paperOf } from '../src/domain/pressures.js';
 describe('the counsellor’s paper', () => {
   it('states the ledger and which demands are pressing, so a profitable quarter is not read as red ink', () => {
     const paper = paperOf(createSeedState('meridian'), 'meridian').join('\n');
-    expect(paper).toMatch(/Your ledger: \+\d+ a turn net \(\d+ in, \d+ upkeep, \d+ debt service\); the quarter is in the black/);
+    expect(paper).toMatch(/Your treasury: gains \d+ a turn after every cost, across all your worlds \(\d+ income, \d+ fleet upkeep, \d+ debt service\); the quarter is in the black/);
     expect(paper).toMatch(/Demands of your institutions not being met now: none/);
   });
 

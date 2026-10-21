@@ -363,6 +363,18 @@ export class Campaign {
     this.actionsDeclared += 1;
   }
 
+  /**
+   * Take back an attempt that had nothing to stand on: every batch staged from
+   * `from` goes, and the action point with it, as for an inadmissible ruling.
+   * Not a discard — the player did not choose it, and nothing of the attempt
+   * changed the world.
+   */
+  withdrawAttempt(from: number): void {
+    this.stagedBatches = this.stagedBatches.slice(0, from);
+    this.actionsDeclared = Math.max(0, this.actionsDeclared - 1);
+    this.resyncPreview();
+  }
+
   /** Every op declared but not yet landed, for picking who reacts. */
   stagedOps(): unknown[] {
     return this.stagedBatches.flatMap((b) => b.ops);
