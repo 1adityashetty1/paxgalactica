@@ -108,6 +108,12 @@ buys nothing.
   …"), never the deal itself.
 - **Only paper that exists.** A favour, note or debt you name must be in *Your
   paper*. If it says there is no favour to call in, there is none.
+- **Only what can be done from where you stand.** Works (walls, garrisons,
+  development, fixtures) need a world you hold or a fleet over it; a governor
+  or chancellor is seated only on a world you hold. A world that answers to
+  nobody is won by an envoy, a marriage or a fleet, never by appointing to it.
+- **Not reading your own reports.** What your listeners and operatives see is
+  already in the state block; acting on it is an act, reading it is not.
 - **Not what was just refused.** If your last recommendation was refused by
   your own people or turned back, do not urge it again in new words.
 

@@ -949,6 +949,13 @@ export class GameSession {
       this.pushState();
       throw err;
     }
+    // What the talks came to, for the counsellor: it urged the same rejected
+    // settlement with the Vigil three turns running (loop 5).
+    if (this.lastCounsel) {
+      const name = campaign.state.factions.find((f) => f.id === factionId)?.name ?? factionId;
+      const talks = `Talks with ${name} then: ${outcome.narrative.trim().slice(0, 400)}`;
+      this.lastCounsel = { ...this.lastCounsel, followed: this.lastCounsel.followed ? `${this.lastCounsel.followed}. ${talks}` : talks };
+    }
     this.pushState();
 
     return {
@@ -994,17 +1001,27 @@ const BINDING_REASON: Record<StagedBinding, string> = {
 };
 
 /** One line on what a declaration came to, for the counsellor's memory. */
-function whatCameOf(outcome: {
+export function whatCameOf(outcome: {
   refusal?: { by: string; violated: string } | null;
   negotiation?: { withFactionIds: string[] } | null;
   inadmissible?: string | null;
   outOfActions?: unknown;
   check?: { outcome: string } | null;
+  ops?: unknown[];
+  rejections?: { message: string }[];
 }): string {
   if (outcome.refusal) return `refused by ${outcome.refusal.by}, on the line "${outcome.refusal.violated}"`;
   if (outcome.negotiation) return `turned back: it needs ${outcome.negotiation.withFactionIds.join(' and ')} to agree, so it is a conversation, not an order`;
   if (outcome.inadmissible) return `could not be attempted: ${outcome.inadmissible}`;
   if (outcome.outOfActions) return 'not attempted: the turn was spent';
+  // The band is not what landed: a "success" whose only work was refused for
+  // want of presence changed nothing, and the next counsel read it as a
+  // fortification standing (loop 5).
+  const landed = (outcome.ops ?? []).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
+  if (outcome.check && landed.length === 0) {
+    const why = outcome.rejections?.[0]?.message;
+    return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}, and nothing came of it${why ? ` (${why})` : ''}`;
+  }
   if (outcome.check) return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}`;
   return 'carried out';
 }

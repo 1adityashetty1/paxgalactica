@@ -1514,7 +1514,7 @@ export async function askAdvisor(
             `> ${last.counsel}`,
             ...(last.recommendation ? ['', `Your recommendation then: ${last.recommendation}`] : []),
             ...(last.followed
-              ? ['', `What came of the next order your leader gave: ${last.followed}.`, 'An order refused by your own people, or turned back as needing another power, will be refused or turned back again: do not urge it a second time in other words.']
+              ? ['', `What came of the next order your leader gave: ${last.followed}.`, 'An order refused by your own people, turned back as needing another power, or a settlement the other power has already rejected, will go the same way again: do not urge it a second time in other words. Something that came to nothing is not standing now.']
               : []),
             '',
             'Hold to it unless the board has changed. If your counsel now differs, say so in a clause and say what changed — a counsellor who reverses course without a reason is one the leader stops trusting.',

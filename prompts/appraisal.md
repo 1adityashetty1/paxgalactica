@@ -109,6 +109,12 @@ These are the only grounds there are:
 | `commitment_conflict` (`id`) | an exclusive or binding arrangement forbids it | that treaty or commitment is live and binds the power |
 | `already_so` (`ref`) | the thing asked for is already true | that record exists |
 
+Works on a world — walls, a garrison, development, a fixture — and seating a
+governor need the power **on** that world: works need it held or a fleet of
+the power over it, a seat needs it held. Fortifying or seating on a world the
+power has nothing at is `not_present` on that world, not a roll that can only
+come to nothing (playtest 2026-10-19, loop 5).
+
 A ground the board does not bear out is sent back to you. **When in doubt,
 never refuse**: if none of these is true, the act goes ahead as parts, and
 whatever no mission can do is an `unexpressed` part. A refusal is the one
