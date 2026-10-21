@@ -833,8 +833,10 @@ export async function resolveAction(
   // however the dice would have fallen (loop 12).
   // Never on an influence act: an envoy or an offer of development needs only
   // a world next to it, and the arbiter named the world it would develop as
-  // `buildsAt`, turning two envoys away (loop 13). Work is industry or might.
-  const builds = priced.appraisal.stat === 'influence' ? [] : (priced.appraisal.buildsAt ?? []);
+  // `buildsAt`, turning two envoys away (loop 13).
+  // Only on industry, which is what works are: a landing named the world it
+  // was sailing for and was turned away too (loop 14).
+  const builds = priced.appraisal.stat === 'industry' ? (priced.appraisal.buildsAt ?? []) : [];
   const nowhere = builds.filter((id) => {
     const world = state.systems.find((x) => x.id === id);
     return world !== undefined && world.controllerFactionId !== state.playerFactionId && hullsAt(world, state.playerFactionId) === 0;

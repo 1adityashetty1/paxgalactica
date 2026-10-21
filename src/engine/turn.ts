@@ -799,7 +799,19 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // the mechanism for it actually lives.
   // Also free: being told "that is a conversation" is a redirect, not an act.
   // Charging for it would make the redirect feel like a penalty for asking.
-  if (resolution.output.negotiation) {
+  // An act with ops of its own and a negotiation beside it is the act, with a
+  // note: "send two escorts to Var Hollow, and offer the Combine the note"
+  // came back with the move written and the talks as a negotiation, and this
+  // branch threw the move away under a story saying the escorts had arrived
+  // (loop 14).
+  const sideTalks = resolution.output.negotiation;
+  const acted = resolution.output.ops.some((o) => (o as { op?: string }).op !== 'log_narrative');
+  if (sideTalks && acted) {
+    resolution.notes.push(
+      `The rest needs ${sideTalks.withFactionIds.join(' and ')} to agree — open a channel: ${sideTalks.withFactionIds.map((id) => `/talk ${id}`).join(' · ')}.`,
+    );
+  }
+  if (resolution.output.negotiation && !acted) {
     const n = resolution.output.negotiation;
     return {
       narrative: resolution.output.narrative,
