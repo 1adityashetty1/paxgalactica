@@ -875,6 +875,27 @@ export async function resolveAction(
   // record of what the next mission should be. Only when nothing else in the
   // act could be done; alongside a mission it is a note.
   if (priced.appraisal.unexpressed && covert.length === 0 && groundwork.length === 0 && !priced.appraisal.overt) {
+    // Handing something to a named power needs that power: "cede Torrek
+    // Anchorage to the Vigil" came back as "no mission does that yet" over an
+    // invented rule about a debt, where the bilateral list in the prompt names
+    // ceding territory as a negotiation (loop 19). Said as the redirect it is.
+    const to = handedTo(state, action);
+    if (to) {
+      const name = getFaction(state, to)?.name ?? to;
+      return {
+        output: {
+          narrative: `That needs ${name} to agree to it.`,
+          ops: [],
+          negotiation: { withFactionIds: [to], what: action.slice(0, 240), supported: true, channels: `/talk ${to}` },
+        },
+        check: null,
+        roll: 0,
+        attempts: priced.attempts,
+        costUsd: priced.costUsd + relevanceCost,
+        ruling,
+        notes,
+      };
+    }
     const why = `No mission does that yet: ${priced.appraisal.unexpressed}`;
     return {
       output: { narrative: why, ops: [], inadmissible: why },
@@ -1506,6 +1527,23 @@ export function firstActOnly(value: unknown): unknown {
     .replace(/[,\s]+(?:and|while)?\s*$/i, '')
     .trim();
   return cut.length >= 12 ? { ...v, recommendation: /[.!?]$/.test(cut) ? cut : `${cut}.` } : value;
+}
+
+/**
+ * The power an act hands something to, when its words do: "cede Torrek
+ * Anchorage to the Vigil", "sell the plate to the Combine". Read off the words,
+ * as `talksAndAnOrder` is, and only consulted when the arbiter found nothing
+ * the power could do alone.
+ */
+export function handedTo(state: WorldState, action: string): string | null {
+  if (!/\b(?:cede|cedes|ceding|hand|hands|handing|give|gives|giving|sell|sells|selling|trade|trades|trading|yield|yields|surrender|transfer)\b/i.test(action)) return null;
+  const after = /\bto\s+(?:the\s+)?([A-Z][\w-]*(?:\s+[A-Z][\w-]*)*)/.exec(action)?.[1];
+  if (!after) return null;
+  const words = after.toLowerCase().split(/\s+/);
+  const hit = state.factions.find(
+    (f) => f.id !== state.playerFactionId && (f.id === words[0] || words.some((w) => f.name.toLowerCase().split(/\s+/).includes(w) && !['the', 'of'].includes(w))),
+  );
+  return hit?.id ?? null;
 }
 
 export const AdvisorReplySchema = z.object({
