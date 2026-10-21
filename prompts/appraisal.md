@@ -113,7 +113,10 @@ Works on a world — walls, a garrison, development, a fixture — and seating a
 governor need the power **on** that world: works need it held or a fleet of
 the power over it, a seat needs it held. Fortifying or seating on a world the
 power has nothing at is `not_present` on that world, not a roll that can only
-come to nothing (playtest 2026-10-19, loop 5).
+come to nothing (playtest 2026-10-19, loop 5). Name every world an overt part
+builds, raises or develops on in its `buildsAt` (ids), and leave it empty for
+anything else: the engine checks those worlds against the board before the
+roll.
 
 A ground the board does not bear out is sent back to you. **When in doubt,
 never refuse**: if none of these is true, the act goes ahead as parts, and

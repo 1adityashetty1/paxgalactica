@@ -2285,6 +2285,8 @@ export const AppraisalSchema = z.object({
   yields: z.array(z.string()).optional(),
   /** How the overt part reaches another power, named before the roll. See `OvertPartSchema.reaches`. */
   reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).optional(),
+  /** Worlds the overt part builds on, named before the roll. See `OvertPartSchema.buildsAt`. */
+  buildsAt: z.array(z.string()).optional(),
   /**
    * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
    * (which is rolled), which of the actor's operatives that part involves, and
@@ -2351,6 +2353,15 @@ export const OvertPartSchema = z.object({
    * every act (`docs/design-2026-10-18-code-knows.md` §4).
    */
   reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).max(4).default([]),
+  /**
+   * The worlds this part builds, raises or develops on — walls, a garrison,
+   * development, a fixture — by id, named BEFORE the roll; empty for anything
+   * else. Code turns the act away free when the power neither holds such a
+   * world nor has ships over it: fortifying unaligned Ithaal failed its roll
+   * and cost an action and 90 credits, where the same act succeeding was
+   * already turned away (playtest 2026-10-19, loop 12).
+   */
+  buildsAt: z.array(z.string().min(1)).max(4).default([]),
 });
 /** How a declaration may reach into another power's business — see `OvertPartSchema.reaches`. */
 export type Reach = 'their_orders' | 'their_ships' | 'their_paper' | 'coercion';
@@ -2534,6 +2545,7 @@ export function rulingToAppraisal(value: unknown): Appraisal {
     ...(overt?.establishes ? { establishes: overt.establishes } : {}),
     ...(overt?.yields && overt.yields.length > 0 ? { yields: overt.yields } : {}),
     ...(overt?.reaches && overt.reaches.length > 0 ? { reaches: overt.reaches } : {}),
+    ...(overt?.buildsAt && overt.buildsAt.length > 0 ? { buildsAt: overt.buildsAt } : {}),
     ...(covert.length > 0
       ? {
           covert: covert.map((c) => ({
