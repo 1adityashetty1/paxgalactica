@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ModelCallError, NotLoggedInError, SpendCapError } from './errors.js';
+import { ModelCallError, NotLoggedInError, SpendCapError, UsageLimitError } from './errors.js';
 import { activeProvider, type AttemptMetrics } from './provider.js';
 import type { CallKind } from './router.js';
 import { spendCap } from './settings.js';
@@ -12,7 +12,7 @@ import {
   type CallOutcome,
 } from './telemetry.js';
 
-export { ModelCallError, NotLoggedInError, SpendCapError } from './errors.js';
+export { ModelCallError, NotLoggedInError, SpendCapError, UsageLimitError } from './errors.js';
 export { CALL_TIMEOUT_MS } from './provider.js';
 
 /**
@@ -458,7 +458,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
             : 'transport_error',
         schemaMiss && metrics.sdkRejections?.length ? metrics.sdkRejections.at(-1) : message,
       );
-      if (err instanceof NotLoggedInError || err instanceof SpendCapError) throw err;
+      if (err instanceof NotLoggedInError || err instanceof SpendCapError || err instanceof UsageLimitError) throw err;
       lastError = err;
       stats.calls += 1;
       recordFailure(call.kind, label, message);

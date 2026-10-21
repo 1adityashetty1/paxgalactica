@@ -315,6 +315,13 @@ describe('a model call leaves one record per attempt', () => {
     expect(calls().map((r) => r.outcome)).toEqual(['timeout', 'transport_error', 'ok']);
   });
 
+  it('does not retry a usage limit', async () => {
+    script.push({ kind: 'throw', error: new Error("You've hit your session limit · resets 11:20pm") }, success({ answer: 4 }));
+    await expect(ask()).rejects.toThrow(/usage limit is reached: .*resets 11:20pm/);
+    expect(calls()).toHaveLength(1);
+    script.length = 0;
+  });
+
   it('counts how many calls were in flight, which is what contention costs', async () => {
     script.push(success({ answer: 1 }, {}), success({ answer: 2 }, {}));
     (script[0] as { delayMs?: number }).delayMs = 20;
