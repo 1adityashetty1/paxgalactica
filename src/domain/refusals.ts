@@ -150,10 +150,24 @@ export function commitmentsAsRuled(
 ): { ops: unknown[]; dropped: string[] } {
   const kept: unknown[] = [];
   const dropped: string[] = [];
+  // A record binds nobody. Beside an act with a mechanism it was a duplicate —
+  // a fortification, a fleet movement and a bounty each minted one, and every
+  // later reader took them for promises (playtest 2026-10-19, S1) — and on its
+  // own it is no better: a declaration cannot bind another
+  // power, so it is only ever the actor's statement of policy, and every one
+  // was later read back as a contract. "Hold Var Hollow" became
+  // `torrek_watch_position`, and leaving Var Hollow was refused as repudiating
+  // it; `development_talks` the same in loop 9, and `neth_accession_secured`
+  // stood for a world that never joined in loop 10 (loops 9, 10, 15). Only a
+  // ruled income — a charter on a world — is recorded from a declaration.
   for (const op of ops) {
     const o = op as { op?: string; kind?: string } | null;
     if (o?.op !== 'establish_commitment') {
       kept.push(op);
+      continue;
+    }
+    if ((establishes?.mechanism ?? 'record') === 'record') {
+      dropped.push(o.kind ?? 'an arrangement');
       continue;
     }
     if (!establishes || o.kind !== establishes.kind) {
@@ -426,4 +440,32 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
       return exists ? null : `There is no record "${id}" to make it so.`;
     }
   }
+}
+
+/**
+ * A debt paid in goods is not paid by handing the goods over. Asked to "offer
+ * the hull plate as partial settlement", resolution wrote both the handover
+ * and a `settle_debt`, which pays cash: the plate went as a gift and the
+ * debtor paid 50 besides (playtest 2026-10-19, loop 13). Taking goods in place
+ * of money needs the creditor's word, so the cash payment beside a handover to
+ * the same creditor is left out and the handover stands as what it is.
+ */
+export function noPaymentBesideAGift(
+  ops: readonly unknown[],
+  debts: readonly { id: string; creditorFactionId: string }[],
+): { ops: unknown[]; dropped: boolean } {
+  const givenTo = new Set(
+    ops.flatMap((o) => {
+      const t = o as { op?: string; toFactionId?: string };
+      return t.op === 'transfer_asset' && t.toFactionId ? [t.toFactionId] : [];
+    }),
+  );
+  if (givenTo.size === 0) return { ops: [...ops], dropped: false };
+  const kept = ops.filter((o) => {
+    const t = o as { op?: string; debtId?: string };
+    if (t.op !== 'settle_debt') return true;
+    const creditor = debts.find((d) => d.id === t.debtId)?.creditorFactionId;
+    return !(creditor && givenTo.has(creditor));
+  });
+  return { ops: kept, dropped: kept.length !== ops.length };
 }

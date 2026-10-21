@@ -68,7 +68,7 @@ export function toApiFailure(err: unknown): ApiFailure {
   if (/not signed in|not logged in|OAuth access token is invalid/i.test(message)) {
     return new ApiFailure('not_authenticated', message);
   }
-  if (err instanceof Error && err.name === 'ModelCallError') {
+  if (err instanceof Error && (err.name === 'ModelCallError' || err.name === 'UsageLimitError')) {
     return new ApiFailure('model_error', message);
   }
   return new ApiFailure('internal', message);

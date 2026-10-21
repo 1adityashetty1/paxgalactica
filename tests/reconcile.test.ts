@@ -128,3 +128,18 @@ describe('the epilogue knows who was overruled', () => {
     expect(vigil).toMatch(/never once refused it/);
   });
 });
+
+describe('L5: the tense of work that has only begun', () => {
+  it('hands the rewrite pass each order’s timing, even when nothing else differed', async () => {
+    const campaign = Campaign.start('meridian', 'reconcile-timing');
+    queue = {
+      appraisal: [{ kind: 'act', parts: [{ kind: 'overt', what: 'fortify Brannix', stat: 'industry', difficulty: 2 }] }],
+      resolution: [{ narrative: 'The new walls at Brannix stand tall.', ops: [{ op: 'fortify', factionId: 'meridian', systemId: 'sek-4', magnitude: 1 }] }],
+      reconcile: [{ narrative: 'Work begins on new walls at Brannix.' }],
+    };
+    const outcome = await submitAction(campaign, 'Fortify Brannix.');
+    const call = calls.find((c) => c.kind === 'reconcile');
+    expect(call?.user).toMatch(/TIMING: .* has only begun; it completes in \d turns?, not now/);
+    expect(outcome.narrative).toBe('Work begins on new walls at Brannix.');
+  });
+});

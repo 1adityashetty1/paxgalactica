@@ -118,10 +118,14 @@ describe('the advisor', () => {
     });
 
     it('has no field to put a plan in', () => {
-      // One field and no second one. A `pressures: []` beside the prose would
+      // Counsel, and at most one recommended act (playtest 2026-10-19, loop 2,
+      // L8) — never a list field. A `pressures: []` beside the prose would
       // render as a checklist however it was worded, which is a queue of
-      // instructions wearing a different label.
-      expect(Object.keys(AdvisorReplySchema.shape)).toEqual(['counsel']);
+      // instructions wearing a different label; the recommendation is one
+      // sentence, held to the same guards and refused as a sequence.
+      expect(Object.keys(AdvisorReplySchema.shape)).toEqual(['counsel', 'recommendation']);
+      const sequence = AdvisorReplySchema.safeParse({ counsel: 'The Vigil is at Kalzir.', recommendation: 'Fortify Torrek, then strike Kalzir.' });
+      expect(sequence.success).toBe(false);
     });
   });
 

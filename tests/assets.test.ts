@@ -503,7 +503,7 @@ describe('assets', () => {
       const granted = groundInConcessions(
         s,
         take,
-        [{ by: 'ojjul', kind: 'return_prisoners', text: 'Your crews walk out.', systems: [], credits: 0, perTurn: 0, hulls: 0, assets: [id], obligations: [], lifts: [] }],
+        [{ by: 'ojjul', kind: 'return_prisoners', text: 'Your crews walk out.', systems: [], credits: 0, perTurn: 0, hulls: 0, assets: [id], obligations: [], lifts: [], about: [] }],
         'ojjul',
       );
       expect(granted.ops).toHaveLength(1);

@@ -3375,6 +3375,8 @@ export interface LegacyRules {
   pricedWarmth?: boolean;
   /** A declared `move` must name its force. Journal version 29. */
   declaredMovesNameForce?: boolean;
+  /** A levy on a world already at its garrison ceiling is left out at no cost. Journal version 30. */
+  fullBarracksRefused?: boolean;
   /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
@@ -3471,6 +3473,12 @@ export interface LegacyRules {
  * battles are fought as they were.
  */
 export interface BattleRules {
+  /**
+   * A fleet with no lift aboard arriving over unaligned ground where only
+   * powers it is at peace with stand takes station beside them rather than
+   * fighting them. Journal version 29 (playtest 2026-10-19, S4).
+   */
+  stationBesidePeers?: boolean;
   /** An officer who sails between your own worlds is placed on arrival rather than stranded. */
   officerHomecoming?: boolean;
   /** An attacker's hulls already parked on the target join its attack. */
@@ -3639,6 +3647,7 @@ function applyOpsUnderRules(
     honestYardNote = true,
     pricedWarmth = true,
     declaredMovesNameForce = true,
+    fullBarracksRefused = true,
   } = legacy;
   const state = cloneState(input);
   // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
@@ -4025,6 +4034,20 @@ function applyOpsUnderRules(
       // A declared move names what sails (journal version 29). With no force
       // the whole port went, and "the battle line" took its lifters and
       // freighter into the fight (playtest 2026-10-19, B6).
+      // A levy on a world whose barracks are full raises nobody: it was taken,
+      // charged and reported "already full" two turns later, for the player
+      // and for a bot alike (playtest 2026-10-19, loop 2). Left out, at no
+      // cost, with the way to raise the ceiling (journal version 30).
+      if (fullBarracksRefused && op.op === 'raise_garrison') {
+        const levy = op as { systemId: string; factionId: string };
+        const where = state.systems.find((x) => x.id === levy.systemId);
+        if (where && where.garrison >= where.garrisonMax) {
+          const note = `${where.name}'s barracks are already full (${where.garrison}/${where.garrisonMax}): no levy is raised and nothing is spent. Fortify it to raise the ceiling.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, actor ?? levy.factionId);
+          continue;
+        }
+      }
       if (declaredMovesNameForce && path === 'declared' && op.op === 'move' && op.force === undefined) {
         reject(raw, 'illegal_value', 'A declared move names what sails: give `force` — the classes and counts the player sent, or every hull at the origin if they sent everything.');
         continue;
@@ -12660,6 +12683,7 @@ function resolveBattle(
     officersFallWithFleet = true,
     callToArms = true,
     assetsGoWithWorld: worldTakesAssets = true,
+    stationBesidePeers = true,
   } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -12824,10 +12848,29 @@ function resolveBattle(
   // case a fleet could not be stationed in friendly space at all: any movement
   // into a partner's system was resolved as an attack on them, which made the
   // treaty type unusable rather than merely inert.
+  // Over ground nobody holds, a fleet carrying no troops cannot be taking the
+  // world, and the powers already there are not its enemies: it stands guard
+  // beside them. "Protect Sennex, not take it" was fought as an assault on
+  // Arkane, a power on good terms with the sender, and both squadrons died
+  // (playtest 2026-10-19, S4). At war with anybody present, or with lift
+  // aboard, it is an arrival like any other.
+  const atPeace = (a: string, b: string): boolean => {
+    const fa = state.factions.find((f) => f.id === a);
+    const fb = state.factions.find((f) => f.id === b);
+    return (fa?.disposition[b] ?? 0) > WAR_DISPOSITION_THRESHOLD && (fb?.disposition[a] ?? 0) > WAR_DISPOSITION_THRESHOLD;
+  };
+  const stations = (id: string): boolean =>
+    stationBesidePeers &&
+    holder === null &&
+    (arriving.get(id)?.lifter ?? 0) === 0 &&
+    presentAt(target).some(([other, n]) => n > 0 && other !== id) &&
+    presentAt(target).every(([other, n]) => n === 0 || other === id || atPeace(id, other)) &&
+    [...arriving.keys()].every((other) => other === id || atPeace(id, other));
   const guest = (id: string): boolean =>
-    holder !== null &&
-    id !== holder &&
-    treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined;
+    stations(id) ||
+    (holder !== null &&
+      id !== holder &&
+      treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined);
 
   /**
    * Rivals sitting in orbit over a world they do not hold.
@@ -12872,7 +12915,9 @@ function resolveBattle(
     const note =
       guests.length > 0 && holder !== null
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
-        : `${who} reinforces ${target.name}.`;
+        : guests.length > 0
+          ? `${guests.map(([id]) => nameOf(id)).join(' and ')} takes station over ${target.name} beside the ships already there.`
+          : `${who} reinforces ${target.name}.`;
     // **The officers who sailed get off the ship.** This is the third exit found
     // to strand one, after the unopposed walk-in and `cancel_order`, and it is
     // the commonest of the three: moving a fleet between your OWN worlds takes

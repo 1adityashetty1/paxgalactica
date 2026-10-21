@@ -360,13 +360,43 @@ function effectiveFor(faction: Faction): FactionStats {
   ) as FactionStats;
 }
 
-export function serializeCharacter(faction: Faction): string {
+/**
+ * A voice for a speaker that may not enumerate: the counsellor. One voice field
+ * served two contracts — Meridian's numbers its points ("Three things. First
+ * —"), and the counsellor's plan guard refuses an enumeration — so six of ten
+ * counsels failed the guard first time, and one that passed stopped after
+ * "First" (playtest 2026-10-19, S5). The sentence telling the speaker to
+ * number is left out; everything else about the voice stands.
+ */
+export function voiceWithoutNumbering(voice: string): string {
+  return voice
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !/\bnumbers? (?:his|her|their|its)? ?points\b|"three things|three things\. first/i.test(sentence))
+    .join(' ');
+}
+
+/**
+ * A voice with its sample line taken out. Each sheet closes on a sample speech
+ * whose facts are invented for the voice — Meridian's "the Rate held at Neth
+ * for eleven quarters … the garrison you keep there … the harbour was quieted"
+ * — and the counsellor, which reads the sheet beside the board, opened every
+ * campaign of nine loops by reporting them as the board (2026-10-19, loop 10).
+ */
+export function voiceWithoutSample(voice: string): string {
+  return voice.replace(/\s*Sample:[\s\S]*$/, '');
+}
+
+export function serializeCharacter(faction: Faction, opts: { enumerates?: boolean; sample?: boolean } = {}): string {
+  // The sample first: the numbering filter drops only its opening sentence,
+  // and left the rest of Meridian's sample — its invented facts — in place.
+  const sampled = opts.sample === false ? voiceWithoutSample(faction.voice) : faction.voice;
+  const voice = opts.enumerates === false ? voiceWithoutNumbering(sampled) : sampled;
   return [
     `**${faction.name}** (\`${faction.id}\`)`,
     '',
     `Doctrine: ${faction.doctrine}`,
     '',
-    `How you speak: ${faction.voice}`,
+    `How you speak: ${voice}`,
     '',
     `On war — ${faction.warEthic}: ${WAR_ETHIC_MEANING[faction.warEthic]}`,
     `On trade — ${faction.tradeEthic}: ${TRADE_ETHIC_MEANING[faction.tradeEthic]}`,
@@ -1204,7 +1234,15 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
         c.share === undefined
           ? ''
           : ` · ${c.share.percent}% of ${getFaction(state, c.share.from)?.name ?? c.share.from}'s ${c.share.of} to ${getFaction(state, c.share.to)?.name ?? c.share.to} (currently worth ${shareWorth(state, c.share)} a turn)`;
-      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${chartered}${cut}${flag}\n  _as agreed, in their words: ${c.text}_`;
+      // A one-party record binds nobody: it is a statement of policy, and
+      // changing course on it repudiates nothing (playtest 2026-10-19, S1 — a
+      // fortification's record was read as a contract, and ceding the world
+      // as breaking it).
+      const policy =
+        c.factionIds.length === 1 && c.incomePerTurn === 0 && c.share === undefined && c.contingencies.length === 0
+          ? ' · **a statement of policy, owed to nobody — changing course on it breaks no promise**'
+          : '';
+      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${chartered}${cut}${flag}${policy}\n  _as agreed, in their words: ${c.text}_`;
     })
     .join('\n');
 }

@@ -2285,6 +2285,8 @@ export const AppraisalSchema = z.object({
   yields: z.array(z.string()).optional(),
   /** How the overt part reaches another power, named before the roll. See `OvertPartSchema.reaches`. */
   reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).optional(),
+  /** Worlds the overt part builds on, named before the roll. See `OvertPartSchema.buildsAt`. */
+  buildsAt: z.array(z.string()).optional(),
   /**
    * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
    * (which is rolled), which of the actor's operatives that part involves, and
@@ -2351,6 +2353,15 @@ export const OvertPartSchema = z.object({
    * every act (`docs/design-2026-10-18-code-knows.md` §4).
    */
   reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).max(4).default([]),
+  /**
+   * The worlds this part builds, raises or develops on — walls, a garrison,
+   * development, a fixture — by id, named BEFORE the roll; empty for anything
+   * else. Code turns the act away free when the power neither holds such a
+   * world nor has ships over it: fortifying unaligned Ithaal failed its roll
+   * and cost an action and 90 credits, where the same act succeeding was
+   * already turned away (playtest 2026-10-19, loop 12).
+   */
+  buildsAt: z.array(z.string().min(1)).max(4).default([]),
 });
 /** How a declaration may reach into another power's business — see `OvertPartSchema.reaches`. */
 export type Reach = 'their_orders' | 'their_ships' | 'their_paper' | 'coercion';
@@ -2460,6 +2471,41 @@ export const DeclaredRulingSchema = z
 export type DeclaredRuling = z.infer<typeof DeclaredRulingSchema>;
 
 /**
+ * One act per ruling, made of what the arbiter wrote when it tried to rule on
+ * two. Loop 8 of the advisor playtest: "open talks with Arkane about Sennex,
+ * and commit 80 credits to a development programme at Neth" came back with two
+ * overt parts, or a negotiation written as a part, and failed the schema three
+ * times — the player was handed a bare error. The first overt part stands; any
+ * further one, and a negotiation, becomes an `unexpressed` note telling the
+ * player to declare or negotiate it on its own. A ruling that is nothing but a
+ * negotiation is the negotiation ruling.
+ */
+export function oneActPerRuling(value: unknown): unknown {
+  const r = value as { kind?: unknown; parts?: unknown };
+  if (!r || typeof r !== 'object' || r.kind !== 'act' || !Array.isArray(r.parts)) return value;
+  const parts = r.parts as { kind?: unknown; what?: unknown; withFactionIds?: unknown }[];
+  const clip = (t: string) => (t.length > 240 ? `${t.slice(0, 239)}…` : t);
+  const said = (p: { what?: unknown }) => (typeof p.what === 'string' && p.what ? p.what : 'the rest of the order');
+  const negotiations = parts.filter((p) => p.kind === 'negotiation');
+  let overt = 0;
+  const kept = parts.flatMap((p) => {
+    if (p.kind === 'overt' && overt++ === 0) return [p];
+    if (p.kind === 'overt') return [{ kind: 'unexpressed', outcome: clip(`Declare it as its own act: ${said(p)}`) }];
+    if (p.kind === 'negotiation') {
+      const who = Array.isArray(p.withFactionIds) ? p.withFactionIds.join(' and ') : 'another power';
+      return [{ kind: 'unexpressed', outcome: clip(`Needs ${who} to agree; open a channel: ${said(p)}`) }];
+    }
+    return [p];
+  });
+  const substance = kept.filter((p) => p.kind !== 'unexpressed');
+  const first = negotiations[0];
+  if (substance.length === 0 && first && Array.isArray(first.withFactionIds)) {
+    return { kind: 'negotiation', withFactionIds: first.withFactionIds, what: clip(said(first)), supported: true };
+  }
+  return { ...r, parts: kept };
+}
+
+/**
  * A declared ruling as the engine reads it, in the flat shape the rest of
  * resolution was built on. Anything without a `kind` is already that shape (an
  * older caller, or a test scripting one) and passes through.
@@ -2499,6 +2545,7 @@ export function rulingToAppraisal(value: unknown): Appraisal {
     ...(overt?.establishes ? { establishes: overt.establishes } : {}),
     ...(overt?.yields && overt.yields.length > 0 ? { yields: overt.yields } : {}),
     ...(overt?.reaches && overt.reaches.length > 0 ? { reaches: overt.reaches } : {}),
+    ...(overt?.buildsAt && overt.buildsAt.length > 0 ? { buildsAt: overt.buildsAt } : {}),
     ...(covert.length > 0
       ? {
           covert: covert.map((c) => ({

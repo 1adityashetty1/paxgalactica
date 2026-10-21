@@ -107,7 +107,21 @@ These are the only grounds there are:
 | `not_present` (`systemId`, optionally `factionId`) | the act needs the power somewhere it is not | it has no world, ships or operative there |
 | `not_held` (`name`) | the act spends or gives something the power does not hold | it holds nothing of that name |
 | `commitment_conflict` (`id`) | an exclusive or binding arrangement forbids it | that treaty or commitment is live and binds the power |
-| `already_so` (`ref`) | the thing asked for is already true | that record exists |
+| `already_so` (`ref`) | the thing asked for is already true — including an order to go on as things are: hold a world the power holds, wait, keep a fleet where it stands (`ref` is that world's id) | that record exists |
+
+Works on a world — walls, a garrison, development, a fixture — and seating a
+governor need the power **on** that world: works need it held or a fleet of
+the power over it, a seat needs it held. Fortifying or seating on a world the
+power has nothing at is `not_present` on that world, not a roll that can only
+come to nothing (playtest 2026-10-19, loop 5). Name every world an overt part
+builds, raises or develops on in its `buildsAt` (ids), and leave it empty for
+anything else — an envoy, an offer or talks about building something builds
+nothing, and its `buildsAt` is empty: the engine checks those worlds against
+the board before the roll.
+
+Paying a debt in goods, or anything a creditor must accept in place of money,
+is a `negotiation` with the creditor: handing the goods over is a gift and
+`settle_debt` pays cash, so writing both paid twice (loop 13).
 
 A ground the board does not bear out is sent back to you. **When in doubt,
 never refuse**: if none of these is true, the act goes ahead as parts, and
@@ -448,7 +462,14 @@ a commitment already have a home**, and that home is the ruling, not
 - an attack, an assault or a push, however many turns it runs — a `move`;
 - a build or construction programme — `build_ships`, `fortify`, `develop` and
   the other work ops, which already run for turns and deliver;
-- an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`.
+- an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`;
+- an outcome — a world joined, a programme finished, a position secured —
+  nothing; the board says what happened, and a `neth_accession_secured` record
+  once stood for a world that never joined (loop 10);
+- talks, an offer or an approach to a world or a power — nothing; an envoy is
+  `send_envoy`, and an offer nobody has accepted binds nobody. A
+  `development_talks` record was later read as a contract Meridian could not
+  walk away from (playtest 2026-10-19, loop 9).
 
 A record of any of those is read back to you on later turns as a standing
 arrangement, and it is not one: a `kalzir_assault` or a

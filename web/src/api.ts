@@ -365,11 +365,11 @@ export const api = {
   discardStaged: (index?: number) =>
     call(ROUTES.discardStaged, DiscardResultSchema, index === undefined ? {} : { index }),
 
-  talk: (factionId: string, text: string) =>
+  talk: (factionId: string, text: string, strike: string[] = []) =>
     call(
       ROUTES.talk(factionId),
       { parse: (v: unknown) => v as { reply: string; costUsd: number } },
-      { text },
+      { text, strike },
     ),
 
   endTalk: (factionId: string): Promise<ActionOutcomeResponse> =>

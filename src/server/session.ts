@@ -89,6 +89,16 @@ export const SessionSnapshotSchema = z.object({
   channel: ChannelSchema,
   briefing: z.unknown().nullable(),
   actionSeq: z.number().int().min(0),
+  /**
+   * What the counsellor last told the leader, and on which turn. It urged
+   * defending Torrek, then abandoning it, then attacking from it, on three
+   * turns running, with no memory of the last (playtest 2026-10-19, loop 3).
+   * Not world state: a counsellor's words change nothing in the Rim.
+   */
+  lastCounsel: z
+    .object({ turn: z.number().int(), counsel: z.string(), recommendation: z.string().nullable(), followed: z.string().nullable().default(null) })
+    .nullable()
+    .default(null),
 });
 export type SessionSnapshot = z.infer<typeof SessionSnapshotSchema>;
 
@@ -214,6 +224,7 @@ export class GameSession {
 
   /** Numbers declared actions within a turn, for the trace. Reset each turn. */
   private actionSeq = 0;
+  private lastCounsel: { turn: number; counsel: string; recommendation: string | null; followed: string | null } | null = null;
 
   /** Run a top-level phase of play inside a trace span. */
   private traced<T>(phase: string, work: () => Promise<T>, actionId?: string): Promise<T> {
@@ -379,6 +390,7 @@ export class GameSession {
       channel: this.channelState(),
       briefing: this.lastBriefing,
       actionSeq: this.actionSeq,
+      lastCounsel: this.lastCounsel,
     };
   }
 
@@ -390,6 +402,7 @@ export class GameSession {
       (snapshot.briefing as Briefing | null) ?? briefingFromState(this.campaign.state);
     this.epilogue = this.campaign.epilogue;
     this.actionSeq = snapshot.actionSeq;
+    this.lastCounsel = snapshot.lastCounsel ?? null;
   }
 
   /** The turn in progress, for a save archive. */
@@ -573,6 +586,12 @@ export class GameSession {
       () => this.exclusive('Resolving', () => submitAction(campaign, text)),
       actionId,
     );
+    // What became of the first order after the counsel, so the counsellor is not
+    // left to urge the same refused act turn after turn (loop 4: three red-line
+    // refusals and three redirects of one recommendation).
+    if (this.lastCounsel && this.lastCounsel.followed === null) {
+      this.lastCounsel = { ...this.lastCounsel, followed: `"${text.trim().slice(0, 200)}" — ${whatCameOf(outcome)}` };
+    }
     this.pushState();
     return {
       narrative: outcome.narrative,
@@ -619,6 +638,7 @@ export class GameSession {
     if (campaign.actionPointsLeft <= 0) {
       return {
         counsel: `There is no more of the day to spend, ${faction?.title ?? 'Commander'}. Let the turn close.`,
+        recommendation: null,
         speaker: faction?.name ?? campaign.state.playerFactionId,
         title: faction?.title ?? 'Commander',
         outOfActions: { perTurn: ACTION_POINTS_PER_TURN },
@@ -627,12 +647,14 @@ export class GameSession {
     }
 
     const result = await this.traced('advisor', () =>
-      this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question)),
+      this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question, this.lastCounsel)),
     );
+    this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, recommendation: result.recommendation, followed: null };
     campaign.spendActionPoint();
     this.pushState();
     return {
       counsel: result.counsel,
+      recommendation: result.recommendation,
       speaker: faction?.name ?? campaign.state.playerFactionId,
       title: faction?.title ?? 'Commander',
       outOfActions: null,
@@ -752,6 +774,7 @@ export class GameSession {
   async talk(
     factionId: string,
     text: string,
+    strike: readonly string[] = [],
   ): Promise<{
     reply: string;
     concessions: Concession[];
@@ -795,7 +818,17 @@ export class GameSession {
       );
     }
 
-    this.channelHistory.push({ speaker: 'player', text });
+    // The player's own withdrawals, applied in code before the other power
+    // answers, and said in the message so the persona reads them (S2).
+    const me = campaign.state.playerFactionId;
+    const struck = this.channelConcessions.filter((c) => c.by === me && strike.includes(c.kind));
+    if (struck.length > 0) {
+      this.channelConcessions = this.channelConcessions.filter((c) => !struck.includes(c));
+      const gone = new Set(struck.map((c) => c.text));
+      this.channelBlockers = this.channelBlockers.filter((b) => !gone.has(b.concession));
+    }
+    const said = struck.length > 0 ? `${text}\n\n(Withdrawn from our side of the record: ${struck.map((c) => c.text).join('; ')}.)` : text;
+    this.channelHistory.push({ speaker: 'player', text: said });
 
     const { result, rulings } = await this.traced('talk', async () => {
       const result = await this.exclusive(`${faction.name} considers`, async () =>
@@ -916,6 +949,13 @@ export class GameSession {
       this.pushState();
       throw err;
     }
+    // What the talks came to, for the counsellor: it urged the same rejected
+    // settlement with the Vigil three turns running (loop 5).
+    if (this.lastCounsel) {
+      const name = campaign.state.factions.find((f) => f.id === factionId)?.name ?? factionId;
+      const talks = `Talks with ${name} then: ${outcome.narrative.trim().slice(0, 400)}`;
+      this.lastCounsel = { ...this.lastCounsel, followed: this.lastCounsel.followed ? `${this.lastCounsel.followed}. ${talks}` : talks };
+    }
     this.pushState();
 
     return {
@@ -959,3 +999,29 @@ const BINDING_REASON: Record<StagedBinding, string> = {
   record: 'That is the record of a ruling, not an order, and it cannot be withdrawn.',
   attached: 'That goes with the accord it belongs to: withdraw the accord and it goes too.',
 };
+
+/** One line on what a declaration came to, for the counsellor's memory. */
+export function whatCameOf(outcome: {
+  refusal?: { by: string; violated: string } | null;
+  negotiation?: { withFactionIds: string[] } | null;
+  inadmissible?: string | null;
+  outOfActions?: unknown;
+  check?: { outcome: string } | null;
+  ops?: unknown[];
+  rejections?: { message: string }[];
+}): string {
+  if (outcome.refusal) return `refused by ${outcome.refusal.by}, on the line "${outcome.refusal.violated}"`;
+  if (outcome.negotiation) return `turned back: it needs ${outcome.negotiation.withFactionIds.join(' and ')} to agree, so it is a conversation, not an order`;
+  if (outcome.inadmissible) return `could not be attempted: ${outcome.inadmissible}`;
+  if (outcome.outOfActions) return 'not attempted: the turn was spent';
+  // The band is not what landed: a "success" whose only work was refused for
+  // want of presence changed nothing, and the next counsel read it as a
+  // fortification standing (loop 5).
+  const landed = (outcome.ops ?? []).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
+  if (outcome.check && landed.length === 0) {
+    const why = outcome.rejections?.[0]?.message;
+    return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}, and nothing came of it${why ? ` (${why})` : ''}`;
+  }
+  if (outcome.check) return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}`;
+  return 'carried out';
+}

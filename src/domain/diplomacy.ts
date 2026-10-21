@@ -71,6 +71,14 @@ export const ConcessionSchema = z.object({
    * it meant, at the moment it means it.
    */
   systems: z.array(z.string().min(1)).max(12).default([]),
+  /**
+   * Worlds a term merely concerns — where a ceasefire holds, which lane a
+   * toll lift covers — and nothing more. Nothing named here changes hands.
+   * Without it a persona wrote a ceasefire's worlds into `systems`, the
+   * engine built a cession of them, and the refused cession sank the whole
+   * accord (playtest 2026-10-19, loop 3).
+   */
+  about: z.array(z.string().min(1)).max(12).default([]),
   /** Credits moving once, from `by` to the other party. */
   credits: z.number().int().min(0).max(100000).default(0),
   /** Credits moving every turn, from `by` to the other party. */

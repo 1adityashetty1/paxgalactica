@@ -20,6 +20,7 @@ import {
 import {
   AppraisalSchema,
   DeclaredRulingSchema,
+  oneActPerRuling,
   rulingToAppraisal,
   type Appraisal,
   ExtractionOutputSchema,
@@ -38,6 +39,7 @@ import {
   fleetTonsOf,
   getFaction,
   type WorldState,
+  hullsAt,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
 import { checkGround, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
@@ -45,6 +47,9 @@ import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
+import { paperOf, pressuresOn } from '../domain/pressures.js';
+import { ACT_WORDS } from '../domain/acts.js';
+import { lineCrossable } from '../domain/line-reach.js';
 import {
   serializeCharacter,
   serializePrinciples,
@@ -179,6 +184,7 @@ export async function appraiseAction(
     // Two schemas, two answer shapes: an accord is never rolled, so it keeps
     // the flat ruling; a declared act is parts.
     schema: (opts.declared === false ? AppraisalSchema : DeclaredRulingSchema) as z.ZodType<unknown>,
+    ...(opts.declared === false ? {} : { lenient: oneActPerRuling }),
   });
 
   // A declared ruling comes back as parts; the rest of resolution reads the
@@ -365,7 +371,18 @@ export async function verifyBreachRelevance(
   action: string,
   principle: string,
   kind: 'red_line' | 'compulsion',
+  /**
+   * The power whose line it is. Where its seed tags the line with the acts it
+   * forbids (`Faction.lineActs`), the check is shown that closed list and asked
+   * whether the act is one of them. Loop 4 of the advisor playtest: "will not
+   * repudiate a contract" refused handing Meridian's own note to the Combine
+   * and offering Arkane a seat, three times — neither goes back on anything,
+   * and an open "is this about that" let all three through.
+   */
+  sheet?: { lineActs?: readonly { text: string; forbids: readonly string[] }[] } | null,
 ): Promise<{ relevant: boolean; why: string; costUsd: number }> {
+  const forbids = sheet?.lineActs?.find((t) => t.text === principle)?.forbids ?? [];
+  const named = forbids.map((a) => (ACT_WORDS as Record<string, string>)[a] ?? a.replace(/_/g, ' '));
   const system = [
     'You check one thing and answer nothing else.',
     '',
@@ -378,7 +395,8 @@ export async function verifyBreachRelevance(
     'Say `relevant: true` when the act does what the line forbids, or fails to',
     'do what it demands, even if the wording differs — judge the act, not the',
     'phrasing. A blockade dressed up as withdrawing insurance still closes a',
-    'lane.',
+    'lane. And the other way: a fleet sent to fight or "block" another fleet is',
+    'a battle, not a closed lane.',
     '',
     'Say `relevant: false` when the line is simply about something else. A line',
     'about preying on shipping has nothing to say about an assassination; a line',
@@ -397,6 +415,13 @@ export async function verifyBreachRelevance(
       `ACT: ${action}`,
       '',
       `LINE (${kind === 'red_line' ? 'something this power refuses' : 'something its institutions demand'}): ${principle}`,
+      ...(named.length > 0
+        ? [
+            '',
+            `This line forbids exactly these acts, and nothing else: ${named.join('; ')}.`,
+            'Say `relevant: true` only if the act is one of them.',
+          ]
+        : []),
     ].join('\n'),
     schema: BreachRelevanceSchema,
   });
@@ -633,7 +658,10 @@ export async function resolveAction(
     priced.appraisal.ground &&
     !(actor && classifyPrinciple(actor, priced.appraisal.reason))
   ) {
-    const wrong = checkGround(state, state.playerFactionId, priced.appraisal.ground);
+    const wrong =
+      priced.appraisal.ground.kind === 'already_so' && standingOrder(action)
+        ? null
+        : (checkGround(state, state.playerFactionId, priced.appraisal.ground) ?? sendingIsTheAct(state, action, priced.appraisal.ground));
     if (wrong) {
       const again = await appraiseAction(state, action, undefined, {
         note: [
@@ -650,7 +678,8 @@ export async function resolveAction(
       };
       const still =
         !priced.appraisal.admissible && priced.appraisal.ground
-          ? checkGround(state, state.playerFactionId, priced.appraisal.ground)
+          ? (checkGround(state, state.playerFactionId, priced.appraisal.ground) ??
+            sendingIsTheAct(state, action, priced.appraisal.ground))
           : null;
       if (still) {
         priced.appraisal = { ...priced.appraisal, admissible: true, unexpressed: priced.appraisal.reason, ground: undefined };
@@ -711,10 +740,16 @@ export async function resolveAction(
   let classified = firstPass;
   let relevant: boolean | null = null;
   if (firstPass) {
-    const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind);
+    const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind, actor);
     relevanceCost = check.costUsd;
     relevant = check.relevant;
     if (!check.relevant) classified = null;
+  }
+  // A line that forbids only going back on paper the power does not hold
+  // cannot be crossed by anything it does now, whatever the two calls said.
+  if (classified && actor && !lineCrossable(state, actor.id, classified.principle)) {
+    notes.push(`"${classified.principle}" names paper ${actor.name} does not hold, so this act cannot cross it.`);
+    classified = null;
   }
 
   // `admissible: false` is the one exit that charges nothing at all, which makes
@@ -802,6 +837,35 @@ export async function resolveAction(
     };
   }
 
+  /* --- 1b''. Works need somewhere to stand ---------------------------- */
+  // Named by the arbiter before the roll, checked here against the board: a
+  // world the power neither holds nor has ships over cannot be built on, so
+  // the act is turned away as inadmissible — no roll, no action, no cost —
+  // however the dice would have fallen (loop 12).
+  // Never on an influence act: an envoy or an offer of development needs only
+  // a world next to it, and the arbiter named the world it would develop as
+  // `buildsAt`, turning two envoys away (loop 13).
+  // Only on industry, which is what works are: a landing named the world it
+  // was sailing for and was turned away too (loop 14).
+  const builds = priced.appraisal.stat === 'industry' ? (priced.appraisal.buildsAt ?? []) : [];
+  const nowhere = builds.filter((id) => {
+    const world = state.systems.find((x) => x.id === id);
+    return world !== undefined && world.controllerFactionId !== state.playerFactionId && hullsAt(world, state.playerFactionId) === 0;
+  });
+  if (nowhere.length > 0 && nowhere.length === builds.length) {
+    const names = nowhere.map((id) => state.systems.find((x) => x.id === id)?.name ?? id).join(' and ');
+    const why = `Nothing of yours stands at ${names} to build on: works need a world you hold, or a fleet of yours over it.`;
+    return {
+      output: { narrative: why, ops: [], inadmissible: why },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd + relevanceCost,
+      ruling,
+      notes,
+    };
+  }
+
   /* --- 1b'. Covert work needs somebody on the books -------------------- */
   // Recruiting an operative and sending one are two actions (version 11), so a
   // covert attempt by a power with nobody to send is not a thing that can be
@@ -815,6 +879,27 @@ export async function resolveAction(
   // record of what the next mission should be. Only when nothing else in the
   // act could be done; alongside a mission it is a note.
   if (priced.appraisal.unexpressed && covert.length === 0 && groundwork.length === 0 && !priced.appraisal.overt) {
+    // Handing something to a named power needs that power: "cede Torrek
+    // Anchorage to the Vigil" came back as "no mission does that yet" over an
+    // invented rule about a debt, where the bilateral list in the prompt names
+    // ceding territory as a negotiation (loop 19). Said as the redirect it is.
+    const to = handedTo(state, action);
+    if (to) {
+      const name = getFaction(state, to)?.name ?? to;
+      return {
+        output: {
+          narrative: `That needs ${name} to agree to it.`,
+          ops: [],
+          negotiation: { withFactionIds: [to], what: action.slice(0, 240), supported: true, channels: `/talk ${to}` },
+        },
+        check: null,
+        roll: 0,
+        attempts: priced.attempts,
+        costUsd: priced.costUsd + relevanceCost,
+        ruling,
+        notes,
+      };
+    }
     const why = `No mission does that yet: ${priced.appraisal.unexpressed}`;
     return {
       output: { narrative: why, ops: [], inadmissible: why },
@@ -1409,6 +1494,88 @@ export function breaksTheFourthWall(counsel: string): boolean {
   );
 }
 
+export const RecommendationSchema = cappedProse(220)
+  .refine((c) => !looksLikeAPlan(c) && !/\b(?:then|after that|next)\b/i.test(c), {
+    message: 'One act, not a sequence: name the single thing you would do, with no "then" and no list.',
+  })
+  .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' })
+  .refine((c) => !talksAndAnOrder(c), {
+    message: 'Talks are one act and an order is another: recommend either the talks or the order, not both.',
+  });
+
+/**
+ * "Open talks with Arkane about Sennex, and commit 80 credits to Neth": talks
+ * and an order joined in one recommendation. Declared whole, it is two acts in
+ * one ruling (loop 8). Read off the words, as `looksLikeAPlan` is.
+ */
+export function talksAndAnOrder(text: string): boolean {
+  if (!/\b(?:talks?|negotiat\w*|channel)\b/i.test(text)) return false;
+  const ORDER = String.raw`(?:commit|authori[sz]e|send|move|fortify|develop|build|raise|order|draw|sail|deploy|recruit|seat|post|blockade|raid)`;
+  return (
+    new RegExp(String.raw`\b(?:and|while)\s+${ORDER}\b`, 'i').test(text) ||
+    new RegExp(String.raw`^\s*${ORDER}\b.*\band\s+(?:open|begin|start|hold)\s+(?:talks|negotiations)\b`, 'i').test(text)
+  );
+}
+
+/**
+ * A recommendation cut to its first act. A counsel whose one act ran on into
+ * "…, then …" failed the guard three times and the player was handed a model
+ * error instead of advice (loop 17): the first act is the recommendation, and
+ * what followed it is dropped.
+ */
+export function firstActOnly(value: unknown): unknown {
+  const v = value as { recommendation?: unknown };
+  if (!v || typeof v !== 'object' || typeof v.recommendation !== 'string') return value;
+  const cut = v.recommendation
+    .split(/[;:—]|\s[–-]\s|,?\s+(?:and\s+)?(?:then|after that|next)\b/i)[0]!
+    .replace(/[,\s]+(?:and|while)?\s*$/i, '')
+    .trim();
+  return cut.length >= 12 ? { ...v, recommendation: /[.!?]$/.test(cut) ? cut : `${cut}.` } : value;
+}
+
+/**
+ * The power an act hands something to, when its words do: "cede Torrek
+ * Anchorage to the Vigil", "sell the plate to the Combine". Read off the words,
+ * as `talksAndAnOrder` is, and only consulted when the arbiter found nothing
+ * the power could do alone.
+ */
+export function handedTo(state: WorldState, action: string): string | null {
+  if (!/\b(?:cede|cedes|ceding|hand|hands|handing|give|gives|giving|sell|sells|selling|trade|trades|trading|yield|yields|surrender|transfer)\b/i.test(action)) return null;
+  const after = /\bto\s+(?:the\s+)?([A-Z][\w-]*(?:\s+[A-Z][\w-]*)*)/.exec(action)?.[1];
+  if (!after) return null;
+  const words = after.toLowerCase().split(/\s+/);
+  const hit = state.factions.find(
+    (f) => f.id !== state.playerFactionId && (f.id === words[0] || words.some((w) => f.name.toLowerCase().split(/\s+/).includes(w) && !['the', 'of'].includes(w))),
+  );
+  return hit?.id ?? null;
+}
+
+/**
+ * A refusal for not being somewhere, on an act whose whole point is to go
+ * there. "Land troops at Var Hollow" was turned away as `not_present` ("no
+ * troops embarked anywhere") while twelve of Meridian's lift stood at Torrek
+ * Anchorage (loop 20). When the act's words send ships and the power has ships
+ * to send, the ground is not so.
+ */
+/**
+ * An order to go on as things are — "do not move against the Vigil this turn",
+ * "hold Torrek", "wait" — is already so whatever record the arbiter cited for
+ * it. It cited an invented one, the check sent it back, and the re-ruling
+ * rolled the non-act and charged 40 credits for it (loop 21).
+ */
+export function standingOrder(action: string): boolean {
+  return /^\s*(?:do not|don't|hold\b|wait\b|stand fast|stand pat|keep\b|stay\b|make no|take no|leave\b.*\bas (?:it|they) (?:is|are))/i.test(action);
+}
+
+export function sendingIsTheAct(state: WorldState, action: string, ground: { kind: string }): string | null {
+  if (ground.kind !== 'not_present') return null;
+  if (!/\b(?:land|lands|landing|sail|sails|send|sends|move|moves|attack|storm|invade|strike|garrison|station|take)\b/i.test(action)) return null;
+  const me = state.playerFactionId;
+  const ships = state.systems.filter((x) => hullsAt(x, me) > 0);
+  if (ships.length === 0) return null;
+  return `the act sends ships there, and ${getFaction(state, me)?.name ?? me} has ships at ${ships.map((x) => x.name).slice(0, 3).join(', ')} to send. Going there is the act; rule it as a move.`;
+}
+
 export const AdvisorReplySchema = z.object({
   /**
    * What the counsellor actually says, out loud, to their leader.
@@ -1419,7 +1586,7 @@ export const AdvisorReplySchema = z.object({
    * names. The prose has to carry it, and the refine below is what stops the
    * prose becoming the list anyway.
    */
-  counsel: cappedProse(560)
+  counsel: cappedProse(640)
     .refine((c) => !looksLikeAPlan(c), {
       message:
         'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',
@@ -1428,6 +1595,14 @@ export const AdvisorReplySchema = z.object({
       message:
         'This speaks of turns, action points, difficulty or dice. You are inside the fiction: say "last month", "soon", "it will not be easy" — never the game\'s own terms.',
     }),
+  /**
+   * One act the counsellor would take, if any: a single sentence, never a
+   * sequence. The counsel alone named problems and left the move implicit on
+   * three turns in ten, so a player following it had nothing to follow
+   * (playtest 2026-10-19, loop 2, L8). Held to the same guards, so it cannot
+   * become the plan the counsel is forbidden to be.
+   */
+  recommendation: RecommendationSchema.optional()
 });
 export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
 
@@ -1456,10 +1631,13 @@ export async function askAdvisor(
    * Vantic" is answered with what holds Vantic, not with an order of march.
    */
   question?: string,
-): Promise<{ counsel: string; attempts: number; costUsd: number }> {
+  /** What the counsellor said last time, so a change of course is said and explained. */
+  last?: { turn: number; counsel: string; recommendation: string | null; followed?: string | null } | null,
+): Promise<{ counsel: string; recommendation: string | null; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
   const asked = question?.trim();
+  const pressures = pressuresOn(state, viewerId);
 
   const res = await callStructured({
     kind: 'advisor',
@@ -1470,9 +1648,37 @@ export async function askAdvisor(
       '',
       '---',
       '',
+      ...(last
+        ? [
+            `## What you told your leader ${last.turn === state.turn ? 'earlier this turn' : `on turn ${last.turn}`}`,
+            '',
+            `> ${last.counsel}`,
+            ...(last.recommendation ? ['', `Your recommendation then: ${last.recommendation}`] : []),
+            ...(last.followed
+              ? ['', `What came of the next order your leader gave: ${last.followed}.`, 'An order refused by your own people, turned back as needing another power, or a settlement the other power has already rejected, will go the same way again: do not urge it a second time in other words. Something that came to nothing is not standing now.']
+              : []),
+            '',
+            'Hold to it unless the board has changed. If your counsel now differs, say so in a clause and say what changed — a counsellor who reverses course without a reason is one the leader stops trusting.',
+            '',
+            '---',
+            '',
+          ]
+        : []),
+      '## What your staff has flagged (computed from the board; true)',
+      '',
+      ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : ['- Nothing massing against you, and no rival in any orbit you hold.']),
+      '',
+      'Weigh these first: they are the facts most likely to decide the next turns. Anything else you raise must be in the state block below.',
+      '',
+      '## Your paper (computed; complete — what is not listed does not exist)',
+      '',
+      ...paperOf(state, viewerId).map((p) => `- ${p}`),
+      '',
+      '---',
+      '',
       '## The voice you speak in',
       '',
-      serializeCharacter(faction),
+      serializeCharacter(faction, { enumerates: false, sample: false }),
       '',
       '---',
       '',
@@ -1500,9 +1706,12 @@ export async function askAdvisor(
             `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
           ]),
     ].join('\n'),
-    schema: AdvisorReplySchema,
+    // Asked what to do, the counsellor names one act: left optional, it named
+    // none in ten turns of ten (playtest 2026-10-19, loop 3).
+    schema: asked ? AdvisorReplySchema.extend({ recommendation: RecommendationSchema }) : AdvisorReplySchema,
+    lenient: firstActOnly,
   });
-  return { counsel: res.value.counsel, attempts: res.attempts, costUsd: res.costUsd };
+  return { counsel: res.value.counsel, recommendation: res.value.recommendation ?? null, attempts: res.attempts, costUsd: res.costUsd };
 }
 
 /**

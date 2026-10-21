@@ -57,3 +57,21 @@ export class SpendCapError extends ModelCallError {
     this.name = 'SpendCapError';
   }
 }
+
+/**
+ * The subscription's usage limit is reached. Fatal on the first attempt: it
+ * resets on the provider's clock, not the retry loop's, and three attempts at
+ * every call only spent a playtest's turns on the same error (2026-10-19, loop
+ * 9). The provider's own words are kept, since they say when it resets.
+ */
+export class UsageLimitError extends ModelCallError {
+  constructor(detail: string) {
+    super(`The model provider's usage limit is reached: ${detail}. Nothing you declared was lost; try again after it resets.`, 0);
+    this.name = 'UsageLimitError';
+  }
+}
+
+/** Whether a provider's error text is its usage limit. */
+export function isUsageLimit(text: string): boolean {
+  return /hit your (?:session|usage|weekly|daily) limit|usage limit (?:reached|exceeded)/i.test(text);
+}

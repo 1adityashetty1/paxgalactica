@@ -10,6 +10,15 @@ You are given the **draft** story, the **acts that landed** and the game's
 **notes** on what changed. The acts and the notes are settled fact; the draft
 is not.
 
+**Who holds a world is a fact too.** A `HOLDER` line names a world the story
+says was taken and the player does not hold: no battle in this act was won
+there. Tell it as a departure, an attempt or a loss — never as a capture.
+
+**Tense is a fact too.** A `TIMING` line says work has only begun: a fleet
+still under way has not arrived, walls still going up have not risen. Rewrite
+any sentence that has it done already into one in which it has been set in
+motion. If the draft is right in every other way, change only the tense.
+
 - **Keep the draft's voice and what it got right.** Rewrite only what the acts
   and notes contradict, and say plainly what did not happen.
 - **Add no facts.** Every number you write must appear in the acts or the

@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 29;
+export const JOURNAL_VERSION = 30;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -118,6 +118,7 @@ export const JournalVersionSchema = z.union([
   z.literal(27),
   z.literal(28),
   z.literal(29),
+  z.literal(30),
 ]);
 
 export const JournalSchema = z.object({
@@ -432,6 +433,8 @@ export function replay(
     pricedWarmth: parsed.version >= 28,
     // A declared move with no force sailed the whole port.
     declaredMovesNameForce: parsed.version >= 29,
+    // A levy on a full garrison was taken, charged and delivered nothing.
+    fullBarracksRefused: parsed.version >= 30,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
@@ -445,6 +448,8 @@ export function replay(
       // A defence pact lent hulls to every battle, drawn from anywhere in loss
       // order, and never put the ally at war with the attacker.
       callToArms: parsed.version >= 19,
+      // A guard over unaligned ground fought whoever already stood there.
+      stationBesidePeers: parsed.version >= 29,
     },
   };
 
@@ -620,6 +625,12 @@ export function overrulings(journal: Journal): Record<string, Overruling> {
 export interface BattleRecord {
   /** World name to how many battles this power fought there. */
   fought: Record<string, number>;
+  /**
+   * The same battles, with the side this power fought on and who held the
+   * world. Without them "fought at Kalzir twice" was narrated as a defence of
+   * Kalzir, a Vigil world Meridian attacked (playtest 2026-10-19, loop 2).
+   */
+  engagements: { world: string; attacked: boolean; holder: string | null }[];
   shipsLost: number;
 }
 
@@ -645,9 +656,11 @@ export function battleHistory(journal: Journal): Record<string, BattleRecord> {
           lost.set(side.factionId, (lost.get(side.factionId) ?? 0) + Math.max(0, side.before - side.after));
         }
       }
+      const attackers = new Set(battle.rounds.flatMap((r) => r.attackers.map((a) => a.factionId)));
       for (const [factionId, n] of lost) {
-        const row = (out[factionId] ??= { fought: {}, shipsLost: 0 });
+        const row = (out[factionId] ??= { fought: {}, engagements: [], shipsLost: 0 });
         row.fought[battle.systemName] = (row.fought[battle.systemName] ?? 0) + 1;
+        row.engagements.push({ world: battle.systemName, attacked: attackers.has(factionId), holder: battle.holderBefore ?? null });
         row.shipsLost += n;
       }
     }
