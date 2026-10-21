@@ -272,6 +272,14 @@ describe('a model call leaves one record per attempt', () => {
     expect(calls()[2]).toMatchObject({ outcome: 'schema_retry' });
   });
 
+  it('tries a call’s own reshaping last, and records it', async () => {
+    const One = z.object({ parts: z.array(z.number()).max(1) });
+    const run = () => callStructured({ kind: 'appraisal', system: 'S', user: 'U', schema: One, label: 'call', lenient: (v) => ({ parts: (v as { parts: number[] }).parts.slice(0, 1) }) });
+    script.push(success({ parts: [1, 2] }));
+    expect((await run()).value).toEqual({ parts: [1] });
+    expect(calls()[0]).toMatchObject({ outcome: 'ok', normalized: ['call'] });
+  });
+
   it('repeats the JSON-only rule at the end of a raw-JSON user message, and only there', async () => {
     const { RAW_JSON_REMINDER } = await import('../src/model/client.js');
     prompts.length = 0;

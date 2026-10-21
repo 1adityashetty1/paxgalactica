@@ -20,6 +20,7 @@ import {
 import {
   AppraisalSchema,
   DeclaredRulingSchema,
+  oneActPerRuling,
   rulingToAppraisal,
   type Appraisal,
   ExtractionOutputSchema,
@@ -181,6 +182,7 @@ export async function appraiseAction(
     // Two schemas, two answer shapes: an accord is never rolled, so it keeps
     // the flat ruling; a declared act is parts.
     schema: (opts.declared === false ? AppraisalSchema : DeclaredRulingSchema) as z.ZodType<unknown>,
+    ...(opts.declared === false ? {} : { lenient: oneActPerRuling }),
   });
 
   // A declared ruling comes back as parts; the rest of resolution reads the
@@ -1433,7 +1435,24 @@ export const RecommendationSchema = cappedProse(220)
   .refine((c) => !looksLikeAPlan(c) && !/\b(?:then|after that|next)\b/i.test(c), {
     message: 'One act, not a sequence: name the single thing you would do, with no "then" and no list.',
   })
-  .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' });
+  .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' })
+  .refine((c) => !talksAndAnOrder(c), {
+    message: 'Talks are one act and an order is another: recommend either the talks or the order, not both.',
+  });
+
+/**
+ * "Open talks with Arkane about Sennex, and commit 80 credits to Neth": talks
+ * and an order joined in one recommendation. Declared whole, it is two acts in
+ * one ruling (loop 8). Read off the words, as `looksLikeAPlan` is.
+ */
+export function talksAndAnOrder(text: string): boolean {
+  if (!/\b(?:talks?|negotiat\w*|channel)\b/i.test(text)) return false;
+  const ORDER = String.raw`(?:commit|authori[sz]e|send|move|fortify|develop|build|raise|order|draw|sail|deploy|recruit|seat|post|blockade|raid)`;
+  return (
+    new RegExp(String.raw`\b(?:and|while)\s+${ORDER}\b`, 'i').test(text) ||
+    new RegExp(String.raw`^\s*${ORDER}\b.*\band\s+(?:open|begin|start|hold)\s+(?:talks|negotiations)\b`, 'i').test(text)
+  );
+}
 
 export const AdvisorReplySchema = z.object({
   /**

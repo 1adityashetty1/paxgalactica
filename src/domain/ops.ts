@@ -2460,6 +2460,41 @@ export const DeclaredRulingSchema = z
 export type DeclaredRuling = z.infer<typeof DeclaredRulingSchema>;
 
 /**
+ * One act per ruling, made of what the arbiter wrote when it tried to rule on
+ * two. Loop 8 of the advisor playtest: "open talks with Arkane about Sennex,
+ * and commit 80 credits to a development programme at Neth" came back with two
+ * overt parts, or a negotiation written as a part, and failed the schema three
+ * times — the player was handed a bare error. The first overt part stands; any
+ * further one, and a negotiation, becomes an `unexpressed` note telling the
+ * player to declare or negotiate it on its own. A ruling that is nothing but a
+ * negotiation is the negotiation ruling.
+ */
+export function oneActPerRuling(value: unknown): unknown {
+  const r = value as { kind?: unknown; parts?: unknown };
+  if (!r || typeof r !== 'object' || r.kind !== 'act' || !Array.isArray(r.parts)) return value;
+  const parts = r.parts as { kind?: unknown; what?: unknown; withFactionIds?: unknown }[];
+  const clip = (t: string) => (t.length > 240 ? `${t.slice(0, 239)}…` : t);
+  const said = (p: { what?: unknown }) => (typeof p.what === 'string' && p.what ? p.what : 'the rest of the order');
+  const negotiations = parts.filter((p) => p.kind === 'negotiation');
+  let overt = 0;
+  const kept = parts.flatMap((p) => {
+    if (p.kind === 'overt' && overt++ === 0) return [p];
+    if (p.kind === 'overt') return [{ kind: 'unexpressed', outcome: clip(`Declare it as its own act: ${said(p)}`) }];
+    if (p.kind === 'negotiation') {
+      const who = Array.isArray(p.withFactionIds) ? p.withFactionIds.join(' and ') : 'another power';
+      return [{ kind: 'unexpressed', outcome: clip(`Needs ${who} to agree; open a channel: ${said(p)}`) }];
+    }
+    return [p];
+  });
+  const substance = kept.filter((p) => p.kind !== 'unexpressed');
+  const first = negotiations[0];
+  if (substance.length === 0 && first && Array.isArray(first.withFactionIds)) {
+    return { kind: 'negotiation', withFactionIds: first.withFactionIds, what: clip(said(first)), supported: true };
+  }
+  return { ...r, parts: kept };
+}
+
+/**
  * A declared ruling as the engine reads it, in the flat shape the rest of
  * resolution was built on. Anything without a `kind` is already that shape (an
  * older caller, or a test scripting one) and passes through.

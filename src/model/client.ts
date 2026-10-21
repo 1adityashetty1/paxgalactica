@@ -40,6 +40,12 @@ export interface StructuredCall<T> {
   maxRetries?: number;
   /** Label used in error messages and the debug log. */
   label?: string;
+  /**
+   * A last lenient pass for this call kind, tried only when the reply still
+   * fails after the generic ones: reshapes a known near-miss into the schema
+   * rather than spending a retry on it. Recorded on the trace as `call`.
+   */
+  lenient?: (value: unknown) => unknown;
 }
 
 export interface StructuredResult<T> {
@@ -483,6 +489,13 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
           const hadNulls = JSON.stringify(unnulled) !== JSON.stringify(lastRaw);
           passes = [...(hadNulls ? ['nulls'] : []), ...trimmed.changed];
           if (!lenient.success) passes = [];
+        }
+      }
+      if (!lenient.success && call.lenient) {
+        const reshaped = call.schema.safeParse(call.lenient(unnulled));
+        if (reshaped.success) {
+          lenient = reshaped;
+          passes = ['call'];
         }
       }
       if (lenient.success) {
