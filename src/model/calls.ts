@@ -658,7 +658,8 @@ export async function resolveAction(
     priced.appraisal.ground &&
     !(actor && classifyPrinciple(actor, priced.appraisal.reason))
   ) {
-    const wrong = checkGround(state, state.playerFactionId, priced.appraisal.ground);
+    const wrong =
+      checkGround(state, state.playerFactionId, priced.appraisal.ground) ?? sendingIsTheAct(state, action, priced.appraisal.ground);
     if (wrong) {
       const again = await appraiseAction(state, action, undefined, {
         note: [
@@ -675,7 +676,8 @@ export async function resolveAction(
       };
       const still =
         !priced.appraisal.admissible && priced.appraisal.ground
-          ? checkGround(state, state.playerFactionId, priced.appraisal.ground)
+          ? (checkGround(state, state.playerFactionId, priced.appraisal.ground) ??
+            sendingIsTheAct(state, action, priced.appraisal.ground))
           : null;
       if (still) {
         priced.appraisal = { ...priced.appraisal, admissible: true, unexpressed: priced.appraisal.reason, ground: undefined };
@@ -1544,6 +1546,22 @@ export function handedTo(state: WorldState, action: string): string | null {
     (f) => f.id !== state.playerFactionId && (f.id === words[0] || words.some((w) => f.name.toLowerCase().split(/\s+/).includes(w) && !['the', 'of'].includes(w))),
   );
   return hit?.id ?? null;
+}
+
+/**
+ * A refusal for not being somewhere, on an act whose whole point is to go
+ * there. "Land troops at Var Hollow" was turned away as `not_present` ("no
+ * troops embarked anywhere") while twelve of Meridian's lift stood at Torrek
+ * Anchorage (loop 20). When the act's words send ships and the power has ships
+ * to send, the ground is not so.
+ */
+export function sendingIsTheAct(state: WorldState, action: string, ground: { kind: string }): string | null {
+  if (ground.kind !== 'not_present') return null;
+  if (!/\b(?:land|lands|landing|sail|sails|send|sends|move|moves|attack|storm|invade|strike|garrison|station|take)\b/i.test(action)) return null;
+  const me = state.playerFactionId;
+  const ships = state.systems.filter((x) => hullsAt(x, me) > 0);
+  if (ships.length === 0) return null;
+  return `the act sends ships there, and ${getFaction(state, me)?.name ?? me} has ships at ${ships.map((x) => x.name).slice(0, 3).join(', ')} to send. Going there is the act; rule it as a move.`;
 }
 
 export const AdvisorReplySchema = z.object({
