@@ -455,6 +455,9 @@ a commitment already have a home**, and that home is the ruling, not
 - a build or construction programme — `build_ships`, `fortify`, `develop` and
   the other work ops, which already run for turns and deliver;
 - an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`;
+- an outcome — a world joined, a programme finished, a position secured —
+  nothing; the board says what happened, and a `neth_accession_secured` record
+  once stood for a world that never joined (loop 10);
 - talks, an offer or an approach to a world or a power — nothing; an envoy is
   `send_envoy`, and an offer nobody has accepted binds nobody. A
   `development_talks` record was later read as a contract Meridian could not

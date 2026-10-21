@@ -375,13 +375,28 @@ export function voiceWithoutNumbering(voice: string): string {
     .join(' ');
 }
 
-export function serializeCharacter(faction: Faction, opts: { enumerates?: boolean } = {}): string {
+/**
+ * A voice with its sample line taken out. Each sheet closes on a sample speech
+ * whose facts are invented for the voice — Meridian's "the Rate held at Neth
+ * for eleven quarters … the garrison you keep there … the harbour was quieted"
+ * — and the counsellor, which reads the sheet beside the board, opened every
+ * campaign of nine loops by reporting them as the board (2026-10-19, loop 10).
+ */
+export function voiceWithoutSample(voice: string): string {
+  return voice.replace(/\s*Sample:[\s\S]*$/, '');
+}
+
+export function serializeCharacter(faction: Faction, opts: { enumerates?: boolean; sample?: boolean } = {}): string {
+  // The sample first: the numbering filter drops only its opening sentence,
+  // and left the rest of Meridian's sample — its invented facts — in place.
+  const sampled = opts.sample === false ? voiceWithoutSample(faction.voice) : faction.voice;
+  const voice = opts.enumerates === false ? voiceWithoutNumbering(sampled) : sampled;
   return [
     `**${faction.name}** (\`${faction.id}\`)`,
     '',
     `Doctrine: ${faction.doctrine}`,
     '',
-    `How you speak: ${opts.enumerates === false ? voiceWithoutNumbering(faction.voice) : faction.voice}`,
+    `How you speak: ${voice}`,
     '',
     `On war — ${faction.warEthic}: ${WAR_ETHIC_MEANING[faction.warEthic]}`,
     `On trade — ${faction.tradeEthic}: ${TRADE_ETHIC_MEANING[faction.tradeEthic]}`,

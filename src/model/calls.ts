@@ -1556,7 +1556,7 @@ export async function askAdvisor(
       '',
       '## The voice you speak in',
       '',
-      serializeCharacter(faction, { enumerates: false }),
+      serializeCharacter(faction, { enumerates: false, sample: false }),
       '',
       '---',
       '',
