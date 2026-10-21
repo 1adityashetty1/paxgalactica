@@ -115,8 +115,13 @@ the power over it, a seat needs it held. Fortifying or seating on a world the
 power has nothing at is `not_present` on that world, not a roll that can only
 come to nothing (playtest 2026-10-19, loop 5). Name every world an overt part
 builds, raises or develops on in its `buildsAt` (ids), and leave it empty for
-anything else: the engine checks those worlds against the board before the
-roll.
+anything else — an envoy, an offer or talks about building something builds
+nothing, and its `buildsAt` is empty: the engine checks those worlds against
+the board before the roll.
+
+Paying a debt in goods, or anything a creditor must accept in place of money,
+is a `negotiation` with the creditor: handing the goods over is a gift and
+`settle_debt` pays cash, so writing both paid twice (loop 13).
 
 A ground the board does not bear out is sent back to you. **When in doubt,
 never refuse**: if none of these is true, the act goes ahead as parts, and

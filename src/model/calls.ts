@@ -831,11 +831,15 @@ export async function resolveAction(
   // world the power neither holds nor has ships over cannot be built on, so
   // the act is turned away as inadmissible — no roll, no action, no cost —
   // however the dice would have fallen (loop 12).
-  const nowhere = (priced.appraisal.buildsAt ?? []).filter((id) => {
+  // Never on an influence act: an envoy or an offer of development needs only
+  // a world next to it, and the arbiter named the world it would develop as
+  // `buildsAt`, turning two envoys away (loop 13). Work is industry or might.
+  const builds = priced.appraisal.stat === 'influence' ? [] : (priced.appraisal.buildsAt ?? []);
+  const nowhere = builds.filter((id) => {
     const world = state.systems.find((x) => x.id === id);
     return world !== undefined && world.controllerFactionId !== state.playerFactionId && hullsAt(world, state.playerFactionId) === 0;
   });
-  if (nowhere.length > 0 && nowhere.length === (priced.appraisal.buildsAt ?? []).length) {
+  if (nowhere.length > 0 && nowhere.length === builds.length) {
     const names = nowhere.map((id) => state.systems.find((x) => x.id === id)?.name ?? id).join(' and ');
     const why = `Nothing of yours stands at ${names} to build on: works need a world you hold, or a fleet of yours over it.`;
     return {

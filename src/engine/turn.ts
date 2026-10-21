@@ -35,7 +35,7 @@ import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { battleHistory, controlHistory, overrulings } from './journal.js';
-import { holdToRuling, type RulingBounds } from '../domain/refusals.js';
+import { holdToRuling, noPaymentBesideAGift, type RulingBounds } from '../domain/refusals.js';
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
 import { isMovementType } from '../domain/state.js';
@@ -901,6 +901,12 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     campaign.state.playerFactionId,
     resolution.output.groundwork ?? [],
   );
+
+  const inKind = noPaymentBesideAGift(routed.ops, campaign.state.debts);
+  if (inKind.dropped) {
+    routed.ops = inKind.ops;
+    routed.notes.push('Goods handed to a creditor are a gift, not a payment: the cash paid beside them is left out. Settling a debt in goods needs the creditor to agree — open a channel.');
+  }
 
   // Secret when the arbiter ruled it covert OR anything in it places an
   // operative. The ruling is the load-bearing half: a covert attempt that

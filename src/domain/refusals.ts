@@ -444,3 +444,31 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
     }
   }
 }
+
+/**
+ * A debt paid in goods is not paid by handing the goods over. Asked to "offer
+ * the hull plate as partial settlement", resolution wrote both the handover
+ * and a `settle_debt`, which pays cash: the plate went as a gift and the
+ * debtor paid 50 besides (playtest 2026-10-19, loop 13). Taking goods in place
+ * of money needs the creditor's word, so the cash payment beside a handover to
+ * the same creditor is left out and the handover stands as what it is.
+ */
+export function noPaymentBesideAGift(
+  ops: readonly unknown[],
+  debts: readonly { id: string; creditorFactionId: string }[],
+): { ops: unknown[]; dropped: boolean } {
+  const givenTo = new Set(
+    ops.flatMap((o) => {
+      const t = o as { op?: string; toFactionId?: string };
+      return t.op === 'transfer_asset' && t.toFactionId ? [t.toFactionId] : [];
+    }),
+  );
+  if (givenTo.size === 0) return { ops: [...ops], dropped: false };
+  const kept = ops.filter((o) => {
+    const t = o as { op?: string; debtId?: string };
+    if (t.op !== 'settle_debt') return true;
+    const creditor = debts.find((d) => d.id === t.debtId)?.creditorFactionId;
+    return !(creditor && givenTo.has(creditor));
+  });
+  return { ops: kept, dropped: kept.length !== ops.length };
+}
