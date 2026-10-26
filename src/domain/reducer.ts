@@ -382,6 +382,7 @@ import {
   type Ledger,
   type OrderEffect,
   type PendingOrder,
+  PendingOrderSchema,
   type StarSystem,
   type WorldState,
 } from './state.js';
@@ -4085,7 +4086,7 @@ function applyOpsUnderRules(
       }
       const whole = Object.fromEntries(HULL_CLASSES.map((h) => [h, found.fleet.stack[h] ?? 0])) as Required<ShipStack>;
       op = { ...op, originId: found.system.id, force: whole };
-      sailing = { id: found.fleet.id, number: found.fleet.number, name: found.fleet.name, detached: false };
+      sailing = { id: found.fleet.id, number: found.fleet.number, name: found.fleet.name, detached: false, commanderId: found.fleet.commanderId };
       sailingWholePort = hullsIn(found.fleet.stack) === hullsAt(found.system, op.factionId);
     }
 
@@ -4095,7 +4096,9 @@ function applyOpsUnderRules(
       // actor's and stand where the op says.
       case 'rename_fleet':
       case 'split_fleet':
-      case 'merge_fleets': {
+      case 'merge_fleets':
+      case 'assign_command':
+      case 'relieve_command': {
         if (actor && actor !== op.factionId) {
           reject(raw, 'illegal_value', `${actor} cannot organise the fleets of ${op.factionId}.`);
           break;
@@ -4107,6 +4110,32 @@ function applyOpsUnderRules(
         }
         const { fleet, system } = first;
         const was = fleetName(op.factionId, fleet);
+        if (op.op === 'relieve_command') {
+          const had = (state.commanders ?? []).find((c) => c.id === fleet.commanderId);
+          fleet.commanderId = null;
+          notes.push(had ? `${had.name} stands down from ${was}, and stays at ${system.name}.` : `${was} had no commander.`);
+          break;
+        }
+        if (op.op === 'assign_command') {
+          const officer =
+            resolveCommander(state.commanders, op.officer, (c) => c.factionId === op.factionId && c.status === 'active') ??
+            (state.commanders ?? []).find((c) => c.id === op.officer);
+          if (!officer || officer.factionId !== op.factionId || officer.status !== 'active') {
+            reject(raw, 'illegal_value', `No officer of ${nameFor(state, op.factionId)} in post answers to "${op.officer}".`);
+            break;
+          }
+          if (officer.atSystemId !== system.id) {
+            const where = officer.atSystemId ? `at ${state.systems.find((x) => x.id === officer.atSystemId)?.name}` : 'under way';
+            reject(raw, 'illegal_value', `${officer.name} is ${where}, not ${system.name}: an officer takes command where the fleet stands.`);
+            break;
+          }
+          // One fleet each: a command held elsewhere is given up for this one.
+          for (const x of state.systems) for (const f of x.fleets ?? []) if (f !== fleet && f.commanderId === officer.id) f.commanderId = null;
+          const before = (state.commanders ?? []).find((c) => c.id === fleet.commanderId && c.id !== officer.id);
+          fleet.commanderId = officer.id;
+          notes.push(`${officer.name} takes command of ${was} at ${system.name}${before ? `; ${before.name} stands down and stays` : ''}.`);
+          break;
+        }
         if (op.op === 'rename_fleet') {
           const name = op.name.trim();
           fleet.name = name === '' ? null : name;
@@ -4122,7 +4151,7 @@ function applyOpsUnderRules(
             break;
           }
           fleet.stack = subtractStack(fleet.stack, taken);
-          system.fleets!.push({ id: '', factionId: op.factionId, number: 0, name: op.name?.trim() || null, stack: taken });
+          system.fleets!.push({ id: '', factionId: op.factionId, number: 0, name: op.name?.trim() || null, stack: taken, commanderId: null });
           notes.push(`${describeStack(taken)} split from ${was} at ${system.name}.`);
           break;
         }
@@ -4144,6 +4173,64 @@ function applyOpsUnderRules(
         }
         system.fleets = system.fleets!.filter((f) => hullsIn(f.stack) > 0);
         if (folded.length > 0) notes.push(`${folded.join(' and ')} merged into ${was} at ${system.name}.`);
+        break;
+      }
+
+      case 'move_officer': {
+        if (actor && actor !== op.factionId) {
+          reject(raw, 'illegal_value', `${actor} cannot send the officers of ${op.factionId}.`);
+          break;
+        }
+        const officer =
+          resolveCommander(state.commanders, op.officer, (c) => c.factionId === op.factionId && c.status === 'active') ??
+          (state.commanders ?? []).find((c) => c.id === op.officer && c.factionId === op.factionId);
+        if (!officer || officer.status !== 'active') {
+          reject(raw, 'illegal_value', `No officer of ${nameFor(state, op.factionId)} in post answers to "${op.officer}".`);
+          break;
+        }
+        if (!officer.atSystemId) {
+          reject(raw, 'illegal_value', `${officer.name} is already under way.`);
+          break;
+        }
+        const target = getSystem(state, op.targetId);
+        if (!target) {
+          reject(raw, 'unknown_system', `No system "${op.targetId}".`);
+          break;
+        }
+        // Somewhere they can stand: a world their power holds, or where its ships are.
+        if (target.controllerFactionId !== op.factionId && hullsAt(target, op.factionId) === 0) {
+          reject(raw, 'illegal_value', `${officer.name} travels alone only to a world ${nameFor(state, op.factionId)} holds or has ships at; ${target.name} is neither. Send them with a fleet.`);
+          break;
+        }
+        const jumps = jumpsBetween(state.systems, officer.atSystemId, target.id);
+        if (jumps === null || officer.atSystemId === target.id) {
+          reject(raw, 'unreachable_target', `${officer.name} is at ${getSystem(state, officer.atSystemId)?.name}; there is no passage to ${target.name}.`);
+          break;
+        }
+        const from = officer.atSystemId;
+        officer.atSystemId = null;
+        state.pendingOrders.push(
+          PendingOrderSchema.parse({
+            id: mintOrderId(state),
+            factionId: op.factionId,
+            type: 'fleet_movement',
+            originId: from,
+            targetId: target.id,
+            durationTurns: jumps,
+            progress: 0,
+            interruptible: true,
+            officers: [officer.id],
+            onInterrupt: 'cancel',
+            visibility: [],
+            label: `${officer.name}: passage to ${target.name}`,
+            durationRationale: `${jumps} jump(s), travelling alone.`,
+            path: shortestPath(state.systems, from, target.id) ?? [],
+            force: {},
+          }),
+        );
+        const note = `${officer.name} leaves ${getSystem(state, from)?.name} alone for ${target.name}, ${jumps} turn${jumps === 1 ? '' : 's'} away.`;
+        notes.push(note);
+        logEvent(state, 'order', note, op.factionId);
         break;
       }
 
@@ -6635,7 +6722,7 @@ function applyOpsUnderRules(
           if (fleetMode(origin)) {
             departing = sailing ?? (() => {
               const number = lowestFree(numbersInUse(state, op.factionId));
-              return { id: fleetIdFor(op.factionId, number), number, name: null, detached: true };
+              return { id: fleetIdFor(op.factionId, number), number, name: null, detached: true, commanderId: null };
             })();
           }
         } else {
@@ -6803,6 +6890,17 @@ function applyOpsUnderRules(
             c.atSystemId = null;
           }
         }
+        // A fleet's commander sails with it; anyone else aboard rides as a
+        // passenger. A commander who does not sail — not standing at the
+        // origin — leaves it uncommanded under way.
+        if (departing && sailing?.commanderId) {
+          const chief = (state.commanders ?? []).find((c) => c.id === sailing!.commanderId);
+          if (chief && chief.status === 'active' && chief.atSystemId === op.originId && !riding.includes(chief.id)) {
+            riding.push(chief.id);
+            chief.atSystemId = null;
+          }
+        }
+        if (departing) departing = { ...departing, commanderId: departing.commanderId && riding.includes(departing.commanderId) ? departing.commanderId : null };
 
         // One jump between two worlds this power holds, with no rival's ships
         // over the target, is a shuffle inside its own territory: it lands in
@@ -9850,8 +9948,10 @@ function applyOpsUnderRules(
   // The court ends every batch in a legal shape: people come home to the Lists
   // and every estate has someone listed. See `seats.ts`.
   settleCourt(state);
-  // Fleets end every batch numbered and in order. See `fleets.ts`.
+  // Fleets end every batch numbered and in order, each under a commander who
+  // is really there. See `fleets.ts`.
   settleFleets(state);
+  settleCommand(state);
   if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
   canonicalAgents(state);
   if (agentLists) settleAgentLists(state, notes);
@@ -10461,6 +10561,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     return withNameStock(legacy.widerNames ?? true, () => {
       const out = tickTurnUnderRules(adopted(input), legacy);
       settleFleets(out.state);
+      settleCommand(out.state);
       return out;
     });
   } finally {
@@ -11954,6 +12055,19 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   const landings = new Map<string, PendingOrder[]>();
   for (const order of completed) {
     if (!isMovementType(order.type)) continue;
+    // An officer travelling alone fights nothing: put down at the world if
+    // their power still holds it or has ships there, else at its nearest base.
+    if (hullsIn(order.force) === 0 && order.officers.length > 0) {
+      const target = getSystem(state, order.targetId);
+      const standable = target && (target.controllerFactionId === order.factionId || hullsAt(target, order.factionId) > 0);
+      const lands = standable ? target!.id : (fleetBases(state, order.factionId)[0]?.id ?? order.originId);
+      returnRider(state, order, lands);
+      const note = `${order.label} — arrived at ${nameOf(lands)}.`;
+      notes.push(note);
+      logEvent(state, 'order', note, order.factionId);
+      report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(lands), outcome: 'arrived' });
+      continue;
+    }
     contested.add(order.targetId);
     const list = landings.get(order.targetId) ?? [];
     list.push(order);
@@ -12762,6 +12876,35 @@ function adopted(state: WorldState): WorldState {
   return copy;
 }
 
+/**
+ * Every fleet's command made true: its commander is an active officer of its
+ * power standing at its world — or, under way, aboard its voyage — and commands
+ * no other fleet. Anything else is cleared, so a commander killed, captured,
+ * left behind or sailed off alone stops commanding without anybody having to
+ * say so. Worlds in id order then voyages, so the first fleet keeps a commander
+ * two claim.
+ */
+function settleCommand(state: WorldState): void {
+  const commanding = new Set<string>();
+  const officer = (id: string) => (state.commanders ?? []).find((c) => c.id === id);
+  for (const system of [...state.systems].sort((a, b) => a.id.localeCompare(b.id))) {
+    for (const f of system.fleets ?? []) {
+      if (!f.commanderId) continue;
+      const c = officer(f.commanderId);
+      const holds = c && c.status === 'active' && c.factionId === f.factionId && c.atSystemId === system.id && !commanding.has(c.id);
+      if (holds) commanding.add(c.id);
+      else f.commanderId = null;
+    }
+  }
+  for (const o of state.pendingOrders) {
+    if (!o.fleet?.commanderId) continue;
+    const c = officer(o.fleet.commanderId);
+    const holds = c && c.status === 'active' && o.officers.includes(c.id) && !commanding.has(c.id);
+    if (holds) commanding.add(c.id);
+    else o.fleet = { ...o.fleet, commanderId: null };
+  }
+}
+
 /** One fleet's part in a contingent: who it is, and what it brought. */
 interface FleetShare {
   tag: FleetTag | undefined;
@@ -12771,7 +12914,7 @@ interface FleetShare {
 /** The fleets a power has standing at a world, as shares of its contingent there. */
 function standingShares(system: StarSystem, factionId: string): FleetShare[] {
   return fleetsAt(system, factionId).map((f) => ({
-    tag: f.number > 0 ? { id: f.id, number: f.number, name: f.name, detached: false } : undefined,
+    tag: f.number > 0 ? { id: f.id, number: f.number, name: f.name, detached: false, commanderId: f.commanderId } : undefined,
     stack: f.stack,
   }));
 }
@@ -12896,7 +13039,8 @@ function resolveBattle(
    * off or withdrew. Everyone else's fate is read off the board at `finish`.
    */
   const escapedWith = new Map<string, boolean>();
-
+  /** Who led each side, once the sides are drawn up; null where nobody did. */
+  let leaders: { attack: string | null; defend: string | null } | null = null;
 
   /** Close the engagement: snapshot the result and hand back both forms. */
   const finish = (note: string): BattleOutcomeResult => {
@@ -12988,6 +13132,7 @@ function resolveBattle(
       doctrinesFired,
       commandersFired,
       officers: fielded,
+      ...(leaders ? { leaders } : {}),
       holderBefore: holder,
       holderAfter: target.controllerFactionId,
       garrisonBefore,
@@ -13491,12 +13636,26 @@ function resolveBattle(
   // happen later.
   const senior = (a: Commander, b: Commander): number =>
     b.battles - a.battles || a.id.localeCompare(b.id);
-  const attackOfficer = riders
-    .filter((c) => c.factionId === largestAttacker)
-    .sort(senior)[0];
-  const defendOfficer = defendersPresent
-    .filter((c) => c.factionId === largestDefender)
-    .sort(senior)[0];
+  // **A fleet's commander leads.** Where the campaign keeps fleets, the side is
+  // led by the commander of its largest commanded fleet on the field; with none
+  // assigned, by seniority as before — so a power that never assigns a
+  // commander fights exactly as it always did.
+  const leadOf = (shares: FleetShare[], pool: Commander[]): Commander | undefined => {
+    for (const share of [...shares].sort((a, b) => tonsIn(b.stack) - tonsIn(a.stack))) {
+      const lead = share.tag?.commanderId ? pool.find((c) => c.id === share.tag!.commanderId) : undefined;
+      if (lead) return lead;
+    }
+    return undefined;
+  };
+  const attackOfficer =
+    leadOf(largestAttacker ? (contributors.get(largestAttacker) ?? []) : [], riders) ??
+    riders.filter((c) => c.factionId === largestAttacker).sort(senior)[0];
+  const defendOfficer =
+    leadOf(largestDefender ? standingShares(target, largestDefender) : [], defendersPresent) ??
+    defendersPresent.filter((c) => c.factionId === largestDefender).sort(senior)[0];
+  if (state.systems.some((x) => x.fleets !== undefined)) {
+    leaders = { attack: attackOfficer?.name ?? null, defend: defendOfficer?.name ?? null };
+  }
   // `c.battles` is the record they brought TO this engagement — `finish`
   // increments it afterwards — so an officer fights their tenth battle at the
   // standing nine wins earned them, and reads as a veteran from the eleventh.

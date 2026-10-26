@@ -168,6 +168,11 @@ export const BattleReportSchema = z.object({
    * the interesting thing about them is that next turn they might not be.
    */
   commandersFired: z.array(z.string()).default([]),
+  /**
+   * Who led each side: a fleet's commander, or with none the senior officer
+   * present. Absent from reports written before fleets had commanders.
+   */
+  leaders: z.object({ attack: z.string().nullable(), defend: z.string().nullable() }).optional(),
   /** Every officer on the field, by side, and whether they came through. */
   officers: z.array(BattleOfficerSchema).default([]),
   holderBefore: z.string().nullable(),

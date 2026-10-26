@@ -302,6 +302,11 @@ export function BattleCard({ report, state }: { report: BattleReport; state: Wor
               what a power IS and is true of every battle it fights, where an
               officer is who happened to be aboard this one — and the
               interesting thing about them is that next turn they might not be. */}
+          {report.leaders && (report.leaders.attack || report.leaders.defend) && (
+            <p className="battle-leaders muted">
+              Led by {report.leaders.attack ?? 'nobody'} (attacking) and {report.leaders.defend ?? 'nobody'} (defending).
+            </p>
+          )}
           {(report.commandersFired ?? []).length > 0 && (
             <ul className="battle-commanders">
               {report.commandersFired.map((c, i) => (

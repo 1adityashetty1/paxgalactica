@@ -67,6 +67,8 @@ leaves a faction with nobody following it.
 |---|---|
 | `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole — see Fleets |
 | `rename_fleet` · `split_fleet` · `merge_fleets` | organise your own fleets — see Fleets |
+| `assign_command` · `relieve_command` | put an officer standing at a fleet's world in command of it, or leave it uncommanded — see Fleets |
+| `move_officer` | an officer travels alone to a world you hold or have ships at — see Fleets |
 | `fortify` | raise a world's garrison **ceiling** (`magnitude` 1..3) — see What work delivers |
 | `raise_garrison` | raise troops on a world now, up to its ceiling (`magnitude` 1..5) |
 | `develop` | develop a world (`magnitude` 1..2); at 7 it becomes a trade hub |
@@ -233,6 +235,15 @@ detachment, which rejoins the senior fleet where it arrives. Organising is its
 own op and moves nothing: `rename_fleet` (`fleet`, `name`), `split_fleet`
 (`fleet`, `force`, optional `name`) and `merge_fleets` (`into`, `from`, at one
 world).
+
+**A fleet may have a commander** — shown beside it in the state block — and
+the commander of a side's largest commanded fleet leads it in battle.
+`assign_command` (`fleet`, `officer`) puts an officer standing at the fleet's
+world in command, one fleet each; `relieve_command` (`fleet`) leaves it
+without one. A commander sails with their fleet; other officers named in
+`officers` ride along beside them. An officer is still a unit of their own:
+`move_officer` (`officer`, `targetId`) sends one alone, a turn a jump, to a
+world the power holds or has ships at — to take a command there, say.
 
 **Narrate the departure, never the battle.** A fleet sent at a world another
 power holds, or into an orbit where another power's ships sit, arrives after

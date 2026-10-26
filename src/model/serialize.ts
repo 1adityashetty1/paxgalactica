@@ -809,7 +809,12 @@ export function serializeSystems(state: WorldState): string {
         // By fleet where the campaign keeps them, so a fleet can be named in a `move`.
         const fleets = fleetsAt(s, id).filter((f) => f.number > 0);
         const held = fleets.length > 0
-          ? fleets.map((f) => `${fleetName(id, f)} [${f.id}] ${describeStack(f.stack)}`).join('; ')
+          ? fleets
+              .map((f) => {
+                const chief = f.commanderId ? (state.commanders ?? []).find((c) => c.id === f.commanderId) : undefined;
+                return `${fleetName(id, f)} [${f.id}] ${describeStack(f.stack)}${chief ? `, commanded by ${chief.name}` : ', no commander'}`;
+              })
+              .join('; ')
           : describeStack(stack);
         return `${nameOfFaction(state, id)} ${held}${officersOf(id)}`;
       }),

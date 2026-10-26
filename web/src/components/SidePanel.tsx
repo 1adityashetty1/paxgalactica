@@ -3,7 +3,6 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
 import { fleetName, fleetsAt } from '../../../src/domain/fleets.js';
-import { commandingAt } from '../../../src/domain/command.js';
 import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
 import type { OrganiseRequest } from '../../../src/api/contract.js';
 import { TradePanel } from './TradePanel.js';
@@ -577,15 +576,13 @@ function SystemTab({
                     .filter((f) => f.number > 0)
                     .map((f) => (
                       <span key={f.id} className="fleet-here" title={describeStack(f.stack)}>
-                        {fleetName(id, f)} <span className="muted">({hullsIn(f.stack)})</span>
+                        {fleetName(id, f)} <span className="muted">({hullsIn(f.stack)}
+                        {f.commanderId ? `, under ${(state.commanders ?? []).find((c) => c.id === f.commanderId)?.name ?? 'a commander'}` : ''})</span>
                       </span>
                     ))}
                   {/* The officer who would command here: the senior one standing
                       on this world, the rule a battle reads (`commandingAt`). */}
-                  {(() => {
-                    const chief = commandingAt(state.commanders, id, sys.id);
-                    return chief ? <span className="muted">commanded by {chief.name}</span> : null;
-                  })()}
+
                 </div>
               )}
             </li>
@@ -1010,14 +1007,37 @@ function SailButton({
   onDraft: (text: string) => void;
 }) {
   const where = state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId;
+  // The fleet they command, if any: moving it takes them with it.
+  const commands = state.systems
+    .flatMap((x) => x.fleets ?? [])
+    .find((f) => f.commanderId === officer.id);
   return (
-    <button
-      className="chip"
-      title="Writes the start of a fleet movement with this officer aboard; add where it goes."
-      onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, to `)}
-    >
-      sail with a fleet
-    </button>
+    <>
+      {commands ? (
+        <button
+          className="chip"
+          title="Writes the start of a move of the fleet they command; add where it goes."
+          onClick={() => onDraft(`Move ${fleetName(officer.factionId, commands)}, under ${callName}, to `)}
+        >
+          move their fleet
+        </button>
+      ) : (
+        <button
+          className="chip"
+          title="Writes the start of a fleet movement with this officer aboard; add where it goes."
+          onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, to `)}
+        >
+          sail with a fleet
+        </button>
+      )}
+      <button
+        className="chip"
+        title="Writes an order for them to travel alone, a turn a jump, to a world you hold or have ships at."
+        onClick={() => onDraft(`Send ${callName} alone to `)}
+      >
+        travel alone
+      </button>
+    </>
   );
 }
 

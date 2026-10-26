@@ -269,7 +269,8 @@ describe('the state document', () => {
       expect(text).toContain(`${c.name} — `);
       expect(text).toMatch(new RegExp(`${c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*at `));
     }
-    expect(text).toMatch(/ships: [^\n]*5 battleships with /);
+    // By fleet now, each with its commander, then the officers standing there.
+    expect(text).toMatch(/ships: [^\n]*5 battleships[^\n|]* with /);
   });
 
   it('and the resolution prompt tells the model how to put one aboard', () => {

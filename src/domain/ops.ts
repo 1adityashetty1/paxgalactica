@@ -1487,6 +1487,39 @@ export const MergeFleetsOp = z.object({
   from: z.array(z.string().min(1)).min(1).max(10),
 });
 
+/**
+ * Put an officer in command of a fleet — one of yours, standing at its world.
+ * They command it until they leave it, fall, or are given another; whoever
+ * commanded it before stays where they are, a unit of their own.
+ */
+export const AssignCommandOp = z.object({
+  op: z.literal('assign_command'),
+  factionId: z.string().min(1),
+  fleet: z.string().min(1),
+  /** By name — a family name is enough — or by id. */
+  officer: z.string().min(1),
+});
+
+/** Leave a fleet without a commander; its officer stays where they stand. */
+export const RelieveCommandOp = z.object({
+  op: z.literal('relieve_command'),
+  factionId: z.string().min(1),
+  fleet: z.string().min(1),
+});
+
+/**
+ * An officer travels on their own, a turn a jump, to a world their power holds
+ * or has ships at — to take up a command there, say. They sail with no hulls,
+ * fight nothing, and are put down at the end; a fleet's commander who goes
+ * leaves the fleet uncommanded.
+ */
+export const MoveOfficerOp = z.object({
+  op: z.literal('move_officer'),
+  factionId: z.string().min(1),
+  officer: z.string().min(1),
+  targetId: z.string().min(1),
+});
+
 /** Raise a world's garrison ceiling. Permanent, and it defends whoever holds the world next. */
 export const FortifyOp = z.object({
   op: z.literal('fortify'),
@@ -1705,6 +1738,9 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   RenameFleetOp,
   SplitFleetOp,
   MergeFleetsOp,
+  AssignCommandOp,
+  RelieveCommandOp,
+  MoveOfficerOp,
   FortifyOp,
   RaiseGarrisonOp,
   DevelopOp,
@@ -1817,6 +1853,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   RenameFleetOp,
   SplitFleetOp,
   MergeFleetsOp,
+  AssignCommandOp,
+  RelieveCommandOp,
+  MoveOfficerOp,
   FortifyOp,
   RaiseGarrisonOp,
   DevelopOp,
@@ -1992,6 +2031,10 @@ export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
   rename_fleet: [D, ...NPC, E, 'organise'],
   split_fleet: [D, ...NPC, E, 'organise'],
   merge_fleets: [D, ...NPC, E, 'organise'],
+  assign_command: [D, ...NPC, E, 'organise'],
+  relieve_command: [D, ...NPC, E, 'organise'],
+  // A journey, so an act: it costs the player an action, as any move does.
+  move_officer: [D, ...NPC, E],
   fortify: [D, ...NPC, E],
   raise_garrison: [D, ...NPC, E],
   develop: [D, ...NPC, E],

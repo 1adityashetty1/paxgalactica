@@ -24,6 +24,13 @@ export const FleetSchema = z.object({
   /** A name the power gave it, or null for its power's default for the number. */
   name: z.string().max(60).nullable().default(null),
   stack: ShipStackSchema,
+  /**
+   * The officer who commands it: one of its power's, standing at its world.
+   * An officer commands one fleet at most, and stays a unit of their own — they
+   * may stand at a world without commanding, or ride a fleet another commands.
+   * Cleared when that stops being true (`settleCommand` in the reducer).
+   */
+  commanderId: z.string().nullable().default(null),
 });
 export type Fleet = z.infer<typeof FleetSchema>;
 
@@ -38,6 +45,8 @@ export const FleetTagSchema = z.object({
    * there is none — or the bots' every massing move would raise a new fleet.
    */
   detached: z.boolean().default(false),
+  /** Its commander, aboard the same voyage; they command it again where it lands. */
+  commanderId: z.string().nullable().default(null),
 });
 export type FleetTag = z.infer<typeof FleetTagSchema>;
 
@@ -104,13 +113,13 @@ export function writeFleets(system: Holds & { fleets: Fleet[] }, factionId: stri
       // A detachment rejoins the senior fleet where it lands; a named fleet
       // stands as itself.
       if (own.detached && senior) return senior;
-      const raised: Fleet = { id: own.id, factionId, number: own.number, name: own.name, stack: {} };
+      const raised: Fleet = { id: own.id, factionId, number: own.number, name: own.name, stack: {}, commanderId: own.commanderId ?? null };
       system.fleets.push(raised);
       mine.push(raised);
       return raised;
     }
     if (senior) return senior;
-    const raised: Fleet = { id: '', factionId, number: 0, name: null, stack: {} };
+    const raised: Fleet = { id: '', factionId, number: 0, name: null, stack: {}, commanderId: null };
     system.fleets.push(raised);
     mine.push(raised);
     return raised;
@@ -222,7 +231,7 @@ export function settleFleets(state: {
         const u = usedBy(f.factionId);
         const number = lowestFree(u);
         u.add(number);
-        return FleetSchema.parse({ id: fleetIdFor(f.factionId, number), factionId: f.factionId, number, name: f.name, stack: normaliseStack(f.stack) });
+        return FleetSchema.parse({ ...f, id: fleetIdFor(f.factionId, number), number, stack: normaliseStack(f.stack) });
       })
       .sort((a, b) => a.factionId.localeCompare(b.factionId) || a.number - b.number);
     for (const f of new Set(system.fleets.map((x) => x.factionId))) reindex(system, f);

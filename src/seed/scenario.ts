@@ -1523,8 +1523,14 @@ function raiseOpeningFleets(state: WorldState): void {
       if (hullsIn(stack) === 0) continue;
       const number = (next.get(factionId) ?? 0) + 1;
       next.set(factionId, number);
-      system.fleets!.push({ id: fleetIdFor(factionId, number), factionId, number, name: null, stack: normaliseStack(stack) });
+      system.fleets!.push({ id: fleetIdFor(factionId, number), factionId, number, name: null, stack: normaliseStack(stack), commanderId: null });
     }
+  }
+  // Each power's officer in post commands the fleet at the world they stand on.
+  for (const c of state.commanders ?? []) {
+    if (c.status !== 'active' || !c.atSystemId) continue;
+    const fleet = state.systems.find((x) => x.id === c.atSystemId)?.fleets?.find((f) => f.factionId === c.factionId && f.commanderId === null);
+    if (fleet) fleet.commanderId = c.id;
   }
   settleFleets(state);
 }

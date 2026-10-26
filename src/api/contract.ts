@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CheatSchema } from '../domain/cheats.js';
-import { MergeFleetsOp, RenameFleetOp, SplitFleetOp } from '../domain/ops.js';
+import { AssignCommandOp, MergeFleetsOp, RelieveCommandOp, RenameFleetOp, SplitFleetOp } from '../domain/ops.js';
 import { ConcessionSchema, RetractionSchema } from '../domain/diplomacy.js';
 import { BattleReportSchema } from '../domain/battle.js';
 import { RimEventKindSchema } from '../domain/events.js';
@@ -680,6 +680,8 @@ export const OrganiseRequestSchema = z.discriminatedUnion('op', [
   RenameFleetOp.omit({ factionId: true }),
   SplitFleetOp.omit({ factionId: true }),
   MergeFleetsOp.omit({ factionId: true }),
+  AssignCommandOp.omit({ factionId: true }),
+  RelieveCommandOp.omit({ factionId: true }),
 ]);
 export type OrganiseRequest = z.infer<typeof OrganiseRequestSchema>;
 export const OrganiseResultSchema = z.object({ notes: z.array(z.string()) });

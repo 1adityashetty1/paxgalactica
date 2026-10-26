@@ -124,7 +124,12 @@ export function FleetsPanel({
                 <div className="crews">
                   <StackGlyphs stack={o.force} size={12} />
                 </div>
-                <Commanding officer={commandingAboard(state.commanders, o.officers ?? [])} />
+                <Commanding
+                  state={state}
+                  assigned={o.fleet!.commanderId}
+                  fallback={commandingAboard(state.commanders, o.officers ?? [])}
+                  aboard={(o.officers ?? []).filter((id) => id !== o.fleet!.commanderId)}
+                />
               </li>
             ))}
           </ul>
@@ -330,6 +335,15 @@ function OwnFleet({
   const officers = (state.commanders ?? [])
     .filter((c) => c.status === 'active' && c.factionId === me && c.atSystemId === system.id)
     .map((c) => c.id);
+  // Officers standing here who could take this fleet — any but its own
+  // commander, with the fleet each already commands said, since taking this
+  // one gives that one up.
+  const commandOf = new Map(
+    [fleet, ...others].filter((f) => f.commanderId).map((f) => [f.commanderId!, fleetName(me, f)] as const),
+  );
+  const candidates = (state.commanders ?? []).filter(
+    (c) => c.status === 'active' && c.factionId === me && c.atSystemId === system.id && c.id !== fleet.commanderId,
+  );
 
   return (
     <li className="fleet-row own-fleet">
@@ -341,7 +355,12 @@ function OwnFleet({
         <StackGlyphs stack={fleet.stack} size={12} />
         <Officers state={state} ids={officers} />
       </div>
-      <Commanding officer={commandingAt(state.commanders, me, system.id)} shared={others.length > 0} />
+      <Commanding
+        state={state}
+        assigned={fleet.commanderId}
+        fallback={commandingAt(state.commanders, me, system.id)}
+        aboard={[]}
+      />
       <div className="fleet-actions">
         <button className="chip" onClick={() => onDraft(`Move ${name} to `)} title="Write the order on the command line">
           move
@@ -353,6 +372,27 @@ function OwnFleet({
           <button className={mode === 'split' ? 'chip on' : 'chip'} onClick={() => setMode(mode === 'split' ? 'idle' : 'split')}>
             split
           </button>
+        )}
+        {fleet.commanderId && (
+          <button className="chip" onClick={() => onOrganise({ op: 'relieve_command', fleet: fleet.id })} title="The officer stays at this world, without a command">
+            relieve
+          </button>
+        )}
+        {candidates.length > 0 && (
+          <select
+            className="chip"
+            value=""
+            onChange={(e) => e.target.value && onOrganise({ op: 'assign_command', fleet: fleet.id, officer: e.target.value })}
+            aria-label={`Put an officer in command of ${name}`}
+          >
+            <option value="">{fleet.commanderId ? 'give command to…' : 'assign commander…'}</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {commandOf.get(c.id) ? ` (now commands ${commandOf.get(c.id)})` : ''}
+              </option>
+            ))}
+          </select>
         )}
         {others.map((o) => (
           <button
@@ -411,20 +451,39 @@ function OwnFleet({
 }
 
 /**
- * Who commands a fleet in battle — the senior officer where it stands, or the
- * senior aboard it under way: the rule the battle itself reads. An officer
- * commands the battle they are at, so fleets sharing a world share one.
+ * A fleet's commander, assigned (`Fleet.commanderId`), and who else is aboard.
+ * With none assigned, the battle falls back on seniority among the officers
+ * present, and that officer is named so the player knows who would lead.
  */
-function Commanding({ officer, shared = false }: { officer: { name: string; archetype: Parameters<typeof archetypeOf>[0]; battles: number } | undefined; shared?: boolean }) {
-  if (!officer) return <div className="fleet-command muted">No officer: fights without one.</div>;
+function Commanding({
+  state,
+  assigned,
+  fallback,
+  aboard,
+}: {
+  state: WorldState;
+  assigned: string | null;
+  fallback: { name: string } | undefined;
+  aboard: string[];
+}) {
+  const chief = assigned ? (state.commanders ?? []).find((c) => c.id === assigned) : undefined;
+  const riders = aboard
+    .map((id) => (state.commanders ?? []).find((c) => c.id === id)?.name)
+    .filter((n): n is string => n !== undefined);
   return (
-    <div className="fleet-command" title={`${archetypeOf(officer.archetype).effect}, ${veterancyLabel(officer.battles)}`}>
-      <span className="muted">Commanded by </span>
-      {officer.name}
-      <span className="muted">
-        {' '}· {veterancyLabel(officer.battles)}
-        {shared ? ' · commands every fleet of yours here' : ''}
-      </span>
+    <div className="fleet-command">
+      {chief ? (
+        <span title={`${archetypeOf(chief.archetype).effect}, ${veterancyLabel(chief.battles)}`}>
+          <span className="muted">Commander </span>
+          {chief.name}
+          <span className="muted"> · {veterancyLabel(chief.battles)}</span>
+        </span>
+      ) : (
+        <span className="muted">
+          No commander{fallback ? ` — in battle the senior officer present, ${fallback.name}, would lead` : ' — it fights without one'}
+        </span>
+      )}
+      {riders.length > 0 && <span className="muted"> · aboard: {riders.join(', ')}</span>}
     </div>
   );
 }

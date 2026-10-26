@@ -195,3 +195,81 @@ describe('the organise route', () => {
     expect(session.view().staged).toHaveLength(1);
   });
 });
+
+describe('a fleet commander', () => {
+  /** Meridian with a second officer, Lira Nakagawa, appointed at Sekkar Gate beside Adrienne Sorel. */
+  const twoOfficers = () => apply(createSeedState('meridian'), [{ op: 'recruit_commander', factionId: 'meridian', systemId: 'sek-1', school: 'gunnery' }]).state;
+  const fleet = (s: WorldState, id: string) => s.systems.flatMap((x) => x.fleets ?? []).find((f) => f.id === id);
+  const officer = (s: WorldState, name: string) => s.commanders.find((c) => c.name.includes(name))!;
+
+  it('is set on the opening board where each power has an officer standing', () => {
+    const s = createSeedState('meridian');
+    expect(fleet(s, 'flt-meridian-1')!.commanderId).toBe(officer(s, 'Sorel').id);
+    expect(fleet(s, 'flt-vigil-1')!.commanderId).not.toBeNull();
+  });
+
+  it('is assigned from the officers standing there, one fleet each, and relieved without leaving', () => {
+    let s = twoOfficers();
+    s = apply(s, [{ op: 'split_fleet', factionId: 'meridian', fleet: '1', force: { battleship: 3 } }], 'organise').state;
+    s = apply(s, [{ op: 'assign_command', factionId: 'meridian', fleet: '5', officer: 'Nakagawa' }], 'organise').state;
+    expect(fleet(s, 'flt-meridian-5')!.commanderId).toBe(officer(s, 'Nakagawa').id);
+    // Sorel takes the 5th: she gives up the 1st, and Nakagawa stays at the world, uncommanding.
+    s = apply(s, [{ op: 'assign_command', factionId: 'meridian', fleet: '5', officer: 'Sorel' }], 'organise').state;
+    expect(fleet(s, 'flt-meridian-5')!.commanderId).toBe(officer(s, 'Sorel').id);
+    expect(fleet(s, 'flt-meridian-1')!.commanderId).toBeNull();
+    expect(officer(s, 'Nakagawa').atSystemId).toBe('sek-1');
+    s = apply(s, [{ op: 'relieve_command', factionId: 'meridian', fleet: '5' }], 'organise').state;
+    expect(fleet(s, 'flt-meridian-5')!.commanderId).toBeNull();
+    expect(officer(s, 'Sorel').atSystemId).toBe('sek-1');
+  });
+
+  it('must be standing where the fleet is', () => {
+    const out = applyOps(createSeedState('meridian'), [{ op: 'assign_command', factionId: 'meridian', fleet: '2', officer: 'Sorel' }], 'model', 'meridian', true, {}, 'organise');
+    expect(out.rejections[0]!.message).toMatch(/Sorel is at Sekkar Gate, not Torrek Anchorage/);
+  });
+
+  it('sails with the fleet and commands it where it lands; another officer may ride as a passenger', () => {
+    const { state } = apply(twoOfficers(), [{ op: 'move', factionId: 'meridian', fleet: '1', targetId: 'sek-4', officers: ['Nakagawa'] }]);
+    const order = state.pendingOrders.at(-1)!;
+    expect(order.fleet!.commanderId).toBe(officer(state, 'Sorel').id);
+    expect(order.officers).toEqual(expect.arrayContaining([officer(state, 'Sorel').id, officer(state, 'Nakagawa').id]));
+    const s = until(state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
+    expect(fleet(s, 'flt-meridian-1')!.commanderId).toBe(officer(s, 'Sorel').id);
+    expect(officer(s, 'Nakagawa').atSystemId).toBe('sek-4');
+  });
+
+  it('leaves the fleet uncommanded by travelling alone, and arrives where their power stands', () => {
+    const { state } = apply(createSeedState('meridian'), [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'tor-1' }]);
+    expect(fleet(state, 'flt-meridian-1')!.commanderId).toBeNull();
+    const order = state.pendingOrders.at(-1)!;
+    expect(order.force).toEqual({});
+    const s = until(state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
+    expect(officer(s, 'Sorel').atSystemId).toBe('tor-1');
+    expect(s.systems.find((x) => x.id === 'tor-1')!.ships.meridian).toEqual(state.systems.find((x) => x.id === 'tor-1')!.ships.meridian);
+    // And takes the fleet there once assigned.
+    const t = apply(s, [{ op: 'assign_command', factionId: 'meridian', fleet: '2', officer: 'Sorel' }], 'organise').state;
+    expect(fleet(t, 'flt-meridian-2')!.commanderId).toBe(officer(t, 'Sorel').id);
+  });
+
+  it('travels alone only to where their power stands', () => {
+    const out = applyOps(createSeedState('meridian'), [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'tor-3' }], 'model', 'meridian', true, {}, 'declared');
+    expect(out.rejections[0]!.message).toMatch(/travels alone only to a world/);
+  });
+
+  it('leads the side in battle over a more senior officer aboard', () => {
+    let s = twoOfficers();
+    const nakagawa = officer(s, 'Nakagawa');
+    nakagawa.battles = 0;
+    officer(s, 'Sorel').battles = 4;
+    s = apply(s, [{ op: 'assign_command', factionId: 'meridian', fleet: '1', officer: 'Nakagawa' }], 'organise').state;
+    s = apply(s, [{ op: 'move', factionId: 'meridian', fleet: '1', targetId: 'ark-2', officers: ['Sorel'] }]).state;
+    let led: string[] = [];
+    for (let i = 0; i < 3 && led.length === 0; i++) {
+      const r = tickTurn(s, calm);
+      s = r.state;
+      led = r.report.battles.flatMap((b) => (b.leaders?.attack ? [b.leaders.attack] : []));
+    }
+    expect(led.join(' ')).toMatch(/Nakagawa/);
+    expect(led.join(' ')).not.toMatch(/Sorel/);
+  });
+});
