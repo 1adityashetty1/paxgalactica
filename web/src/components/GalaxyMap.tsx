@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { travelLine, travelTo } from '../../../src/ui/travel.js';
 import type { WorldState } from '../../../src/domain/state.js';
 import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
 import { routeEarnings, routeLegs, severedBy, tradeRoutes } from '../../../src/domain/trade.js';
@@ -395,6 +396,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
               ? state.factions.find((f) => f.id === hovered.system.controllerFactionId)?.name
               : 'unaligned'}
           </span>
+          <span className="travel-note">{travelLine(travelTo(state, state.playerFactionId, hovered.system.id))}</span>
           {(tollPaidAt[hovered.system.id] ?? 0) > 0 && (
             <span className="toll-note bad">
               toll: you pay {Math.round(tollPaidAt[hovered.system.id]!)} a turn crossing here

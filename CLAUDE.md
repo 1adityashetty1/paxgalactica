@@ -6543,6 +6543,16 @@ opposite case — authored, with pronouns stated on their own sheets — and
 exactly the kind of convention that decays: the next person to write a paragraph
 about a commander will reach for a pronoun, and nothing else would notice.
 
+**And it is held in code, because the prompts did not hold it.** Every prompt
+that writes people says officers, operatives and notables are they/them, and
+the counsellor went on writing "his" and "she" of them for twenty loops of
+playtest. `theyThem` (`src/domain/pronouns.ts`) runs on every model reply in
+`callStructured`: a gendered pronoun in a sentence that names a generated
+person — a stock name, an officer's title, or a role such as "governor" — or
+that follows one with nobody else named, becomes they/them, with the verb after
+it agreed. A sentence naming a leader is left alone, since a leader's pronouns
+are on their sheet. Each rewrite is traced as `normalized: ['pronouns']`.
+
 > **The board moves, and it is a cliff rather than a gradient.** Bots keeping two
 > officers instead of one diverts roughly 420 credits a power over thirty turns
 > from hulls to officers, and the Vigil — buying at 0.85 appetite — feels it
@@ -8065,7 +8075,7 @@ state, 61% of the world**. Two consequences, both fixed and both cheap:
   than the timing: mutate an entry in the returned world and the input must be
   unchanged, which fails the moment somebody starts editing an entry in place.
 - **It was drawn whole on every render**, and `[...shown].reverse()` copied the
-  entire array to display twenty entries. `logWindow` slices before reversing.
+  entire array to display twenty entries. `digestLog` slices before reversing.
 
 `src/ui/logview.ts` holds both, pure and tested, for the same reason `layout.ts`
 and `portrait.ts` are: there is no DOM in the suite, so logic living inside a
@@ -8373,6 +8383,33 @@ component is logic nothing checks.
   invisible. Both are now passed through, and the same renderer covers the
   declared-action path and the diplomacy path.
 
+- **Not losing your place** — five things a player kept losing, none of them
+  game state:
+  - **The feed survives a reload and a resume.** It was React state alone, so
+    every narrative, battle card and counsel went with the tab. It is kept per
+    campaign (save name and power) in IndexedDB beside the session
+    (`feedStore` in `web/src/api.ts`); a new campaign or an imported file starts
+    a fresh one, since a feed is what this browser was shown.
+  - **Saves are listed with whose, how far and when** (`SaveSummary`, read off
+    the journal by `summarise`): newest first, searchable, a dozen shown, each
+    with a delete that asks first and takes the trace with it
+    (`POST /api/saves/delete`, `CampaignStore.remove`). A bare wall of names
+    was all there was, and playtests had left hundreds.
+  - **The command line has a history**: up and down recall what was sent,
+    Escape clears (`src/ui/history.ts`, kept in localStorage).
+  - **End turn with actions unspent asks once**: the button says how many, and
+    a second press within four seconds ends the turn.
+  - **The map's tooltip says how long your nearest fleet takes** to reach a
+    world (`travelTo` in `src/ui/travel.ts`): a turn a jump, or at once for one
+    jump inside your own space — `movesAtOnce`, moved from the reducer to
+    `state.ts` so the browser reads the same rule rather than a copy.
+- **The Log tab puts what matters first** (`digestLog`, `weighEntry` in
+  `src/ui/logview.ts`). Nothing new is recorded: each line the engine already
+  writes is weighed by its kind and its own words — a battle, a world won or
+  lost, a war or a peace, an operative caught, a raid, a refusal — and by
+  whether it names you or your worlds. What needs you from the last two turns
+  sits in a box at the top; the rest is grouped by turn, with routine lines
+  (yards, programmes begun, rulings) a press away.
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.
@@ -8427,6 +8464,18 @@ gets back the answer it already gave, which is the confirmation bias
 `verifyBreachRelevance` is shaped to avoid. Counting list markers is a lookup,
 and code does lookups. One marker is not enough to fire, because a single dash
 mid-sentence is ordinary speech and rejecting it would cost a retry every time.
+
+**It is told what it can do and what has been done.** Two computed blocks sit
+beside `paperOf`. **This turn so far** lists each declaration and talk this
+turn and what came of it (`SessionSnapshot.thisTurn`, recorded by the session,
+not world state), and how many actions are left after the counsel. **What your
+power can do** (`capabilitiesOf`, `src/domain/capabilities.ts`) states the
+yards' berths and what the treasury pays for, the fixture slots free on each
+held world and the kinds its ground takes, operative slots and who is free to
+send or on the Lists, officers in post and where they stand, where fleets and
+lift stand, and the unaligned worlds in reach. Its commonest bad
+recommendation in the playtest loops was an act with no means behind it, and
+each of these is arithmetic the engine already does.
 
 `AdvisorReplySchema` had **one field and no second one**, and that was the other
 half. It now carries an optional `recommendation`: one sentence naming a single

@@ -330,6 +330,7 @@ import {
   addShipsAt,
   addStackAt,
   hullsAt,
+  movesAtOnce,
   setShipsAt,
   setStackAt,
   stackAt,
@@ -10345,24 +10346,6 @@ export interface TickResult extends Omit<ApplyResult, 'acts'> {
  * originates.
  */
 /** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
-/**
- * Whether a fleet movement from `originId` to `targetId` lands at once: one
- * jump, both worlds held by the mover, and nobody's ships over the target but
- * its own and its guests'. A rival squatting there makes it a sweep, which is
- * fought on arrival, so it sails.
- */
-export function movesAtOnce(state: WorldState, factionId: string, originId: string, targetId: string): boolean {
-  if (originId === targetId) return false;
-  const origin = state.systems.find((x) => x.id === originId);
-  const target = state.systems.find((x) => x.id === targetId);
-  if (!origin || !target) return false;
-  if (origin.controllerFactionId !== factionId || target.controllerFactionId !== factionId) return false;
-  if (!neighboursOf(state, originId).includes(targetId)) return false;
-  return !Object.keys(target.ships ?? {}).some(
-    (f) => f !== factionId && hullsAt(target, f) > 0 && !isGuestOf(state, f, factionId),
-  );
-}
-
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;

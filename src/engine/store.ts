@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { EpilogueViewSchema } from './epilogue.js';
 import { JournalVersionSchema } from './journal.js';
 import { configDir } from '../model/settings.js';
+import type { SaveSummary } from '../api/contract.js';
 
 /**
  * Campaign persistence, behind an interface.
@@ -58,11 +59,37 @@ export const SaveFileSchema = z.object({
 });
 export type SaveFile = z.infer<typeof SaveFileSchema>;
 
+
+/** A save's summary, read loosely: a save too old or odd to read still lists, by name. */
+export function summarise(name: string, data: unknown, savedAt: string | null): SaveSummary {
+  // A session snapshot written to the same directory (the playtest harness
+  // does) carries its save one level down.
+  type Shape = { journal?: { entries?: unknown[] }; epilogue?: unknown };
+  const outer = data as (Shape & { campaign?: { save?: Shape } }) | null;
+  const save = outer?.journal === undefined && outer?.campaign?.save ? outer.campaign.save : outer;
+  const entries = (save?.journal?.entries ?? []) as { kind?: string; playerFactionId?: string; maxTurns?: number }[];
+  const seed = entries.find((e) => e?.kind === 'seed');
+  const turn = entries.filter((e) => e?.kind === 'tick').length;
+  const maxTurns = seed?.maxTurns ?? null;
+  return {
+    name,
+    playerFactionId: seed?.playerFactionId ?? null,
+    turn,
+    maxTurns,
+    savedAt,
+    finished: save?.epilogue !== undefined || (maxTurns !== null && turn >= maxTurns),
+  };
+}
+
 export interface CampaignStore {
   load(name: string): Promise<SaveFile | null>;
   save(name: string, data: SaveFile): Promise<void>;
   list(): Promise<string[]>;
   exists(name: string): Promise<boolean>;
+  /** Every save with what the title screen shows of it, newest first. */
+  describe(): Promise<SaveSummary[]>;
+  /** Delete a save, and its trace with it. False when there was none. */
+  remove(name: string): Promise<boolean>;
   /**
    * Where this campaign's performance trace is appended, or nothing to record
    * none. Optional, so a store that has no disk — the in-memory one the suite
@@ -143,6 +170,30 @@ export class FileCampaignStore implements CampaignStore {
     return existsSync(this.path(name));
   }
 
+  async describe(): Promise<SaveSummary[]> {
+    const names = await this.list();
+    const out = await Promise.all(
+      names.map(async (name) => {
+        try {
+          const file = this.path(name);
+          const [raw, info] = await Promise.all([readFile(file, 'utf8'), stat(file)]);
+          return summarise(name, JSON.parse(raw), info.mtime.toISOString());
+        } catch {
+          return summarise(name, null, null);
+        }
+      }),
+    );
+    return newestFirst(out);
+  }
+
+  async remove(name: string): Promise<boolean> {
+    const file = this.path(name);
+    if (!existsSync(file)) return false;
+    await rm(file);
+    await rm(this.tracePath(name), { force: true });
+    return true;
+  }
+
   /**
    * `saves/<name>.trace.jsonl`, beside the save it describes. `list()` keeps
    * to `.json`, so a trace is never mistaken for a campaign.
@@ -166,6 +217,7 @@ export class MemoryCampaignStore implements CampaignStore {
 
   async save(name: string, data: SaveFile): Promise<void> {
     this.saves.set(name, JSON.parse(JSON.stringify(data)) as SaveFile);
+    this.written.set(name, new Date().toISOString());
   }
 
   async list(): Promise<string[]> {
@@ -175,4 +227,20 @@ export class MemoryCampaignStore implements CampaignStore {
   async exists(name: string): Promise<boolean> {
     return this.saves.has(name);
   }
+
+  private readonly written = new Map<string, string>();
+
+  async describe(): Promise<SaveSummary[]> {
+    return newestFirst([...this.saves].map(([name, data]) => summarise(name, data, this.written.get(name) ?? null)));
+  }
+
+  async remove(name: string): Promise<boolean> {
+    this.written.delete(name);
+    return this.saves.delete(name);
+  }
+}
+
+/** Newest first; a save with no time after every one with a time, then by name. */
+function newestFirst(saves: SaveSummary[]): SaveSummary[] {
+  return saves.sort((a, b) => (b.savedAt ?? '').localeCompare(a.savedAt ?? '') || a.name.localeCompare(b.name));
 }

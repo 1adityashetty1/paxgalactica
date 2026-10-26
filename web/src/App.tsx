@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { remember, step } from '../../src/ui/history.js';
 import { api } from './api.js';
 import { Waiting } from './components/Waiting.js';
 import { CheatPanel } from './components/CheatPanel.js';
@@ -17,6 +18,9 @@ import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
 import { useGame, useStickToBottom } from './useGame.js';
 
+/** Where the command line's history is kept in this browser. */
+const HISTORY_KEY = 'paxgalactica.history';
+
 export function App() {
   const game = useGame();
   /** Whether model calls can be paid for; null until asked. Asked when there is no campaign. */
@@ -32,6 +36,29 @@ export function App() {
   }, [game.needsCampaign, providerReady]);
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  // What was sent before, for the up and down arrows — see `src/ui/history.ts`.
+  // Per browser, in localStorage: a convenience, and a private window that
+  // refuses storage still plays.
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]') as unknown;
+      return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const [recallAt, setRecallAt] = useState<number | null>(null);
+  // The line being written when the player went up into the history, put back
+  // when they come down past the last line or press Escape.
+  const writing = useRef('');
+  // End turn with actions unspent asks once: the button says so, and a second
+  // press within a few seconds ends the turn.
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  useEffect(() => {
+    if (!confirmEnd) return;
+    const timer = setTimeout(() => setConfirmEnd(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmEnd]);
   // A panel that writes an order for the player (the System tab's fixtures)
   // puts it on the command line to be read and sent, never sends it itself:
   // declaring is the player's act, and costs an action.
@@ -60,6 +87,16 @@ export function App() {
     const text = input.trim();
     if (!text || busy) return;
     setInput('');
+    setRecallAt(null);
+    setHistory((h) => {
+      const next = remember(h, text);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      } catch {
+        // No storage: the history lasts as long as the tab.
+      }
+      return next;
+    });
 
     if (text.startsWith(':') || text.startsWith('/')) {
       const [head, ...rest] = text.split(/\s+/);
@@ -303,7 +340,24 @@ export function App() {
             <input
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setRecallAt(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                  const at = step(history, recallAt, e.key === 'ArrowUp' ? 'up' : 'down');
+                  if (at === recallAt) return;
+                  e.preventDefault();
+                  if (recallAt === null) writing.current = input;
+                  setRecallAt(at);
+                  setInput(at === null ? writing.current : history[at]!);
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setInput(recallAt === null ? '' : writing.current);
+                  setRecallAt(null);
+                }
+              }}
               placeholder={
                 busy
                   ? 'Working…'
@@ -326,12 +380,27 @@ export function App() {
             </button>
             <button
               type="button"
-              className="endturn"
-              onClick={() => void game.endTurn()}
+              className={confirmEnd ? 'endturn confirm' : 'endturn'}
+              onClick={() => {
+                if (view.actionPoints.left > 0 && !confirmEnd) {
+                  setConfirmEnd(true);
+                  return;
+                }
+                setConfirmEnd(false);
+                void game.endTurn();
+              }}
               disabled={!!busy || !!activeChannel}
-              title={activeChannel ? 'Close the channel first' : 'Land everything declared'}
+              title={
+                activeChannel
+                  ? 'Close the channel first'
+                  : confirmEnd
+                    ? 'Press again to end the turn with actions unspent'
+                    : 'Land everything declared'
+              }
             >
-              End turn
+              {confirmEnd
+                ? `${view.actionPoints.left} action${view.actionPoints.left === 1 ? '' : 's'} unspent — end anyway?`
+                : 'End turn'}
             </button>
           </form>
         </div>

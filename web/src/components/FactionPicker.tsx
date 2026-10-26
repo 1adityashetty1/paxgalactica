@@ -1,5 +1,6 @@
 import { RIM_EVENT_KINDS, RIM_EVENT_TITLE, type RimEventKind } from '../../../src/domain/events.js';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { SaveSummary } from '../../../src/api/contract.js';
 import { api } from '../api.js';
 import { ansi256ToHex } from '../color.js';
 
@@ -23,7 +24,9 @@ export function FactionPicker({
   onBack?: () => void;
 }) {
   const [factions, setFactions] = useState<Playable[]>([]);
-  const [saves, setSaves] = useState<string[]>([]);
+  const [saves, setSaves] = useState<SaveSummary[]>([]);
+  const [filter, setFilter] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 30 is the default because it is long enough for two development programmes
   // to pay for themselves and a war to be fought and lost, and short enough
@@ -38,7 +41,7 @@ export function FactionPicker({
       .factions()
       .then((r) => {
         setFactions(r.factions);
-        setSaves(r.saves);
+        setSaves(r.saveDetails);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -63,14 +66,22 @@ export function FactionPicker({
       )}
 
       {saves.length > 0 && (
-        <div className="resume">
-          <h2>Resume from this server's saves/</h2>
-          {saves.map((name) => (
-            <button key={name} className="resume-btn" onClick={() => onResume(name)}>
-              {name}
-            </button>
-          ))}
-        </div>
+        <SaveList
+          saves={saves}
+          factions={factions}
+          filter={filter}
+          onFilter={setFilter}
+          showAll={showAll}
+          onShowAll={() => setShowAll(true)}
+          onResume={onResume}
+          onDelete={(name) => {
+            if (!window.confirm(`Delete the save "${name}"? This cannot be undone.`)) return;
+            void api
+              .deleteSave(name)
+              .then((r) => setSaves(r.saveDetails))
+              .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+          }}
+        />
       )}
 
       <div className="resume">
@@ -152,4 +163,96 @@ export function FactionPicker({
       </div>
     </div>
   );
+}
+
+/** Saves shown before "show all": enough for the ones a player is likely to want. */
+const SAVES_SHOWN = 12;
+
+/**
+ * The server's saves, newest first, each with whose campaign it is, how far it
+ * got and when it was written — a wall of bare names was all there was, and
+ * playtests had left hundreds of them.
+ */
+function SaveList({
+  saves,
+  factions,
+  filter,
+  onFilter,
+  showAll,
+  onShowAll,
+  onResume,
+  onDelete,
+}: {
+  saves: SaveSummary[];
+  factions: Playable[];
+  filter: string;
+  onFilter: (v: string) => void;
+  showAll: boolean;
+  onShowAll: () => void;
+  onResume: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
+  const faction = (id: string | null) => factions.find((f) => f.id === id);
+  const shown = useMemo(() => {
+    const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return saves.filter((s) => {
+      const hay = `${s.name} ${faction(s.playerFactionId)?.name ?? ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [saves, filter, factions]);
+  const visible = showAll || filter.trim() ? shown : shown.slice(0, SAVES_SHOWN);
+  return (
+    <div className="resume">
+      <h2>Resume a saved campaign</h2>
+      {saves.length > SAVES_SHOWN && (
+        <input
+          className="save-filter"
+          type="search"
+          value={filter}
+          placeholder={`Search ${saves.length} saves by name or faction`}
+          onChange={(e) => onFilter(e.target.value)}
+          aria-label="Search saves"
+        />
+      )}
+      <ul className="save-list">
+        {visible.map((s) => {
+          const f = faction(s.playerFactionId);
+          return (
+            <li key={s.name} className="save-row">
+              <button className="save-open" onClick={() => onResume(s.name)} title={`Resume ${s.name}`}>
+                <span className="save-name">{s.name}</span>
+                <span className="save-meta">
+                  {f ? <span style={{ color: ansi256ToHex(f.color) }}>{f.name}</span> : <span>unknown power</span>}
+                  {' · '}turn {s.turn}
+                  {s.maxTurns !== null ? ` of ${s.maxTurns}` : ''}
+                  {s.finished ? ' · finished' : ''}
+                  {s.savedAt ? ` · ${savedWhen(s.savedAt)}` : ''}
+                </span>
+              </button>
+              <button className="save-delete" onClick={() => onDelete(s.name)} aria-label={`Delete ${s.name}`} title="Delete this save">
+                ×
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {shown.length === 0 && <p className="hint">No save matches.</p>}
+      {!showAll && !filter.trim() && shown.length > SAVES_SHOWN && (
+        <button className="endtalk" onClick={onShowAll}>
+          Show all {shown.length}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** "today 14:02", "yesterday", or a date — how long ago a save was written. */
+function savedWhen(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const days = Math.floor((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (days === 0) return `today ${time}`;
+  if (days === 1) return `yesterday ${time}`;
+  return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 }

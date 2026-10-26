@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Cheat } from '../../src/domain/cheats.js';
 import type { CampaignView } from '../../src/api/contract.js';
 import { spliceLog } from '../../src/ui/logview.js';
-import { api, ApiError, onConnection, onServerEvent } from './api.js';
+import { api, ApiError, feedStore, onConnection, onServerEvent } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
 import type { BriefingEventView } from '../../src/api/contract.js';
 import { RIM_EVENT_TITLE, type RimEventKind } from '../../src/domain/events.js';
@@ -32,6 +32,20 @@ export interface Message {
 
 let nextMessageId = 1;
 
+/** The most of a feed kept, on screen and in storage. */
+const FEED_CAP = 500;
+
+/** Which campaign a feed belongs to: its save name and the power played. */
+const feedKeyOf = (v: CampaignView): string => `${v.name}|${v.state.playerFactionId}`;
+
+/** A stored feed, numbered afresh so its ids cannot collide with this page's. */
+function revive(stored: unknown[]): Message[] {
+  return stored
+    .filter((m): m is Message => typeof m === 'object' && m !== null && typeof (m as Message).text === 'string')
+    .slice(-FEED_CAP)
+    .map((m) => ({ ...m, id: nextMessageId++ }));
+}
+
 /**
  * All client state in one place: the campaign view, the message log, and the
  * busy flag driven by server-sent events.
@@ -45,6 +59,12 @@ export function useGame() {
   const [needsCampaign, setNeedsCampaign] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  /**
+   * The campaign the feed belongs to. Set with the messages whenever the
+   * campaign changes, so the save below never writes one campaign's feed under
+   * another's key.
+   */
+  const [feedKey, setFeedKey] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   /**
    * The settings screen, put up by the player or by a call that could not be
@@ -55,7 +75,7 @@ export function useGame() {
   const [connected, setConnected] = useState(true);
 
   const say = useCallback((text: string, tone: Message['tone'], color?: number) => {
-    setMessages((prev) => [...prev, { id: nextMessageId++, text, tone, color }].slice(-500));
+    setMessages((prev) => [...prev, { id: nextMessageId++, text, tone, color }].slice(-FEED_CAP));
   }, []);
 
   /**
@@ -68,7 +88,7 @@ export function useGame() {
   const sayWithArt = useCallback(
     (text: string, tone: Message['tone'], kind: OutcomeArtKind, alt: string) => {
       setMessages((prev) =>
-        [...prev, { id: nextMessageId++, text, tone, art: { kind, alt } }].slice(-500),
+        [...prev, { id: nextMessageId++, text, tone, art: { kind, alt } }].slice(-FEED_CAP),
       );
     },
     [],
@@ -81,13 +101,36 @@ export function useGame() {
     [view],
   );
 
+  /**
+   * Show a campaign's own feed: the one stored for it, or a fresh one. The
+   * feed was React state alone, so a reload or a resume came back to an empty
+   * page with every narrative, battle and counsel gone.
+   */
+  const showFeedOf = useCallback(async (v: CampaignView, fresh: boolean) => {
+    const key = feedKeyOf(v);
+    if (fresh) await feedStore.save(key, []);
+    const stored = fresh ? [] : revive(await feedStore.load(key));
+    setMessages(stored);
+    setFeedKey(key);
+  }, []);
+
+  // Written a moment after the feed settles rather than on every line: an end
+  // of turn says a dozen things in a burst.
+  useEffect(() => {
+    if (feedKey === null) return;
+    const timer = setTimeout(() => void feedStore.save(feedKey, messages.slice(-FEED_CAP)), 400);
+    return () => clearTimeout(timer);
+  }, [messages, feedKey]);
+
   /* ---------------- initial load ---------------- */
 
   useEffect(() => {
     let cancelled = false;
     void api
       .boot()
-      .then((v) => {
+      .then(async (v) => {
+        if (cancelled) return;
+        await showFeedOf(v, false);
         if (!cancelled) setView(v);
       })
       .catch((err: unknown) => {
@@ -185,9 +228,9 @@ export function useGame() {
           maxTurns,
           sandboxEvent,
         );
+        await showFeedOf(v, true);
         setView(v);
         setNeedsCampaign(false);
-        setMessages([]);
         say(`You command the ${v.state.factions.find((f) => f.id === factionId)?.name}.`, 'system');
         if (v.maxTurns !== null) {
           say(`The campaign runs ${v.maxTurns} turns. Make them count.`, 'brief');
@@ -196,18 +239,19 @@ export function useGame() {
           say(`Sandbox: only ${RIM_EVENT_TITLE[v.sandboxEvent].toLowerCase()} fires, every turn. End a turn to see it.`, 'brief');
         }
       }),
-    [guard, say],
+    [guard, say, showFeedOf],
   );
 
   const resume = useCallback(
     (name: string) =>
       guard(async () => {
         const v = await api.resume(name);
+        await showFeedOf(v, false);
         setView(v);
         setNeedsCampaign(false);
         say(`Resumed "${name}" at turn ${v.state.turn}.`, 'system');
       }),
-    [guard, say],
+    [guard, say, showFeedOf],
   );
 
   const act = useCallback(
@@ -309,7 +353,7 @@ export function useGame() {
         // nobody chose, and a card is what keeps it from scrolling past.
         for (const event of outcome.briefing.events.filter((e) => !e.ongoing)) {
           setMessages((prev) =>
-            [...prev, { id: nextMessageId++, text: event.text, tone: 'system' as const, event }].slice(-500),
+            [...prev, { id: nextMessageId++, text: event.text, tone: 'system' as const, event }].slice(-FEED_CAP),
           );
         }
         say(
@@ -472,6 +516,8 @@ export function useGame() {
     (file: File) =>
       guard(async () => {
         const outcome = await api.importCampaign(file);
+        // A save file carries no feed: what was said on another machine is not here.
+        await showFeedOf(outcome.view, true);
         setView(outcome.view);
         setNeedsCampaign(false);
         say(
@@ -479,7 +525,7 @@ export function useGame() {
           'system',
         );
       }),
-    [guard, say],
+    [guard, say, showFeedOf],
   );
 
   /**
