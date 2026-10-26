@@ -348,7 +348,9 @@ turn) or `record` (nothing more). `commitmentsAsRuled` keeps only the
 commitment the ruling named and stamps the mechanism on it; the reducer refuses
 a ruled income left unwritten, and leaves out an unruled one with a note — in
 the saved campaigns five declared commitments paid their own power an income
-nobody ruled. A share or a contingency binds a second party, so neither
+nobody ruled. **A `record` is no longer kept from a declaration at all**: it
+binds nobody, and three playtest loops read one back as a contract the player
+could not walk away from (`docs/audit-2026-10-19.md`, loop 15). A share or a contingency binds a second party, so neither
 survives a declaration: an act that needs one is a negotiation. An accord's
 commitment carries no mechanism and is held to its consent, as before.
 
@@ -4307,8 +4309,20 @@ harness boards stay 5/5/6/5/4 (5/6/6/5/3 at 100 turns without events).
   (`battleHistory`, `battlesFought`, `shipsLost`).
 
 A declared `move` must now name its `force` (journal version 29,
-`declaredMovesNameForce`). Six structural problems are written up there and
-left open:
+`declaredMovesNameForce`). The six structural problems the audit found are
+then built in a second pass, described there:
+
+- a record commitment beside an act with a mechanism is dropped, and a
+  one-party record is served as policy, not a promise;
+- the player strikes their own terms in a channel (`strike`, and a withdraw
+  button);
+- reactions are told what sailed, not a battle not yet fought;
+- a fleet with no lift over unaligned ground takes station beside powers it is
+  at peace with (`stationBesidePeers`, v29);
+- the counsellor's voice loses the rule to number its points;
+- `pressuresOn` hands the counsellor the threats and costs on the board.
+
+The six, as found:
 
 - the arbiter's `establishes` is unbounded;
 - the player's side of a negotiation's record is written by the other party;
@@ -8414,8 +8428,11 @@ gets back the answer it already gave, which is the confirmation bias
 and code does lookups. One marker is not enough to fire, because a single dash
 mid-sentence is ordinary speech and rejecting it would cost a retry every time.
 
-`AdvisorReplySchema` has **one field and no second one**, and that is the other
-half. A `pressures: []` beside the prose would render as a checklist however it
+`AdvisorReplySchema` had **one field and no second one**, and that was the other
+half. It now carries an optional `recommendation`: one sentence naming a single
+act, held to the same guards and refused as a sequence ("then", a list). The
+counsel alone named problems and left the move implicit on three turns in ten
+(playtest 2026-10-19, loop 2). A `pressures: []` beside the prose would render as a checklist however it
 was worded, and a checklist is a queue of instructions wearing a different
 label.
 

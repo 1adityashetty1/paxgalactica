@@ -35,7 +35,7 @@ import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { battleHistory, controlHistory, overrulings } from './journal.js';
-import { holdToRuling, type RulingBounds } from '../domain/refusals.js';
+import { holdToRuling, noPaymentBesideAGift, type RulingBounds } from '../domain/refusals.js';
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
 import { isMovementType } from '../domain/state.js';
@@ -594,7 +594,7 @@ export function applyBonus(
  * a ruling filter dropped, a trim or clamp, a correction (§5). Read off the
  * notes the engine and the reducer already write, so nothing new is tracked.
  */
-const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect/;
+const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect|barracks are already full|lay down nothing/;
 
 export function storyDiverged(notes: readonly string[], rejections: readonly unknown[]): boolean {
   if (rejections.length > 0) return true;
@@ -638,17 +638,64 @@ async function reconcileStory(
   draft: string,
   notes: readonly string[],
   rejections: readonly unknown[],
+  /** Orders that existed before this act, so the ones it began can be timed. */
+  ordersBefore?: ReadonlySet<string>,
 ): Promise<{ narrative: string; costUsd: number; reconciled: boolean }> {
-  if (!draft.trim() || !storyDiverged(notes, rejections)) return { narrative: draft, costUsd: 0, reconciled: false };
-  const landed = describeLanded(campaign.opsStagedSince(from));
+  // The story is written before the engine knows when anything lands. A
+  // two-jump reinforcement "already in orbit", a ceiling that "rises" three
+  // turns early, an open build that "will take time" (playtest 2026-10-19,
+  // loop 2, L5). Whenever the act began work that runs over turns, the pass is
+  // handed the timing and checks the tense.
+  const timing = ordersBefore ? timingOf(campaign, ordersBefore) : [];
+  const holders = holdersOf(campaign, draft);
+  if (!draft.trim() || (!storyDiverged(notes, rejections) && timing.length === 0 && holders.length === 0)) {
+    return { narrative: draft, costUsd: 0, reconciled: false };
+  }
+  const landed = [describeLanded(campaign.opsStagedSince(from)), ...timing, ...holders].filter(Boolean).join('\n');
   const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
   if (!out?.narrative) {
-    const corrected = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
+    const base = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
+    const corrected = holders.length > 0 ? `${base}\n\nNot as told: ${holders.map((h) => h.replace(/^- HOLDER: /, '')).join(' ')}` : base;
     campaign.rewriteNarrative(from, corrected);
     return { narrative: corrected, costUsd: out?.costUsd ?? 0, reconciled: false };
   }
   campaign.rewriteNarrative(from, out.narrative);
   return { narrative: out.narrative, costUsd: out.costUsd, reconciled: true };
+}
+
+/**
+ * Worlds the story says were taken that the power does not hold. A declaration
+ * is written before any battle it starts is fought, and one told the player
+ * "Sorel's dash on Threx lands home… Meridian colors go up" a turn after the
+ * dash lost twelve hulls and the Vigil kept the world (loop 18). Read off the
+ * sentences that name a world beside a word of taking it.
+ */
+const TAKEN = /\b(?:colou?rs? (?:go|goes|went) up|banners? (?:come|comes|came) down|falls?|fell|taken|takes|took|captured?|seized?|storm(?:s|ed)?|lands home|is ours|ours now|in (?:our|meridian) hands)\b/i;
+function holdersOf(campaign: Campaign, draft: string): string[] {
+  const me = campaign.state.playerFactionId;
+  const out: string[] = [];
+  for (const sentence of draft.split(/(?<=[.!?])\s+/)) {
+    if (!TAKEN.test(sentence)) continue;
+    for (const world of campaign.state.systems) {
+      if (world.controllerFactionId === me || !sentence.includes(world.name)) continue;
+      const holder = world.controllerFactionId ? (getFaction(campaign.state, world.controllerFactionId)?.name ?? world.controllerFactionId) : 'nobody';
+      const line = `- HOLDER: ${world.name} is held by ${holder}, not by you; nothing in this act took it.`;
+      if (!out.includes(line)) out.push(line);
+    }
+  }
+  return out;
+}
+
+/** When each order the act began will land, said plainly for the reconcile pass. */
+function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
+  const me = campaign.state.playerFactionId;
+  return campaign.state.pendingOrders
+    .filter((o) => o.factionId === me && !ordersBefore.has(o.id))
+    .map((o) => {
+      const left = o.durationTurns - o.progress;
+      const where = campaign.state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId;
+      return `- TIMING: "${o.label}" at ${where} has only begun; it ${isMovementType(o.type) ? 'arrives' : 'completes'} in ${left} turn${left === 1 ? '' : 's'}, not now.`;
+    });
 }
 
 /** A crossing said as the institutions would say it. */
@@ -777,7 +824,19 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // the mechanism for it actually lives.
   // Also free: being told "that is a conversation" is a redirect, not an act.
   // Charging for it would make the redirect feel like a penalty for asking.
-  if (resolution.output.negotiation) {
+  // An act with ops of its own and a negotiation beside it is the act, with a
+  // note: "send two escorts to Var Hollow, and offer the Combine the note"
+  // came back with the move written and the talks as a negotiation, and this
+  // branch threw the move away under a story saying the escorts had arrived
+  // (loop 14).
+  const sideTalks = resolution.output.negotiation;
+  const acted = resolution.output.ops.some((o) => (o as { op?: string }).op !== 'log_narrative');
+  if (sideTalks && acted) {
+    resolution.notes.push(
+      `The rest needs ${sideTalks.withFactionIds.join(' and ')} to agree — open a channel: ${sideTalks.withFactionIds.map((id) => `/talk ${id}`).join(' · ')}.`,
+    );
+  }
+  if (resolution.output.negotiation && !acted) {
     const n = resolution.output.negotiation;
     return {
       narrative: resolution.output.narrative,
@@ -880,6 +939,12 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.output.groundwork ?? [],
   );
 
+  const inKind = noPaymentBesideAGift(routed.ops, campaign.state.debts);
+  if (inKind.dropped) {
+    routed.ops = inKind.ops;
+    routed.notes.push('Goods handed to a creditor are a gift, not a payment: the cash paid beside them is left out. Settling a debt in goods needs the creditor to agree — open a channel.');
+  }
+
   // Secret when the arbiter ruled it covert OR anything in it places an
   // operative. The ruling is the load-bearing half: a covert attempt that
   // FAILED places nobody, so it carries no `deploy_agent` to recognise it by,
@@ -912,6 +977,29 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     { refuse: [campaign.state.playerFactionId], price: [] },
   );
   staged.notes.unshift(...resolution.notes, ...routed.notes);
+
+  // Work on a world the power has nothing at, refused by the reducer and
+  // nothing else in the act: there was nowhere to stand, so it was never an
+  // attempt. Twice the counsellor urged fortifying unaligned Ithaal, the
+  // arbiter rolled it, a critical success landed nothing and the action was
+  // spent (loops 5 and 7) — the prompt rules did not hold, so code does.
+  const nowhere = staged.rejections.find((r) => r.code === 'no_presence');
+  const landed = campaign.opsStagedSince(before).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
+  if (nowhere && landed.length === 0 && !staged.refused) {
+    campaign.withdrawAttempt(before);
+    const why = `Nothing of yours stands there to build on: ${nowhere.message}`;
+    return {
+      narrative: why,
+      inadmissible: why,
+      staged: 0,
+      notes: ['No action spent: the work had nowhere to stand.'],
+      rejections: staged.rejections,
+      costUsd: resolution.costUsd + staged.costUsd,
+      check: null,
+      refusal: null,
+      ops: [],
+    };
+  }
 
   // A red line the ops cross: refused as the arbiter's red line is — the action
   // spent, `REFUSAL_DISSENT` charged, nothing of the order staged.
@@ -1013,6 +1101,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.output.narrative,
     [...resolution.notes, ...staged.notes],
     staged.rejections,
+    ordersBefore,
   );
 
   return {
@@ -1503,7 +1592,11 @@ export function transfersFromRecord(
   const assetsGiven = new Map([player, other].map((p) => [p, assetsOf(p)] as [string, string[]]));
 
   for (const ceder of [player, other]) {
-    const systems = [...new Set(agreed.filter((c) => c.by === ceder).flatMap((c) => c.systems))];
+    // Only worlds the ceder holds: a world named that it does not hold is not
+    // its to hand over, whatever the record says (playtest 2026-10-19, loop 3).
+    const systems = [...new Set(agreed.filter((c) => c.by === ceder).flatMap((c) => c.systems))].filter(
+      (id) => state.systems.find((x) => x.id === id)?.controllerFactionId === ceder,
+    );
     if (systems.length === 0) continue;
     const buyer = otherOf(ceder);
     const price = credits.get(buyer) ?? 0;

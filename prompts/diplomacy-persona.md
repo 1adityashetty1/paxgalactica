@@ -214,6 +214,11 @@ gives you. A power cannot later be told it agreed to something it never wrote.
 ```
 
 ```jsonc
+{ "by": "vigil", "kind": "ceasefire", "text": "The Vigil holds Kalzir and Torrek quiet.",
+  "systems": [], "about": ["tor-2", "tor-1"] }
+```
+
+```jsonc
 { "by": "ojjul", "kind": "return_prisoners", "text": "Your crews walk out of Shalka.",
   "systems": [], "credits": 0, "perTurn": 0, "hulls": 0, "assets": ["ast-3-0"] }
 ```
@@ -226,6 +231,11 @@ you have used before for the same sort of arrangement.
 yours"* or *"take the Ilvenn holdings"*, only you know which systems you meant —
 put their ids in `systems`. Nothing downstream can work that out, and a world
 you do not name does not move.
+
+**`systems` is only for worlds that change hands.** Every world in it is handed
+to the other party when the channel closes. A term that merely *concerns* a
+world — where a ceasefire holds, which world a promise is about — names it in
+`about`, and nothing named there moves.
 
 Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
 standing one, `hulls` for ships out of your own fleet, `assets` for things off

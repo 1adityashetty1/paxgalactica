@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildAuthEnv } from './auth.js';
-import { ModelCallError, NotLoggedInError } from './errors.js';
+import { ModelCallError, NotLoggedInError, UsageLimitError, isUsageLimit } from './errors.js';
 import { costFor } from './pricing.js';
 import { apiTierFor, modelFor, type ApiTierConfig, type CallKind } from './router.js';
 import {
@@ -277,6 +277,7 @@ export const subscriptionProvider: Provider = {
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       if (/not logged in|\/login/i.test(text)) throw new NotLoggedInError();
+      if (isUsageLimit(text)) throw new UsageLimitError(text);
       if (errorText === undefined) throw err;
     } finally {
       clearTimeout(timer);
@@ -291,6 +292,7 @@ export const subscriptionProvider: Provider = {
 
     if (errorText !== undefined) {
       if (/not logged in|\/login/i.test(errorText)) throw new NotLoggedInError();
+      if (isUsageLimit(errorText)) throw new UsageLimitError(errorText);
       throw new ModelCallError(`Model call failed: ${errorText}`, 1);
     }
 

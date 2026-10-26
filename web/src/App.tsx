@@ -342,7 +342,7 @@ export function App() {
               view={view}
               factionId={activeChannel}
               busy={busy}
-              onSend={(text) => void game.talk(activeChannel, text)}
+              onSend={(text, strike) => void game.talk(activeChannel, text, strike)}
               seed={channelSeed?.factionId === activeChannel ? channelSeed : null}
               onClose={() => {
                 if (view.openChannel === activeChannel) void game.endTalk(activeChannel);

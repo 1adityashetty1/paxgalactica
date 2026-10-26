@@ -10,7 +10,7 @@
  *   node scripts/pt.mjs act "<text>"     # declare an action
  *   node scripts/pt.mjs advisor [question] # ask your counsellor (costs an action)
  *   node scripts/pt.mjs end              # end the turn
- *   node scripts/pt.mjs talk <id> "<text>"
+ *   node scripts/pt.mjs talk <id> "<text>" [--strike kind,kind]
  *   node scripts/pt.mjs endtalk <id>
  *   node scripts/pt.mjs discard [index]
  *
@@ -31,7 +31,13 @@ const routes = {
   act: () => ['/api/action', { text: args.join(' ') }],
   advisor: () => ['/api/advisor', args.length > 0 ? { question: args.join(' ') } : {}],
   end: () => ['/api/endturn', {}],
-  talk: () => [`/api/talk/${args[0]}`, { text: args.slice(1).join(' ') }],
+  // talk <id> "<text>" [--strike kind,kind]: withdraw your own terms with the message
+  talk: () => {
+    const at = args.indexOf('--strike');
+    const strike = at >= 0 ? args[at + 1].split(',') : [];
+    const words = at >= 0 ? args.slice(1, at) : args.slice(1);
+    return [`/api/talk/${args[0]}`, { text: words.join(' '), strike }];
+  },
   endtalk: () => [`/api/endtalk/${args[0]}`, {}],
   discard: () => ['/api/staged/discard', args[0] !== undefined ? { index: Number(args[0]) } : {}],
 };

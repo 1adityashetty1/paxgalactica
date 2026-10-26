@@ -85,7 +85,11 @@ describe('B1, B5 — a filter’s stamp is kept when it dropped nothing', () => 
 
   it('stamps a commitment with its ruled mechanism', () => {
     const op = { op: 'establish_commitment', kind: 'free_port', factionIds: ['meridian'], text: 'A free port.', incomePerTurn: 60 };
-    expect(holdToRuling([op], bounds).ops).toEqual([{ ...op, mechanism: 'record' }]);
+    // A ruled income is stamped; a record on its own is no longer recorded from
+    // a declaration at all (loop 15).
+    const income = { ...bounds, establishes: { kind: 'free_port', mechanism: 'income' } };
+    expect(holdToRuling([op], income).ops).toEqual([{ ...op, mechanism: 'income' }]);
+    expect(holdToRuling([op], bounds).ops).toEqual([]);
   });
 });
 

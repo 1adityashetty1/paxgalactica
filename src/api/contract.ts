@@ -625,6 +625,14 @@ export const AdvisorRequestSchema = z.object({
 
 export const TalkRequestSchema = z.object({
   text: z.string().min(1).max(2000),
+  /**
+   * Kinds of the player's OWN concessions to strike from the record before the
+   * other power answers. The player's side of the record is written by the
+   * other power's persona, and a persona strikes only what it chooses to: "we
+   * withdraw the cession" twice left the cession standing (playtest
+   * 2026-10-19, S2). This is the player's hand on their own side.
+   */
+  strike: z.array(z.string().min(1).max(40)).max(6).default([]),
 });
 
 /**
@@ -760,6 +768,8 @@ export const ExportResultSchema = z.object({
  */
 export const AdvisorOutcomeSchema = z.object({
   counsel: z.string(),
+  /** The one act the counsellor would take, when it names one. */
+  recommendation: z.string().nullable().default(null),
   /** Who is speaking, and to whom — the panel says both. */
   speaker: z.string(),
   title: z.string(),

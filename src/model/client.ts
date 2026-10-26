@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ModelCallError, NotLoggedInError, SpendCapError } from './errors.js';
+import { ModelCallError, NotLoggedInError, SpendCapError, UsageLimitError } from './errors.js';
 import { activeProvider, type AttemptMetrics } from './provider.js';
 import type { CallKind } from './router.js';
 import { spendCap } from './settings.js';
@@ -12,7 +12,7 @@ import {
   type CallOutcome,
 } from './telemetry.js';
 
-export { ModelCallError, NotLoggedInError, SpendCapError } from './errors.js';
+export { ModelCallError, NotLoggedInError, SpendCapError, UsageLimitError } from './errors.js';
 export { CALL_TIMEOUT_MS } from './provider.js';
 
 /**
@@ -40,6 +40,12 @@ export interface StructuredCall<T> {
   maxRetries?: number;
   /** Label used in error messages and the debug log. */
   label?: string;
+  /**
+   * A last lenient pass for this call kind, tried only when the reply still
+   * fails after the generic ones: reshapes a known near-miss into the schema
+   * rather than spending a retry on it. Recorded on the trace as `call`.
+   */
+  lenient?: (value: unknown) => unknown;
 }
 
 export interface StructuredResult<T> {
@@ -452,7 +458,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
             : 'transport_error',
         schemaMiss && metrics.sdkRejections?.length ? metrics.sdkRejections.at(-1) : message,
       );
-      if (err instanceof NotLoggedInError || err instanceof SpendCapError) throw err;
+      if (err instanceof NotLoggedInError || err instanceof SpendCapError || err instanceof UsageLimitError) throw err;
       lastError = err;
       stats.calls += 1;
       recordFailure(call.kind, label, message);
@@ -483,6 +489,13 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
           const hadNulls = JSON.stringify(unnulled) !== JSON.stringify(lastRaw);
           passes = [...(hadNulls ? ['nulls'] : []), ...trimmed.changed];
           if (!lenient.success) passes = [];
+        }
+      }
+      if (!lenient.success && call.lenient) {
+        const reshaped = call.schema.safeParse(call.lenient(unnulled));
+        if (reshaped.success) {
+          lenient = reshaped;
+          passes = ['call'];
         }
       }
       if (lenient.success) {

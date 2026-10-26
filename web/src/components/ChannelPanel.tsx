@@ -25,7 +25,7 @@ export function ChannelPanel({
   /** May be open server-side, or merely intended — the first message opens it. */
   factionId: string;
   busy: string | null;
-  onSend: (text: string) => void;
+  onSend: (text: string, strike: string[]) => void;
   onClose: () => void;
   /**
    * A line to put in the box, written by a button elsewhere — an offer to
@@ -35,6 +35,8 @@ export function ChannelPanel({
   seed?: { text: string; n: number } | null;
 }) {
   const [draft, setDraft] = useState('');
+  // Terms of the player's own marked for withdrawal with the next message (S2).
+  const [strikes, setStrikes] = useState<string[]>([]);
   useEffect(() => {
     if (seed) setDraft(seed.text);
   }, [seed?.n]);
@@ -110,7 +112,7 @@ export function ChannelPanel({
           {conceded.map((c, i) => (
             <p key={`${c.by}-${c.kind}-${i}`} className="channel-term">
               <span className="chip">{c.by === me ? 'you give' : 'they give'}</span>{' '}
-              {c.text}
+              <span style={strikes.includes(c.kind) ? { textDecoration: 'line-through' } : undefined}>{c.text}</span>
               {c.systems.length > 0 && (
                 <span className="muted"> · {c.systems.join(', ')}</span>
               )}
@@ -123,6 +125,20 @@ export function ChannelPanel({
                   {' '}· toll off {c.lifts.join(', ')}
                   {c.liftTurns ? ` for ${c.liftTurns} turns` : ''}
                 </span>
+              )}
+              {c.by === me && !strikes.includes(c.kind) && (
+                <button
+                  type="button"
+                  className="chip"
+                  title="Withdraw this term: it comes off the record with your next message."
+                  disabled={!!busy}
+                  onClick={() => {
+                    setStrikes((s) => [...s, c.kind]);
+                    setDraft((d) => d || 'We withdraw that term.');
+                  }}
+                >
+                  withdraw
+                </button>
               )}
             </p>
           ))}
@@ -187,7 +203,8 @@ export function ChannelPanel({
           const text = draft.trim();
           if (!text || busy || full) return;
           setDraft('');
-          onSend(text);
+          onSend(text, strikes);
+          setStrikes([]);
         }}
       >
         <input

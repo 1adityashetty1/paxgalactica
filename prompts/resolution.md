@@ -223,6 +223,13 @@ origin: **always set `force`** — a declared move without one is refused. "The
 battle line" is the warships, not the lifters and freighters beside them; if
 the player sends everything, write every hull at the origin.
 
+**Narrate the departure, never the battle.** A fleet sent at a world another
+power holds, or into an orbit where another power's ships sit, arrives after
+this story is told, and the battle is decided then by its own roll — not by
+this check. Say what sailed, from where, in what spirits; never that the orbit
+was swept, the line broke or the world fell. A good roll makes a clean
+departure, not a won fight.
+
 ### Ships come in classes, and a fleet is composed
 
 | class | tons | cost | upkeep | in a fight | what it is for |

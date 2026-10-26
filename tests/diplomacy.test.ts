@@ -1006,6 +1006,7 @@ describe('an accord may only enact what was actually conceded', () => {
     assets: [],
     obligations: [],
     lifts: [],
+    about: [],
     ...over,
   });
 
@@ -1108,7 +1109,7 @@ describe('an accord may only enact what was actually conceded', () => {
 describe('the concession ledger', () => {
   const c = (over: Partial<Concession> = {}): Concession => ({
     by: 'ojjul', kind: 'hire_hulls', text: 'Twelve hulls at ten a turn.',
-    systems: [], credits: 0, perTurn: 10, hulls: 12, assets: [], obligations: [], lifts: [],
+    systems: [], credits: 0, perTurn: 10, hulls: 12, assets: [], obligations: [], lifts: [], about: [],
     ...over,
   });
 
@@ -1795,7 +1796,7 @@ describe('a thing sold under a treaty', () => {
     const conceded: Concession[] = [
       {
         by: 'ojjul', kind: 'asset_sale', text: 'The Ithaal assay, ninety, one payment.',
-        systems: [], credits: 0, perTurn: 0, hulls: 0, assets: ['ast-0-0'], obligations: [], lifts: [],
+        systems: [], credits: 0, perTurn: 0, hulls: 0, assets: ['ast-0-0'], obligations: [], lifts: [], about: [],
       },
     ];
     expect(groundInConcessions(s, [sale()], conceded, 'ojjul').ops).toHaveLength(1);

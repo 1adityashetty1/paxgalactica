@@ -7,7 +7,7 @@ import {
   type OpSource,
   type TurnReport,
 } from '../domain/reducer.js';
-import { WorldStateSchema, type OrderType, type WorldState } from '../domain/state.js';
+import { WorldStateSchema, getFaction, type OrderType, type WorldState } from '../domain/state.js';
 import { OP_PATHS_LIST, orderFor, type OpPath } from '../domain/ops.js';
 import { isPublicOrderType } from '../domain/intel.js';
 import { createSeedState } from '../seed/scenario.js';
@@ -363,6 +363,18 @@ export class Campaign {
     this.actionsDeclared += 1;
   }
 
+  /**
+   * Take back an attempt that had nothing to stand on: every batch staged from
+   * `from` goes, and the action point with it, as for an inadmissible ruling.
+   * Not a discard — the player did not choose it, and nothing of the attempt
+   * changed the world.
+   */
+  withdrawAttempt(from: number): void {
+    this.stagedBatches = this.stagedBatches.slice(0, from);
+    this.actionsDeclared = Math.max(0, this.actionsDeclared - 1);
+    this.resyncPreview();
+  }
+
   /** Every op declared but not yet landed, for picking who reacts. */
   stagedOps(): unknown[] {
     return this.stagedBatches.flatMap((b) => b.ops);
@@ -387,9 +399,18 @@ export class Campaign {
    */
   reactionBrief(): { summary: string; ops: unknown[] } {
     const acts = this.stagedBatches.filter((b) => b.source !== 'engine');
+    // A fleet sent at somebody else's world has not arrived when the turn's
+    // powers answer — battles settle in the tick, after them — so the story of
+    // how it went is not yet true. The Vigil answered "Torrek Anchorage lost in
+    // a single disciplined pass" to a story; the battle went the other way
+    // (playtest 2026-10-19, S3). Such a batch is told as what was sent.
     const summary = acts
       .filter((b) => !b.secret)
-      .map((b, i) => `${i + 1}. ${b.label}${b.narrative ? ` — ${b.narrative}` : ''}`)
+      .map((b, i) => {
+        const sent = sentAgainst(this.state, b.applied ?? b.ops);
+        const told = sent.length > 0 ? `${sent.join('; ')} (the outcome is decided when they arrive)` : b.narrative;
+        return `${i + 1}. ${b.label}${told ? ` — ${told}` : ''}`;
+      })
       .join('\n');
     // What LANDED decides who answers, not what was proposed: a refused op
     // reaches nobody (playtest 2026-10-18, D4).
@@ -779,4 +800,27 @@ function isPublicAct(op: unknown): boolean {
   // fleet movement it becomes.
   const o = orderFor(op) as { type?: unknown } | null;
   return o !== null && typeof o.type === 'string' && isPublicOrderType(o.type as OrderType);
+}
+
+/** Fleets a batch sends at a world its sender does not hold, said plainly. */
+function sentAgainst(state: WorldState, ops: readonly unknown[]): string[] {
+  const out: string[] = [];
+  for (const raw of ops) {
+    const o = raw as { op?: string; type?: string; factionId?: string; originId?: string; targetId?: string; force?: unknown } | null;
+    const isMove = o?.op === 'move' || (o?.op === 'issue_order' && o.type === 'fleet_movement');
+    if (!isMove || !o?.targetId) continue;
+    const target = state.systems.find((x) => x.id === o.targetId);
+    const origin = state.systems.find((x) => x.id === o.originId);
+    if (!target) continue;
+    const contested = target.controllerFactionId !== o.factionId || Object.keys(target.ships).some((f) => f !== o.factionId);
+    if (!contested) continue;
+    const force =
+      o.force === undefined
+        ? 'every hull there'
+        : typeof o.force === 'number'
+          ? `${o.force} hulls`
+          : Object.entries(o.force as Record<string, number>).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}${n === 1 ? '' : 's'}`).join(', ');
+    out.push(`${getFaction(state, o.factionId ?? '')?.name ?? o.factionId} sends ${force} from ${origin?.name ?? o.originId} to ${target.name}`);
+  }
+  return out;
 }

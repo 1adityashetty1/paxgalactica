@@ -127,6 +127,10 @@ and what is it now positioned to do. Where the dossier gives you a specific —
 a world taken, a debt outstanding, a treaty still standing, a fleet with no
 income to carry it — use it.
 
+A **refused** order never happened: the institutions said no and that was the
+end of it. Only an **overridden objection** is a leader forcing it through. Do
+not write a refusal as an order carried out over objections.
+
 Keep each faction sounding like itself. The Combine counts; the Vigil endures;
 Arkane refuses; Drajk moves on. Their character is in the seed you were given.
 
