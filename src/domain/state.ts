@@ -2921,3 +2921,21 @@ export function isContested(s: WorldState, systemId: string): boolean {
       o.factionId !== sys.controllerFactionId,
   );
 }
+
+/**
+ * Whether a fleet movement from `originId` to `targetId` lands at once: one
+ * jump, both worlds held by the mover, and nobody's ships over the target but
+ * its own and its guests'. A rival squatting there makes it a sweep, which is
+ * fought on arrival, so it sails.
+ */
+export function movesAtOnce(state: WorldState, factionId: string, originId: string, targetId: string): boolean {
+  if (originId === targetId) return false;
+  const origin = state.systems.find((x) => x.id === originId);
+  const target = state.systems.find((x) => x.id === targetId);
+  if (!origin || !target) return false;
+  if (origin.controllerFactionId !== factionId || target.controllerFactionId !== factionId) return false;
+  if (!buildAdjacency(state.systems).get(originId)?.has(targetId)) return false;
+  return !Object.keys(target.ships ?? {}).some(
+    (f) => f !== factionId && hullsAt(target, f) > 0 && !isGuestOf(state, f, factionId),
+  );
+}

@@ -464,11 +464,32 @@ export const PlayableFactionSchema = z.object({
   doctrine: z.string(),
 });
 
+/**
+ * What the title screen shows of a save without opening it: whose campaign,
+ * how far on, how long, and when it was last written. Read off the journal —
+ * the seed entry names the player and the length, and every tick is a turn.
+ */
+export const SaveSummarySchema = z.object({
+  name: z.string(),
+  playerFactionId: z.string().nullable(),
+  turn: z.number().int().min(0),
+  maxTurns: z.number().int().nullable(),
+  /** ISO time the save was last written, or null where the store keeps none. */
+  savedAt: z.string().nullable(),
+  finished: z.boolean(),
+});
+export type SaveSummary = z.infer<typeof SaveSummarySchema>;
+
 export const FactionListSchema = z.object({
   factions: z.array(PlayableFactionSchema),
   /** Saved campaigns available to resume. */
   saves: z.array(z.string()),
+  /** The same saves with whose, how far on and when, newest first. */
+  saveDetails: z.array(SaveSummarySchema).default([]),
 });
+
+export const DeleteSaveRequestSchema = z.object({ name: z.string().regex(/^[\w.-]+$/) });
+export const DeleteSaveResultSchema = z.object({ deleted: z.boolean(), saveDetails: z.array(SaveSummarySchema) });
 
 export const ChatReplySchema = z.object({
   reply: z.string(),
@@ -791,6 +812,7 @@ export const ROUTES = {
   exportCampaign: '/api/campaign/export',
   importCampaign: '/api/campaign/import',
   factions: '/api/factions',
+  deleteSave: '/api/saves/delete',
   action: '/api/action',
   advisor: '/api/advisor',
   endturn: '/api/endturn',

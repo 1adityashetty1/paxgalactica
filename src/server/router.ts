@@ -9,6 +9,7 @@ import {
   SettingsUpdateSchema,
   TalkRequestSchema,
   AdvisorRequestSchema,
+  DeleteSaveRequestSchema,
 } from '../api/contract.js';
 import type { KeyCheck } from '../model/provider.js';
 import type { KeyedProvider } from '../model/settings.js';
@@ -75,6 +76,10 @@ async function route(
 
   if (method === 'GET' && path === ROUTES.factions) {
     return ok(await session.factions());
+  }
+  if (method === 'POST' && path === ROUTES.deleteSave) {
+    const { name } = parseBody(DeleteSaveRequestSchema, body);
+    return ok(await session.deleteSave(name));
   }
 
   // Reads arrive as POST too: on the stateless transport every request carries
