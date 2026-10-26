@@ -99,6 +99,12 @@ export const SessionSnapshotSchema = z.object({
     .object({ turn: z.number().int(), counsel: z.string(), recommendation: z.string().nullable(), followed: z.string().nullable().default(null) })
     .nullable()
     .default(null),
+  /**
+   * What the leader has declared this turn and what came of each, for the
+   * counsellor: it could not see that an order had already been given this
+   * turn, and urged it again. Not world state; it ends with the turn.
+   */
+  thisTurn: z.object({ turn: z.number().int(), lines: z.array(z.string()) }).nullable().default(null),
 });
 export type SessionSnapshot = z.infer<typeof SessionSnapshotSchema>;
 
@@ -225,6 +231,13 @@ export class GameSession {
   /** Numbers declared actions within a turn, for the trace. Reset each turn. */
   private actionSeq = 0;
   private lastCounsel: { turn: number; counsel: string; recommendation: string | null; followed: string | null } | null = null;
+  private thisTurn: { turn: number; lines: string[] } | null = null;
+
+  /** One line on this turn's record, for the counsellor — see `SessionSnapshot.thisTurn`. */
+  private noteThisTurn(turn: number, line: string): void {
+    const lines = this.thisTurn?.turn === turn ? this.thisTurn.lines : [];
+    this.thisTurn = { turn, lines: [...lines, line].slice(-8) };
+  }
 
   /** Run a top-level phase of play inside a trace span. */
   private traced<T>(phase: string, work: () => Promise<T>, actionId?: string): Promise<T> {
@@ -391,6 +404,7 @@ export class GameSession {
       briefing: this.lastBriefing,
       actionSeq: this.actionSeq,
       lastCounsel: this.lastCounsel,
+      thisTurn: this.thisTurn,
     };
   }
 
@@ -403,6 +417,7 @@ export class GameSession {
     this.epilogue = this.campaign.epilogue;
     this.actionSeq = snapshot.actionSeq;
     this.lastCounsel = snapshot.lastCounsel ?? null;
+    this.thisTurn = snapshot.thisTurn ?? null;
   }
 
   /** The turn in progress, for a save archive. */
@@ -592,6 +607,7 @@ export class GameSession {
     if (this.lastCounsel && this.lastCounsel.followed === null) {
       this.lastCounsel = { ...this.lastCounsel, followed: `"${text.trim().slice(0, 200)}" — ${whatCameOf(outcome)}` };
     }
+    this.noteThisTurn(campaign.state.turn, `"${text.trim().slice(0, 200)}" — ${whatCameOf(outcome)}`);
     this.pushState();
     return {
       narrative: outcome.narrative,
@@ -647,7 +663,14 @@ export class GameSession {
     }
 
     const result = await this.traced('advisor', () =>
-      this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question, this.lastCounsel)),
+      this.exclusive('Consulting', () =>
+        askAdvisor(campaign.state, campaign.state.playerFactionId, question, this.lastCounsel, {
+          // The counsel itself spends one.
+          actionsLeft: campaign.actionPointsLeft - 1,
+          perTurn: ACTION_POINTS_PER_TURN,
+          declared: this.thisTurn?.turn === campaign.state.turn ? this.thisTurn.lines : [],
+        }),
+      ),
     );
     this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, recommendation: result.recommendation, followed: null };
     campaign.spendActionPoint();
@@ -955,6 +978,10 @@ export class GameSession {
       const name = campaign.state.factions.find((f) => f.id === factionId)?.name ?? factionId;
       const talks = `Talks with ${name} then: ${outcome.narrative.trim().slice(0, 400)}`;
       this.lastCounsel = { ...this.lastCounsel, followed: this.lastCounsel.followed ? `${this.lastCounsel.followed}. ${talks}` : talks };
+    }
+    {
+      const name = campaign.state.factions.find((f) => f.id === factionId)?.name ?? factionId;
+      this.noteThisTurn(campaign.state.turn, `Talks with ${name}: ${outcome.refusal ? `refused by ${outcome.refusal.by}` : outcome.narrative.trim().slice(0, 300)}`);
     }
     this.pushState();
 

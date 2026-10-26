@@ -8438,6 +8438,18 @@ gets back the answer it already gave, which is the confirmation bias
 and code does lookups. One marker is not enough to fire, because a single dash
 mid-sentence is ordinary speech and rejecting it would cost a retry every time.
 
+**It is told what it can do and what has been done.** Two computed blocks sit
+beside `paperOf`. **This turn so far** lists each declaration and talk this
+turn and what came of it (`SessionSnapshot.thisTurn`, recorded by the session,
+not world state), and how many actions are left after the counsel. **What your
+power can do** (`capabilitiesOf`, `src/domain/capabilities.ts`) states the
+yards' berths and what the treasury pays for, the fixture slots free on each
+held world and the kinds its ground takes, operative slots and who is free to
+send or on the Lists, officers in post and where they stand, where fleets and
+lift stand, and the unaligned worlds in reach. Its commonest bad
+recommendation in the playtest loops was an act with no means behind it, and
+each of these is arithmetic the engine already does.
+
 `AdvisorReplySchema` had **one field and no second one**, and that was the other
 half. It now carries an optional `recommendation`: one sentence naming a single
 act, held to the same guards and refused as a sequence ("then", a list). The

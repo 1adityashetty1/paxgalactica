@@ -48,6 +48,7 @@ import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import { paperOf, pressuresOn } from '../domain/pressures.js';
+import { capabilitiesOf } from '../domain/capabilities.js';
 import { ACT_WORDS } from '../domain/acts.js';
 import { lineCrossable } from '../domain/line-reach.js';
 import {
@@ -1633,6 +1634,8 @@ export async function askAdvisor(
   question?: string,
   /** What the counsellor said last time, so a change of course is said and explained. */
   last?: { turn: number; counsel: string; recommendation: string | null; followed?: string | null } | null,
+  /** The turn so far: the actions left after this counsel, and what was declared and came of it. */
+  turnSoFar?: { actionsLeft: number; perTurn: number; declared: string[] },
 ): Promise<{ counsel: string; recommendation: string | null; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
@@ -1669,6 +1672,28 @@ export async function askAdvisor(
       ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : ['- Nothing massing against you, and no rival in any orbit you hold.']),
       '',
       'Weigh these first: they are the facts most likely to decide the next turns. Anything else you raise must be in the state block below.',
+      '',
+      ...(turnSoFar
+        ? [
+            '## This turn so far (true)',
+            '',
+            ...(turnSoFar.declared.length > 0
+              ? [
+                  ...turnSoFar.declared.map((d) => `- ${d}`),
+                  '',
+                  'These are done or settled for this turn, and what landed is already on the board below. Do not urge any of them again.',
+                ]
+              : ['- Nothing declared yet this turn.']),
+            '',
+            `After this counsel your leader has ${turnSoFar.actionsLeft} of ${turnSoFar.perTurn} actions left this turn.${turnSoFar.actionsLeft === 0 ? ' Nothing more can be ordered until the turn ends: say what to watch, not what to do.' : ''}`,
+            '',
+          ]
+        : []),
+      '## What your power can do (computed; complete)',
+      '',
+      ...capabilitiesOf(state, viewerId).map((c) => `- ${c}`),
+      '',
+      'Recommend nothing these do not allow: no works where none of yours stands, no landing without lift, no operative without one free or a slot to recruit into.',
       '',
       '## Your paper (computed; complete — what is not listed does not exist)',
       '',
