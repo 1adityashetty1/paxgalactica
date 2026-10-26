@@ -662,7 +662,7 @@ export async function resolveAction(
     const wrong =
       priced.appraisal.ground.kind === 'already_so' && standingOrder(action)
         ? null
-        : (checkGround(state, state.playerFactionId, priced.appraisal.ground) ?? sendingIsTheAct(state, action, priced.appraisal.ground));
+        : (checkGround(state, state.playerFactionId, priced.appraisal.ground, action) ?? sendingIsTheAct(state, action, priced.appraisal.ground));
     if (wrong) {
       const again = await appraiseAction(state, action, undefined, {
         note: [
@@ -679,7 +679,7 @@ export async function resolveAction(
       };
       const still =
         !priced.appraisal.admissible && priced.appraisal.ground
-          ? (checkGround(state, state.playerFactionId, priced.appraisal.ground) ??
+          ? (checkGround(state, state.playerFactionId, priced.appraisal.ground, action) ??
             sendingIsTheAct(state, action, priced.appraisal.ground))
           : null;
       if (still) {

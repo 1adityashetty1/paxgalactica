@@ -35,7 +35,8 @@ import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { battleHistory, controlHistory, overrulings } from './journal.js';
-import { holdToRuling, noPaymentBesideAGift, type RulingBounds } from '../domain/refusals.js';
+import { holdToRuling, noPaymentBesideAGift,
+  organisingIsFree, type RulingBounds } from '../domain/refusals.js';
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
 import { isMovementType } from '../domain/state.js';
@@ -939,6 +940,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.output.groundwork ?? [],
   );
 
+  const organising = organisingIsFree(routed.ops);
+  if (organising.dropped) {
+    routed.ops = organising.ops;
+    routed.notes.push('Organising your own fleets costs nothing: the charge written beside it is left out.');
+  }
   const inKind = noPaymentBesideAGift(routed.ops, campaign.state.debts);
   if (inKind.dropped) {
     routed.ops = inKind.ops;

@@ -1,7 +1,9 @@
 import { familyOf, resolvePerson } from './command.js';
 import { SWAY_BY_BAND } from './acts.js';
 import type { Reach, RefusalGround } from './ops.js';
-import { hullsAt, type WorldState } from './state.js';
+import { hullsAt, isMovementType, type WorldState } from './state.js';
+import { fleetName, resolveFleet } from './fleets.js';
+import { hullsIn } from './hulls.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -361,7 +363,7 @@ export function ownOperativeNamed(
  * is wrong with it. A model names the fact; code looks it up — the split
  * `classifyPrinciple` makes for breaches.
  */
-export function checkGround(state: WorldState, actor: string, ground: RefusalGround): string | null {
+export function checkGround(state: WorldState, actor: string, ground: RefusalGround, action = ''): string | null {
   const lower = (x: string) => x.toLowerCase();
   switch (ground.kind) {
     case 'no_such_entity': {
@@ -383,6 +385,13 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
           return state.factions.find((f) => f.id === name || lower(f.name).includes(lower(name)))?.name ?? null;
         }
         const words = lower(name).split(/[^a-z]+/).filter((w) => w.length > 3);
+        // A fleet is a thing on the board too, standing or under way.
+        const fleets = [
+          ...state.systems.flatMap((x) => x.fleets ?? []),
+          ...state.pendingOrders.flatMap((o) => (o.fleet ? [{ ...o.fleet, factionId: o.factionId }] : [])),
+        ];
+        const fleet = resolveFleet(fleets, name);
+        if (fleet) return fleetName(fleet.factionId, fleet);
         return (
           (state.assets ?? []).find(
             (a) => a.id === name || (words.length > 0 && words.every((w) => lower(a.text).includes(w))),
@@ -423,6 +432,23 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
     }
     case 'already_so': {
       const id = ground.ref;
+      // A fleet existing does not make a move of it done.
+      if (state.systems.some((x) => (x.fleets ?? []).some((f) => f.id === id))) {
+        return `"${id}" is a fleet standing where it is; that it exists does not make the order already so.`;
+      }
+      // A voyage under way makes a move already so only if it is the actor's,
+      // carries ships, and is the fleet the order names — an officer's passage
+      // or another fleet's voyage is not this fleet's (bughunt 2026-10-26).
+      const voyage = state.pendingOrders.find((o) => o.id === id && isMovementType(o.type));
+      if (voyage) {
+        if (voyage.factionId !== actor) return `"${id}" is another power's order, not this one.`;
+        if (hullsIn(voyage.force) === 0) return `"${id}" is an officer travelling alone; it carries no fleet, so no move of one is already under way.`;
+        const mine = state.systems.flatMap((x) => (x.fleets ?? []).filter((f) => f.factionId === actor));
+        const named = mine.find((f) => lower(action).includes(lower(fleetName(actor, f))));
+        if (named && voyage.fleet?.id !== named.id) {
+          return `"${id}" is ${voyage.fleet ? fleetName(actor, voyage.fleet) : 'another voyage'}, not ${fleetName(actor, named)}, which stands at ${state.systems.find((x) => (x.fleets ?? []).includes(named))?.name} with no order.`;
+        }
+      }
       const exists = [
         state.treaties,
         state.commitments,
@@ -467,5 +493,24 @@ export function noPaymentBesideAGift(
     const creditor = debts.find((d) => d.id === t.debtId)?.creditorFactionId;
     return !(creditor && givenTo.has(creditor));
   });
+  return { ops: kept, dropped: kept.length !== ops.length };
+}
+
+/** The ops that organise a power's own fleets — free, and touching nobody. */
+const ORGANISING = new Set(['rename_fleet', 'split_fleet', 'merge_fleets', 'assign_command', 'relieve_command']);
+
+/**
+ * Organising your own fleets costs nothing, whatever the roll. Declared in
+ * words, a merge was rolled, came out a partial, and resolution billed 40
+ * credits of "overtime" beside it (bughunt 2026-10-26) — while the same merge
+ * from the Fleets tab is free. A declaration whose acts are all organising has
+ * any payment beside it left out.
+ */
+export function organisingIsFree(ops: readonly unknown[]): { ops: unknown[]; dropped: boolean } {
+  const kinds = ops.map((o) => (o as { op?: string }).op ?? '');
+  const acts = kinds.filter((k) => k !== 'log_narrative');
+  if (acts.length === 0 || !acts.some((k) => ORGANISING.has(k))) return { ops: [...ops], dropped: false };
+  if (!acts.every((k) => ORGANISING.has(k) || k === 'spend' || k === 'pay')) return { ops: [...ops], dropped: false };
+  const kept = ops.filter((o) => !['spend', 'pay'].includes((o as { op?: string }).op ?? ''));
   return { ops: kept, dropped: kept.length !== ops.length };
 }

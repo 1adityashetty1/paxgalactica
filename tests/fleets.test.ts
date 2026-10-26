@@ -273,3 +273,53 @@ describe('a fleet commander', () => {
     expect(led.join(' ')).not.toMatch(/Sorel/);
   });
 });
+
+describe('a refusal about fleets', () => {
+  it('cannot rest on a fleet existing, or on an officer travelling alone', async () => {
+    const { checkGround } = await import('../src/domain/refusals.js');
+    const s = createSeedState('meridian');
+    expect(checkGround(s, 'meridian', { kind: 'already_so', ref: 'flt-meridian-3', reason: '' } as never, 'Move Operating Group 3 to Sekkar Gate.')).toMatch(/does not make the order already so/);
+    const sent = apply(s, [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'tor-1' }]).state;
+    const passage = sent.pendingOrders.at(-1)!.id;
+    expect(checkGround(sent, 'meridian', { kind: 'already_so', ref: passage, reason: '' } as never, 'Move Operating Group 2 to Corvid.')).toMatch(/officer travelling alone/);
+    expect(checkGround(s, 'meridian', { kind: 'no_such_entity', entity: 'thing', name: '3rd Pack', reason: '' } as never)).toMatch(/does exist: 3rd Pack/);
+  });
+});
+
+describe('a recall', () => {
+  it('brings the fleet home, and a move of it to where it now stands is dropped, not sailed', () => {
+    const { state } = apply(createSeedState('meridian'), [{ op: 'move', factionId: 'meridian', fleet: '1', targetId: 'sek-4' }]);
+    const orderId = state.pendingOrders.at(-1)!.id;
+    const out = apply(state, [
+      { op: 'cancel_order', orderId },
+      { op: 'move', factionId: 'meridian', fleet: 'Operating Group 1', targetId: 'sek-1' },
+    ]);
+    expect(out.state.pendingOrders.some((o) => o.factionId === 'meridian')).toBe(false);
+    expect(names(out.state, 'sek-1')).toEqual(['Operating Group 1']);
+    expect(out.notes.join(' ')).toMatch(/already at Sekkar Gate/);
+  });
+});
+
+describe('organising, declared in words', () => {
+  it('has any charge beside it left out', async () => {
+    const { organisingIsFree } = await import('../src/domain/refusals.js');
+    const merged = organisingIsFree([
+      { op: 'merge_fleets', factionId: 'meridian', into: '3', from: ['5'] },
+      { op: 'spend', factionId: 'meridian', amount: 40, for: 'overtime' },
+      { op: 'log_narrative', text: 'x' },
+    ]);
+    expect(merged.dropped).toBe(true);
+    expect(merged.ops.map((o) => (o as { op: string }).op)).toEqual(['merge_fleets', 'log_narrative']);
+    // Beside a real act the charge is that act's, and stays.
+    expect(organisingIsFree([{ op: 'merge_fleets' }, { op: 'build_ships' }, { op: 'spend' }]).dropped).toBe(false);
+  });
+});
+
+describe('holding position', () => {
+  it('needs no order: a move onto a world the mover holds is dropped', () => {
+    const out = applyOps(createSeedState('meridian'), [{ op: 'move', factionId: 'vigil', originId: 'tor-3', targetId: 'tor-3', force: 2 }], 'model', 'vigil', true, {}, 'reaction');
+    expect(out.rejections).toEqual([]);
+    expect(out.state.pendingOrders.some((o) => o.factionId === 'vigil')).toBe(false);
+    expect(out.notes.join(' ')).toMatch(/holds Vantic already/);
+  });
+});

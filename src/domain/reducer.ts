@@ -4074,6 +4074,18 @@ function applyOpsUnderRules(
     // world is the origin and its hulls the force, whatever else was written.
     let sailing: FleetTag | null = null;
     let sailingWholePort = false;
+    // A move from a world onto itself, where the mover already holds it, is a
+    // "hold position" written as a move: as an order it sails a turn and lands
+    // where it started. Dropped with a note. Only where the campaign keeps
+    // fleets (journal version 31), so an older journal replays as played, and
+    // only for a batch a writer sent — a board built by hand is left as built.
+    if (path !== undefined && op.op === 'issue_order' && isMovementType(op.type) && op.fleet === undefined && op.originId === op.targetId) {
+      const here = getSystem(state, op.originId);
+      if (here && fleetMode(here) && here.controllerFactionId === op.factionId) {
+        notes.push(`${nameFor(state, op.factionId)} holds ${here.name} already; ships staying put need no order.`);
+        continue;
+      }
+    }
     if (op.op === 'issue_order' && op.fleet !== undefined) {
       if (!isMovementType(op.type)) {
         reject(raw, 'illegal_value', 'Only a fleet movement names a fleet.');
@@ -4082,6 +4094,14 @@ function applyOpsUnderRules(
       const found = findFleet(state, op.factionId, op.fleet);
       if (typeof found === 'string') {
         reject(raw, 'illegal_value', found);
+        continue;
+      }
+      // Already there, on its own ground: nothing to do. A recall writes this
+      // beside the `cancel_order` that has already brought the fleet home, and
+      // as an order it would sit a turn doing nothing (bughunt 2026-10-26).
+      if (found.system.id === op.targetId && found.system.controllerFactionId === op.factionId) {
+        const note = `${fleetName(op.factionId, found.fleet)} is already at ${found.system.name}; no move is needed.`;
+        notes.push(note);
         continue;
       }
       const whole = Object.fromEntries(HULL_CLASSES.map((h) => [h, found.fleet.stack[h] ?? 0])) as Required<ShipStack>;
@@ -6947,7 +6967,8 @@ function applyOpsUnderRules(
           visibility: [...new Set(op.visibility.filter(factionExists))],
           // A fleet's name goes on its voyage, so every reader of the label —
           // the briefing, the log, the map — says which fleet it is.
-          label: departing && !departing.detached
+          // Unless the label already says which fleet it is.
+          label: departing && !departing.detached && !(op.label ?? '').toLowerCase().includes(fleetName(op.factionId, departing).toLowerCase())
             ? `${fleetName(op.factionId, departing)}: ${op.label || filedType.replace(/_/g, ' ')}`
             : op.label || filedType.replace(/_/g, ' '),
           durationRationale: rationale,
@@ -13287,7 +13308,9 @@ function resolveBattle(
   /** Each side's fleets by name, for the report — filled as the sides are drawn up. */
   const fleetNames = new Map<string, string[]>();
   for (const [id, shares] of contributors) {
-    const named = shares.filter((x) => x.tag).map((x) => fleetName(id, x.tag!));
+    // A detachment is ships sent without a fleet named: it is said as what it
+    // is, not by the number it carries until it rejoins a fleet.
+    const named = shares.filter((x) => x.tag).map((x) => (x.tag!.detached ? 'a detachment' : fleetName(id, x.tag!)));
     if (named.length > 0) fleetNames.set(id, [...new Set(named)]);
   }
   const sideOf = (now: Map<string, ShipStack>, was: Map<string, ShipStack>): Contingent[] =>
