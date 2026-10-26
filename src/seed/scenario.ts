@@ -1,3 +1,4 @@
+import { fleetIdFor, settleFleets } from '../domain/fleets.js';
 import { seedRegard } from '../domain/regard.js';
 import { seedEstates } from '../domain/estates.js';
 import { stockAgentLists, stockOfficerLists, withNameStock } from '../domain/command.js';
@@ -22,6 +23,7 @@ import { luckFavouring, type RimLuck } from '../domain/events.js';
 import {
   HULL_SPEC,
   normaliseStack,
+  hullsIn,
   type HullClass,
   type ShipStack,
 } from '../domain/hulls.js';
@@ -1009,6 +1011,8 @@ function buildSeedState(
    * version 22.
    * `lineActs: false` tags no line with the acts it forbids, and keeps the
    * wording each line had before it was reworded, as before version 27.
+   * `fleets: false` keeps no fleets: ships are bare counts on each world, as
+   * before version 31.
    */
   {
     fourSchools = true,
@@ -1023,6 +1027,7 @@ function buildSeedState(
     officerLists = true,
     agentLists = true,
     lineActs = true,
+    fleets = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -1037,6 +1042,7 @@ function buildSeedState(
     agentLists?: boolean;
     widerNames?: boolean;
     lineActs?: boolean;
+    fleets?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -1500,6 +1506,25 @@ function buildSeedState(
   if (officerLists) stockOfficerLists(state);
   // Three operatives waiting on every power's Lists, to recruit.
   if (agentLists) stockAgentLists(state);
+  // Every power's opening ships, as fleets: one at each world it has ships at,
+  // numbered from its best world down, so its 1st is the fleet it leads with.
+  if (fleets) raiseOpeningFleets(state);
 
   return WorldStateSchema.parse(state);
+}
+
+/** The opening board's ships, organised into fleets — see `fleets.ts`. */
+function raiseOpeningFleets(state: WorldState): void {
+  const order = [...state.systems].sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id));
+  const next = new Map<string, number>();
+  for (const system of state.systems) system.fleets = [];
+  for (const system of order) {
+    for (const [factionId, stack] of Object.entries(system.ships)) {
+      if (hullsIn(stack) === 0) continue;
+      const number = (next.get(factionId) ?? 0) + 1;
+      next.set(factionId, number);
+      system.fleets!.push({ id: fleetIdFor(factionId, number), factionId, number, name: null, stack: normaliseStack(stack) });
+    }
+  }
+  settleFleets(state);
 }

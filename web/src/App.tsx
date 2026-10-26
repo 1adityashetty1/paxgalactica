@@ -434,6 +434,7 @@ export function App() {
             onTalk={setDraftChannel}
             onDraft={draft}
             onOffer={offer}
+            onOrganise={game.organise}
             activeChannel={activeChannel}
           />
         </div>

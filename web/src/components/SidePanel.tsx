@@ -2,6 +2,9 @@ import { WorldSprite, worldTypeLabel } from './WorldSprite.js';
 import { useMemo, useState, type ReactNode } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
+import { fleetName, fleetsAt } from '../../../src/domain/fleets.js';
+import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
+import type { OrganiseRequest } from '../../../src/api/contract.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
@@ -160,6 +163,7 @@ export function SidePanel({
   onTalk,
   onDraft,
   onOffer,
+  onOrganise,
   activeChannel,
 }: {
   state: WorldState;
@@ -176,6 +180,8 @@ export function SidePanel({
    * other side's consent — a sale, a ransom — which a declaration cannot do.
    */
   onOffer: (factionId: string, text: string) => void;
+  /** Rename, split or merge a fleet of the player's — see `fleets.ts`. */
+  onOrganise: (request: OrganiseRequest) => void;
   activeChannel: string | null;
 }) {
   const [tab, setTab] = useState<Tab>('factions');
@@ -217,7 +223,7 @@ export function SidePanel({
             holding={effective.holding}
           />
         )}
-        {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
+        {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} onDraft={onDraft} onOrganise={onOrganise} />}
         {tab === 'commanders' && (
           <Command state={state} onDraft={onDraft} onOffer={onOffer} activeChannel={activeChannel} />
         )}
@@ -564,6 +570,17 @@ function SystemTab({
               <span style={{ color: colourOf(state, id) }}>{getFaction(state, id)?.name ?? id}</span>
               <span className="count">{n}</span>
               <OfficersIn list={officersHere.filter((c) => c.factionId === id)} colour={colourOf(state, id)} />
+              {fleetsAt(sys, id).filter((f) => f.number > 0).length > 0 && (
+                <div className="fleets-here">
+                  {fleetsAt(sys, id)
+                    .filter((f) => f.number > 0)
+                    .map((f) => (
+                      <span key={f.id} className="fleet-here" title={describeStack(f.stack)}>
+                        {fleetName(id, f)} <span className="muted">({hullsIn(f.stack)})</span>
+                      </span>
+                    ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>

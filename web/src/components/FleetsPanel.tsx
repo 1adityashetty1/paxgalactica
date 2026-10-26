@@ -11,6 +11,10 @@ import { ansi256ToHex } from '../color.js';
 import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
 import { CommanderIcon, StackGlyphs } from './BattleIcons.js';
 import { archetypeOf, veterancyLabel } from '../../../src/domain/command.js';
+import { fleetName, fleetsAt, type Fleet } from '../../../src/domain/fleets.js';
+import { HULL_CLASSES, HULL_SPEC, type HullClass } from '../../../src/domain/hulls.js';
+import type { OrganiseRequest } from '../../../src/api/contract.js';
+import { useState } from 'react';
 
 /**
  * Officers, drawn as a hull class is — an icon and a count — with every name,
@@ -47,9 +51,15 @@ function Officers({ state, ids }: { state: WorldState; ids: string[] }) {
 export function FleetsPanel({
   state,
   onSelect,
+  onDraft,
+  onOrganise,
 }: {
   state: WorldState;
   onSelect: (systemId: string) => void;
+  /** Puts an order on the command line: moving a fleet is a declaration. */
+  onDraft: (text: string) => void;
+  /** Rename, split or merge — free, and staged with the turn. */
+  onOrganise: (request: OrganiseRequest) => void;
 }) {
   const me = state.playerFactionId;
   const colorOf = (id: string) => {
@@ -77,8 +87,49 @@ export function FleetsPanel({
     (o) => o.type === 'fleet_movement' && hullsIn(o.force) > 0,
   );
 
+  const mine = state.systems.flatMap((system) => fleetsAt(system, me).filter((f) => f.number > 0).map((fleet) => ({ fleet, system })));
+  const mineUnderWay = state.pendingOrders.filter((o) => o.factionId === me && o.fleet && !o.fleet.detached);
+
   return (
     <div className="fleet-panel">
+      {(mine.length > 0 || mineUnderWay.length > 0) && (
+        <>
+          <h4>
+            Your fleets <span className="muted">({mine.length + mineUnderWay.length})</span>
+          </h4>
+          <p className="hint">
+            Move one by name. Renaming, splitting and merging are free and land with the turn.
+          </p>
+          <ul className="fleet-list">
+            {mine.map(({ fleet, system }) => (
+              <OwnFleet
+                key={fleet.id}
+                state={state}
+                fleet={fleet}
+                system={system}
+                others={mine.filter((x) => x.system === system && x.fleet !== fleet).map((x) => x.fleet)}
+                onSelect={onSelect}
+                onDraft={onDraft}
+                onOrganise={onOrganise}
+              />
+            ))}
+            {mineUnderWay.map((o) => (
+              <li key={o.id} className="fleet-row own-fleet">
+                <strong>{fleetName(me, o.fleet!)}</strong>
+                <span className="muted">
+                  {' '}
+                  under way → {state.systems.find((s) => s.id === o.targetId)?.name ?? o.targetId} ·{' '}
+                  {Math.max(0, o.durationTurns - o.progress)} turn{o.durationTurns - o.progress === 1 ? '' : 's'}
+                </span>
+                <div className="crews">
+                  <StackGlyphs stack={o.force} size={12} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
       <div className="fleet-totals">
         {state.factions.map((f) => {
           const transit = shipsInTransit(state, f.id);
@@ -165,6 +216,7 @@ export function FleetsPanel({
           {inTransit.map((o) => (
             <li key={o.id} className="fleet-row">
               <span style={{ color: colorOf(o.factionId) }} title={describeStack(o.force)}>
+                {o.fleet && !o.fleet.detached && <span className="fleet-tag">{fleetName(o.factionId, o.fleet)} </span>}
                 <StackGlyphs stack={o.force} />
                 <Officers state={state} ids={o.officers ?? []} />
               </span>
@@ -218,9 +270,11 @@ function Row({
             key={id}
             className={id === me ? 'crew mine' : 'crew'}
             style={{ color: colorOf(id) }}
-            title={`${nameOf(id)} — ${describeStack(stackAt(system, id))}${
-              id === holder ? ' (holds this world)' : ' (present, does not hold it)'
-            }`}
+            title={`${nameOf(id)} — ${
+              fleetsAt(system, id).filter((f) => f.number > 0).length > 0
+                ? fleetsAt(system, id).filter((f) => f.number > 0).map((f) => `${fleetName(id, f)}: ${describeStack(f.stack)}`).join('; ')
+                : describeStack(stackAt(system, id))
+            }${id === holder ? ' (holds this world)' : ' (present, does not hold it)'}`}
           >
             {/* Total first, because that is what the eye counts down the
                 column; the composition follows it, because a squadron of
@@ -240,6 +294,116 @@ function Row({
           </span>
         ))}
       </div>
+    </li>
+  );
+}
+
+/**
+ * One of the player's fleets: where it stands and what it holds, with the
+ * three things done to a fleet — move it (a declaration, so it goes on the
+ * command line), and rename, split or merge it (free, staged with the turn).
+ */
+function OwnFleet({
+  state,
+  fleet,
+  system,
+  others,
+  onSelect,
+  onDraft,
+  onOrganise,
+}: {
+  state: WorldState;
+  fleet: Fleet;
+  system: WorldState['systems'][number];
+  others: Fleet[];
+  onSelect: (systemId: string) => void;
+  onDraft: (text: string) => void;
+  onOrganise: (request: OrganiseRequest) => void;
+}) {
+  const me = state.playerFactionId;
+  const name = fleetName(me, fleet);
+  const [mode, setMode] = useState<'idle' | 'rename' | 'split'>('idle');
+  const [newName, setNewName] = useState(fleet.name ?? '');
+  const [split, setSplit] = useState<Partial<Record<HullClass, number>>>({});
+  const classes = HULL_CLASSES.filter((h) => (fleet.stack[h] ?? 0) > 0);
+  const officers = (state.commanders ?? [])
+    .filter((c) => c.status === 'active' && c.factionId === me && c.atSystemId === system.id)
+    .map((c) => c.id);
+
+  return (
+    <li className="fleet-row own-fleet">
+      <strong>{name}</strong>{' '}
+      <button className="linkish" onClick={() => onSelect(system.id)}>
+        at {system.name}
+      </button>
+      <div className="crews">
+        <StackGlyphs stack={fleet.stack} size={12} />
+        <Officers state={state} ids={officers} />
+      </div>
+      <div className="fleet-actions">
+        <button className="chip" onClick={() => onDraft(`Move ${name} to `)} title="Write the order on the command line">
+          move
+        </button>
+        <button className={mode === 'rename' ? 'chip on' : 'chip'} onClick={() => setMode(mode === 'rename' ? 'idle' : 'rename')}>
+          rename
+        </button>
+        {hullsIn(fleet.stack) > 1 && (
+          <button className={mode === 'split' ? 'chip on' : 'chip'} onClick={() => setMode(mode === 'split' ? 'idle' : 'split')}>
+            split
+          </button>
+        )}
+        {others.map((o) => (
+          <button
+            key={o.id}
+            className="chip"
+            onClick={() => onOrganise({ op: 'merge_fleets', into: o.id, from: [fleet.id] })}
+            title={`Fold ${name} into ${fleetName(me, o)}, here at ${system.name}`}
+          >
+            merge into {fleetName(me, o)}
+          </button>
+        ))}
+      </div>
+      {mode === 'rename' && (
+        <form
+          className="fleet-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onOrganise({ op: 'rename_fleet', fleet: fleet.id, name: newName });
+            setMode('idle');
+          }}
+        >
+          <input value={newName} maxLength={60} placeholder={fleetName(me, { number: fleet.number, name: null })} onChange={(e) => setNewName(e.target.value)} aria-label="Fleet name" />
+          <button type="submit" className="chip">save</button>
+        </form>
+      )}
+      {mode === 'split' && (
+        <form
+          className="fleet-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onOrganise({ op: 'split_fleet', fleet: fleet.id, force: split });
+            setSplit({});
+            setMode('idle');
+          }}
+        >
+          {classes.map((h) => (
+            <label key={h} className="split-class">
+              {HULL_SPEC[h].label}
+              <input
+                type="number"
+                min={0}
+                max={fleet.stack[h] ?? 0}
+                value={split[h] ?? 0}
+                onChange={(e) => setSplit((v) => ({ ...v, [h]: Math.max(0, Math.min(fleet.stack[h] ?? 0, Number(e.target.value) || 0)) }))}
+              />
+              <span className="muted">/ {fleet.stack[h]}</span>
+            </label>
+          ))}
+          <button type="submit" className="chip" disabled={hullsIn(split) === 0 || hullsIn(split) === hullsIn(fleet.stack)}>
+            split off
+          </button>
+        </form>
+      )}
     </li>
   );
 }

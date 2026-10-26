@@ -10,6 +10,7 @@ import {
   TalkRequestSchema,
   AdvisorRequestSchema,
   DeleteSaveRequestSchema,
+  OrganiseRequestSchema,
 } from '../api/contract.js';
 import type { KeyCheck } from '../model/provider.js';
 import type { KeyedProvider } from '../model/settings.js';
@@ -129,6 +130,10 @@ async function route(
 
   if (method === 'POST' && path === ROUTES.cheat) {
     return ok(await session.cheat(parseBody(CheatRequestSchema, body)));
+  }
+
+  if (method === 'POST' && path === ROUTES.organise) {
+    return ok(await session.organise(parseBody(OrganiseRequestSchema, body)));
   }
 
   if (method === 'POST' && path === ROUTES.discardStaged) {

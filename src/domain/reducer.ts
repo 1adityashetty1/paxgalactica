@@ -1,3 +1,4 @@
+import { adoptIndex, fleetIdFor, fleetMode, fleetName, fleetsAt, lowestFree, numbersInUse, resolveFleet, settleFleets, withFleet, type Fleet, type FleetTag } from './fleets.js';
 import {
   FIB_BUCKETS,
   MAX_DURATION,
@@ -3538,7 +3539,7 @@ export function applyOps(
   actOpIndex = -1;
   try {
     const out = withNameStock(legacy.widerNames ?? true, () =>
-      applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy, path),
+      applyOpsUnderRules(adopted(input), rawOps, source, actor, atomic, legacy, path),
     );
     // A batch held back did nothing, so it committed nothing.
     return { ...out, acts: atomic && out.rejections.length > 0 ? [] : acts };
@@ -4049,7 +4050,7 @@ function applyOpsUnderRules(
           continue;
         }
       }
-      if (declaredMovesNameForce && path === 'declared' && op.op === 'move' && op.force === undefined) {
+      if (declaredMovesNameForce && path === 'declared' && op.op === 'move' && op.force === undefined && op.fleet === undefined) {
         reject(raw, 'illegal_value', 'A declared move names what sails: give `force` — the classes and counts the player sent, or every hull at the origin if they sent everything.');
         continue;
       }
@@ -4068,7 +4069,84 @@ function applyOpsUnderRules(
       }
     }
 
+    // A named fleet sails whole from wherever it stands (`fleets.ts`): its
+    // world is the origin and its hulls the force, whatever else was written.
+    let sailing: FleetTag | null = null;
+    let sailingWholePort = false;
+    if (op.op === 'issue_order' && op.fleet !== undefined) {
+      if (!isMovementType(op.type)) {
+        reject(raw, 'illegal_value', 'Only a fleet movement names a fleet.');
+        continue;
+      }
+      const found = findFleet(state, op.factionId, op.fleet);
+      if (typeof found === 'string') {
+        reject(raw, 'illegal_value', found);
+        continue;
+      }
+      const whole = Object.fromEntries(HULL_CLASSES.map((h) => [h, found.fleet.stack[h] ?? 0])) as Required<ShipStack>;
+      op = { ...op, originId: found.system.id, force: whole };
+      sailing = { id: found.fleet.id, number: found.fleet.number, name: found.fleet.name, detached: false };
+      sailingWholePort = hullsIn(found.fleet.stack) === hullsAt(found.system, op.factionId);
+    }
+
     switch (op.op) {
+      // Organising a power's own fleets — see `fleets.ts`. Nothing moves and
+      // nobody else is touched, so the only guards are that the fleets are the
+      // actor's and stand where the op says.
+      case 'rename_fleet':
+      case 'split_fleet':
+      case 'merge_fleets': {
+        if (actor && actor !== op.factionId) {
+          reject(raw, 'illegal_value', `${actor} cannot organise the fleets of ${op.factionId}.`);
+          break;
+        }
+        const first = findFleet(state, op.factionId, op.op === 'merge_fleets' ? op.into : op.fleet);
+        if (typeof first === 'string') {
+          reject(raw, 'illegal_value', first);
+          break;
+        }
+        const { fleet, system } = first;
+        const was = fleetName(op.factionId, fleet);
+        if (op.op === 'rename_fleet') {
+          const name = op.name.trim();
+          fleet.name = name === '' ? null : name;
+          notes.push(`${was} is now ${fleetName(op.factionId, fleet)}.`);
+          break;
+        }
+        if (op.op === 'split_fleet') {
+          const taken = normaliseStack(
+            Object.fromEntries(HULL_CLASSES.map((h) => [h, Math.min(op.force[h] ?? 0, fleet.stack[h] ?? 0)])),
+          );
+          if (hullsIn(taken) === 0 || hullsIn(taken) === hullsIn(fleet.stack)) {
+            reject(raw, 'illegal_value', `A split takes some of ${was}'s hulls and leaves some: ${describeStack(fleet.stack)} stand in it.`);
+            break;
+          }
+          fleet.stack = subtractStack(fleet.stack, taken);
+          system.fleets!.push({ id: '', factionId: op.factionId, number: 0, name: op.name?.trim() || null, stack: taken });
+          notes.push(`${describeStack(taken)} split from ${was} at ${system.name}.`);
+          break;
+        }
+        const folded: string[] = [];
+        for (const query of op.from) {
+          const other = findFleet(state, op.factionId, query);
+          if (typeof other === 'string') {
+            reject(raw, 'illegal_value', other);
+            continue;
+          }
+          if (other.fleet === fleet) continue;
+          if (other.system !== system) {
+            reject(raw, 'illegal_value', `${fleetName(op.factionId, other.fleet)} is at ${other.system.name}, not ${system.name}: fleets merge where they both stand.`);
+            continue;
+          }
+          fleet.stack = mergeStacks(fleet.stack, other.fleet.stack);
+          other.fleet.stack = {};
+          folded.push(fleetName(op.factionId, other.fleet));
+        }
+        system.fleets = system.fleets!.filter((f) => hullsIn(f.stack) > 0);
+        if (folded.length > 0) notes.push(`${folded.join(' and ')} merged into ${was} at ${system.name}.`);
+        break;
+      }
+
       case 'cheat': {
         applyCheat(
           state, op.cheat, notes, (code, message) => reject(raw, code, message), uniqueFamilies,
@@ -6476,6 +6554,8 @@ function applyOpsUnderRules(
         let rationale = op.durationRationale;
         let path: string[] = [];
         let force: ShipStack = {};
+        /** The fleet under way, in a campaign that keeps fleets. */
+        let departing: FleetTag | undefined;
 
         if (isMovementType(op.type)) {
           // DETERMINISTIC branch. Whatever the model proposed is discarded.
@@ -6540,13 +6620,24 @@ function applyOpsUnderRules(
             notes.push(note);
             logEvent(state, 'system', note, op.factionId);
           }
-          setStackAt(
-            origin,
-            op.factionId,
-            Object.fromEntries(
-              HULL_CLASSES.map((h) => [h, (inPort[h] ?? 0) - (force[h] ?? 0)]),
-            ) as ShipStack,
+          withFleet(op.factionId, sailing, () =>
+            setStackAt(
+              origin,
+              op.factionId,
+              Object.fromEntries(
+                HULL_CLASSES.map((h) => [h, (inPort[h] ?? 0) - (force[h] ?? 0)]),
+              ) as ShipStack,
+            ),
           );
+          // A named fleet keeps its name under way; ships sent without one go
+          // as a numbered detachment, which rejoins the senior fleet where it
+          // arrives (`fleets.ts`).
+          if (fleetMode(origin)) {
+            departing = sailing ?? (() => {
+              const number = lowestFree(numbersInUse(state, op.factionId));
+              return { id: fleetIdFor(op.factionId, number), number, name: null, detached: true };
+            })();
+          }
         } else {
           // ESTIMATED branch. Model proposes, code clamps.
           if (op.durationTurns === undefined) {
@@ -6705,7 +6796,7 @@ function applyOpsUnderRules(
             logEvent(state, 'clamp', note, op.factionId);
           }
         }
-        if (officerUnits && isMovementType(op.type) && op.force === undefined) {
+        if (officerUnits && isMovementType(op.type) && (op.force === undefined || sailingWholePort)) {
           for (const c of activeCommanders(state.commanders, op.factionId)) {
             if (c.atSystemId !== op.originId || riding.includes(c.id)) continue;
             riding.push(c.id);
@@ -6730,7 +6821,7 @@ function applyOpsUnderRules(
           movesAtOnce(state, op.factionId, op.originId, op.targetId)
         ) {
           const dest = getSystem(state, op.targetId)!;
-          addStackAt(dest, op.factionId, force);
+          withFleet(op.factionId, departing, () => addStackAt(dest, op.factionId, force));
           landedAtOnce.add(`${op.factionId}:${dest.id}`);
           for (const c of state.commanders ?? []) {
             if (riding.includes(c.id)) c.atSystemId = dest.id;
@@ -6756,13 +6847,18 @@ function applyOpsUnderRules(
           officers: riding,
           onInterrupt: op.onInterrupt,
           visibility: [...new Set(op.visibility.filter(factionExists))],
-          label: op.label || filedType.replace(/_/g, ' '),
+          // A fleet's name goes on its voyage, so every reader of the label —
+          // the briefing, the log, the map — says which fleet it is.
+          label: departing && !departing.detached
+            ? `${fleetName(op.factionId, departing)}: ${op.label || filedType.replace(/_/g, ' ')}`
+            : op.label || filedType.replace(/_/g, ' '),
           durationRationale: rationale,
           path,
           force,
           onComplete: effect,
           investedCredits: invested,
           ...(op.dark ? { dark: { turns: 0, heat: 0 } } : {}),
+          ...(departing ? { fleet: departing } : {}),
         };
         state.pendingOrders.push(order);
         {
@@ -6960,7 +7056,7 @@ function applyOpsUnderRules(
         if (isMovementType(removed!.type) && hullsIn(removed!.force) > 0) {
           const home = state.systems.find((sys) => sys.id === removed!.originId);
           if (home) {
-            addStackAt(home, removed!.factionId, removed!.force);
+            withFleet(removed!.factionId, removed!.fleet, () => addStackAt(home, removed!.factionId, removed!.force));
           }
         }
         // And the officer aboard it, for the same reason and with the same
@@ -9754,6 +9850,8 @@ function applyOpsUnderRules(
   // The court ends every batch in a legal shape: people come home to the Lists
   // and every estate has someone listed. See `seats.ts`.
   settleCourt(state);
+  // Fleets end every batch numbered and in order. See `fleets.ts`.
+  settleFleets(state);
   if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
   canonicalAgents(state);
   if (agentLists) settleAgentLists(state, notes);
@@ -10240,7 +10338,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     // Cancelled movement still returns its ships — they were never destroyed.
     if (isMovementType(order.type) && hullsIn(order.force) > 0) {
       const home = state.systems.find((s) => s.id === order.originId);
-      if (home) addStackAt(home, order.factionId, order.force);
+      if (home) withFleet(order.factionId, order.fleet, () => addStackAt(home, order.factionId, order.force));
     }
     // They were never destroyed either, and an officer left in transit on an
     // order that no longer exists is an officer nowhere.
@@ -10260,7 +10358,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     const sys = state.systems.find((s) => s.id === halted);
     // The ships are real and have to come back onto the board somewhere.
     if (sys && hullsIn(order.force) > 0) {
-      addStackAt(sys, order.factionId, order.force);
+      withFleet(order.factionId, order.fleet, () => addStackAt(sys, order.factionId, order.force));
     }
     returnRider(state, order, sys?.id ?? order.originId);
     const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${hullsIn(order.force)} ships. ${reason}`.trim();
@@ -10360,7 +10458,11 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   const outerActs = actsOut;
   actsOut = null;
   try {
-    return withNameStock(legacy.widerNames ?? true, () => tickTurnUnderRules(input, legacy));
+    return withNameStock(legacy.widerNames ?? true, () => {
+      const out = tickTurnUnderRules(adopted(input), legacy);
+      settleFleets(out.state);
+      return out;
+    });
   } finally {
     actsOut = outerActs;
     scopeEngineNotes = outer;
@@ -12648,6 +12750,86 @@ interface BattleOutcomeResult {
   report: BattleReport | null;
 }
 
+/**
+ * `state` with its fleets brought into line with a `ships` index written
+ * directly (`adoptIndex`). The input itself is never touched; a world that
+ * needs nothing is returned as it was.
+ */
+function adopted(state: WorldState): WorldState {
+  if (!state.systems.some((s) => s.fleets !== undefined)) return state;
+  const copy = { ...state, systems: state.systems.map((s) => (s.fleets ? { ...s, ships: { ...s.ships }, fleets: s.fleets.map((f) => ({ ...f, stack: { ...f.stack } })) } : s)) };
+  adoptIndex(copy);
+  return copy;
+}
+
+/** One fleet's part in a contingent: who it is, and what it brought. */
+interface FleetShare {
+  tag: FleetTag | undefined;
+  stack: ShipStack;
+}
+
+/** The fleets a power has standing at a world, as shares of its contingent there. */
+function standingShares(system: StarSystem, factionId: string): FleetShare[] {
+  return fleetsAt(system, factionId).map((f) => ({
+    tag: f.number > 0 ? { id: f.id, number: f.number, name: f.name, detached: false } : undefined,
+    stack: f.stack,
+  }));
+}
+
+/**
+ * Put `survivors` down at `system`, back into the fleets that brought them:
+ * each class divided by what each fleet brought of it (largest remainder, ties
+ * to the first), and each share landed under that fleet's name. With no
+ * shares — a campaign without fleets — it is one plain add.
+ */
+function landAs(system: StarSystem, factionId: string, survivors: ShipStack, shares: FleetShare[]): void {
+  if (shares.length === 0 || !fleetMode(system)) {
+    addStackAt(system, factionId, survivors);
+    return;
+  }
+  const parts: ShipStack[] = shares.map(() => ({}));
+  for (const hull of HULL_CLASSES) {
+    const want = survivors[hull] ?? 0;
+    if (want === 0) continue;
+    const brought = shares.map((s) => s.stack[hull] ?? 0);
+    const total = brought.reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      parts[0]![hull] = (parts[0]![hull] ?? 0) + want;
+      continue;
+    }
+    const exact = brought.map((b) => (b * want) / total);
+    const got = exact.map(Math.floor);
+    let spare = want - got.reduce((a, b) => a + b, 0);
+    for (const { i } of exact.map((e, i) => ({ i, frac: e - Math.floor(e) })).sort((a, b) => b.frac - a.frac || a.i - b.i)) {
+      if (spare <= 0) break;
+      got[i]! += 1;
+      spare -= 1;
+    }
+    got.forEach((n, i) => {
+      if (n > 0) parts[i]![hull] = n;
+    });
+  }
+  shares.forEach((share, i) => {
+    if (hullsIn(parts[i]) > 0) withFleet(factionId, share.tag, () => addStackAt(system, factionId, parts[i]!));
+  });
+}
+
+/** One of a power's fleets, by id, number or name — or why none answers. */
+function findFleet(state: WorldState, factionId: string, query: string): { fleet: Fleet; system: StarSystem } | string {
+  const standing = state.systems.flatMap((system) => fleetsAt(system, factionId).map((fleet) => ({ fleet, system })));
+  const found = resolveFleet(standing.map((x) => x.fleet), query);
+  if (found) return standing.find((x) => x.fleet === found)!;
+  const under = state.pendingOrders.find(
+    (o) => o.factionId === factionId && o.fleet && resolveFleet([{ ...o.fleet, factionId }], query),
+  );
+  if (under) {
+    const where = state.systems.find((x) => x.id === under.targetId)?.name ?? under.targetId;
+    return `${fleetName(factionId, under.fleet!)} is under way to ${where} and cannot be ordered again until it arrives.`;
+  }
+  const list = standing.map((x) => `${fleetName(factionId, x.fleet)} at ${x.system.name}`).join('; ');
+  return `No fleet of ${nameFor(state, factionId)} answers to "${query}". Its fleets: ${list || 'none'}.`;
+}
+
 function resolveBattle(
   state: WorldState,
   systemId: string,
@@ -12822,8 +13004,17 @@ function resolveBattle(
   const arriving = new Map<string, ShipStack>();
   for (const o of orders) arriving.set(o.factionId, mergeStacks(arriving.get(o.factionId), o.force));
 
+  // Whose fleets a faction's contingent was made of — each arriving voyage, and
+  // any squadron already in the orbit that joins it — so what survives lands
+  // back in the fleets it came from (`fleets.ts`).
+  const contributors = new Map<string, FleetShare[]>();
+  for (const o of orders) {
+    const list = contributors.get(o.factionId) ?? [];
+    list.push({ tag: o.fleet, stack: o.force });
+    contributors.set(o.factionId, list);
+  }
   const land = (factionId: string, stack: ShipStack): void => {
-    if (hullsIn(stack) > 0) addStackAt(target, factionId, stack);
+    if (hullsIn(stack) > 0) landAs(target, factionId, stack, contributors.get(factionId) ?? []);
   };
 
   // The holder reinforcing itself is not an invasion — and neither is an ally
@@ -12941,15 +13132,23 @@ function resolveBattle(
   for (const entry of squattersFight ? attackers : []) {
     const alreadyThere = stackAt(target, entry[0]);
     if (hullsIn(alreadyThere) === 0) continue;
+    contributors.set(entry[0], [...(contributors.get(entry[0]) ?? []), ...standingShares(target, entry[0])]);
     entry[1] = mergeStacks(entry[1], alreadyThere);
     setStackAt(target, entry[0], {});
   }
 
   const coalition = attackers.map(([id]) => nameOf(id)).join(' and ');
   /** One side of one round: what it had at the round's start, and what it has now. */
+  /** Each side's fleets by name, for the report — filled as the sides are drawn up. */
+  const fleetNames = new Map<string, string[]>();
+  for (const [id, shares] of contributors) {
+    const named = shares.filter((x) => x.tag).map((x) => fleetName(id, x.tag!));
+    if (named.length > 0) fleetNames.set(id, [...new Set(named)]);
+  }
   const sideOf = (now: Map<string, ShipStack>, was: Map<string, ShipStack>): Contingent[] =>
     [...now.entries()].map(([id, stack]) => {
       const before = was.get(id) ?? stack;
+      const fleets = fleetNames.get(id);
       return {
         factionId: id,
         factionName: nameOf(id),
@@ -12957,6 +13156,7 @@ function resolveBattle(
         after: hullsIn(stack),
         stackBefore: before,
         stackAfter: stack,
+        ...(fleets ? { fleets } : {}),
       };
     });
   attackSnapshot = new Map(attackers);
@@ -13021,6 +13221,10 @@ function resolveBattle(
   const defenders: [string, ShipStack][] = presentAt(target)
     .filter(([id, n]) => !attackerIds.has(id) && n > 0)
     .map(([id]) => [id, stackAt(target, id)]);
+  for (const [id] of defenders) {
+    const named = fleetsAt(target, id).filter((f) => f.number > 0).map((f) => fleetName(id, f));
+    if (named.length > 0) fleetNames.set(id, named);
+  }
 
   /* --- Defence pacts: the ally answers ---------------------------------- */
   // `shipsPledged` was a dead field: a treaty could promise a squadron and
@@ -13597,11 +13801,12 @@ function resolveBattle(
       for (const [id, present] of defenders) {
         const escaped = bleed(present, 'defend');
         lost += hullsIn(present) - hullsIn(escaped);
+        const theirFleets = standingShares(target, id);
         setStackAt(target, id, {});
         const refuge = fleetBases(state, id).find(
           (x) => x.id !== target.id && x.controllerFactionId === id,
         );
-        if (refuge && hullsIn(escaped) > 0) addStackAt(refuge, id, escaped);
+        if (refuge && hullsIn(escaped) > 0) landAs(refuge, id, escaped, theirFleets);
         // They leave with their own contingent. With nowhere to run they stay in
         // orbit over a world they no longer holds, which is exactly what the
         // ships that had no refuge do.
@@ -13628,7 +13833,7 @@ function resolveBattle(
         const fallback = order.path[Math.max(0, order.path.length - 2)] ?? order.originId;
         const refuge = state.systems.find((x) => x.id === fallback);
         if (refuge && hullsIn(escaped) > 0) {
-          addStackAt(refuge, order.factionId, escaped);
+          withFleet(order.factionId, order.fleet, () => addStackAt(refuge, order.factionId, escaped));
         }
         // An officer falls back down the path their own fleet took, not the
         // coalition's — one shared refuge would land them all on one world.

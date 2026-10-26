@@ -94,8 +94,8 @@ function buildArena(): WorldState {
     // favour moving might between trials is the same noise.
     notables: [],
     systems: [
-      { ...origin, hyperlaneEdges: [target.id], ships: {}, controllerFactionId: 'freeworlds', regard: {} },
-      { ...target, hyperlaneEdges: [origin.id], ships: {}, controllerFactionId: 'ojjul', regard: {} },
+      { ...origin, hyperlaneEdges: [target.id], ships: {}, fleets: [], controllerFactionId: 'freeworlds', regard: {} },
+      { ...target, hyperlaneEdges: [origin.id], ships: {}, fleets: [], controllerFactionId: 'ojjul', regard: {} },
     ],
     pendingOrders: [],
     treaties: [],

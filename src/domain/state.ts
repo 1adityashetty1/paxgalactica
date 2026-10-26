@@ -66,6 +66,7 @@ import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from '
 import { LoanSchema, scheduledRent } from './loan.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
+import { FleetSchema, FleetTagSchema, fleetMode, writeFleets } from './fleets.js';
 import { RimEventSchema, RimLuckSchema } from './events.js';
 import { HEAT_MAX } from './heat.js';
 import { ACT_KINDS } from './act-kinds.js';
@@ -651,6 +652,13 @@ export const SystemSchema = z.object({
    * regard recorded anywhere, and nothing reads or moves it.
    */
   regard: z.record(z.string(), z.number().int().min(-100).max(100)).default({}),
+  /**
+   * The fleets standing at this world — see `fleets.ts`. When present, they own
+   * the hulls and `ships` is their index. Absent on every world seeded before
+   * journal version 31, which is how the accessors know to read and write
+   * `ships` as they always did.
+   */
+  fleets: z.array(FleetSchema).optional(),
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 
@@ -802,6 +810,8 @@ export const PendingOrderSchema = z.object({
   dark: z
     .object({ turns: z.number().int().min(0), heat: z.number().int().min(0) })
     .optional(),
+  /** The fleet under way, on a movement order of a campaign that keeps fleets — see `fleets.ts`. */
+  fleet: FleetTagSchema.optional(),
 });
 export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 
@@ -1093,21 +1103,31 @@ export function addShipsAt(
   if (count <= 0) return;
   const stack = { ...stackAt(system, factionId) };
   stack[hull] = (stack[hull] ?? 0) + count;
-  system.ships[factionId] = normaliseStack(stack);
+  putStack(system, factionId, normaliseStack(stack));
+}
+
+/**
+ * The one write under every accessor. A world that keeps fleets is written
+ * through them (`writeFleets`), and its `ships` is their index; any other is
+ * written as it always was.
+ */
+function putStack(system: StarSystem, factionId: string, stack: ShipStack): void {
+  if (fleetMode(system)) {
+    writeFleets(system, factionId, stack);
+    return;
+  }
+  if (hullsIn(stack) === 0) delete system.ships[factionId];
+  else system.ships[factionId] = stack;
 }
 
 /** Add a whole composed force. */
 export function addStackAt(system: StarSystem, factionId: string, stack: ShipStack): void {
-  const merged = mergeStacks(stackAt(system, factionId), stack);
-  if (hullsIn(merged) === 0) delete system.ships[factionId];
-  else system.ships[factionId] = merged;
+  putStack(system, factionId, mergeStacks(stackAt(system, factionId), stack));
 }
 
 /** Put an exact stack in place of whatever was there. */
 export function setStackAt(system: StarSystem, factionId: string, stack: ShipStack): void {
-  const next = normaliseStack(stack);
-  if (hullsIn(next) === 0) delete system.ships[factionId];
-  else system.ships[factionId] = next;
+  putStack(system, factionId, normaliseStack(stack));
 }
 
 /**
@@ -1139,7 +1159,7 @@ export function setShipsAt(
 ): void {
   const want = Math.max(0, Math.floor(total));
   if (want === 0) {
-    delete system.ships[factionId];
+    putStack(system, factionId, {});
     return;
   }
   const stack = { ...stackAt(system, factionId) };
@@ -1157,7 +1177,7 @@ export function setShipsAt(
       toRemove -= taken;
     }
   }
-  system.ships[factionId] = normaliseStack(stack);
+  putStack(system, factionId, normaliseStack(stack));
 }
 
 export function shipsAt(state: WorldState, factionId: string, systemId: string): number {

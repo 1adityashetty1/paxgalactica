@@ -86,6 +86,9 @@ of it, **even when it is not optimal**.
   `scuttle_ships`, and you never write a loss. A `move` one jump between two of
   your own worlds, with no rival over the target, lands at once; anything else
   sails.
+- **Your ships are in named fleets**, listed under each world. To send one
+  whole, name it — `"fleet": "2nd Pack"` — and leave out `force`; it keeps its
+  name. Otherwise:
 - **Always set `force` on a `move`.** It is the number of ships being
   sent, drawn from the origin. Omitting it commits *everything* at that system,
   which is almost never what a faction would actually do — leave a garrison

@@ -93,6 +93,8 @@ export const ContingentSchema = z.object({
    */
   stackBefore: ShipStackSchema.default({}),
   stackAfter: ShipStackSchema.default({}),
+  /** The fleets it was made of, by name, in a campaign that keeps fleets. */
+  fleets: z.array(z.string()).optional(),
 });
 export type Contingent = z.infer<typeof ContingentSchema>;
 

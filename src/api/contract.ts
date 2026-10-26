@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CheatSchema } from '../domain/cheats.js';
+import { MergeFleetsOp, RenameFleetOp, SplitFleetOp } from '../domain/ops.js';
 import { ConcessionSchema, RetractionSchema } from '../domain/diplomacy.js';
 import { BattleReportSchema } from '../domain/battle.js';
 import { RimEventKindSchema } from '../domain/events.js';
@@ -670,6 +671,19 @@ export const CheatResultSchema = z.object({
 });
 export type CheatResult = z.infer<typeof CheatResultSchema>;
 
+/**
+ * Organising the player's own fleets — see `fleets.ts`. The op without its
+ * `factionId`, which the server fills with the player's. Staged like a free
+ * declaration: it costs no action, can be withdrawn, and no rival is told.
+ */
+export const OrganiseRequestSchema = z.discriminatedUnion('op', [
+  RenameFleetOp.omit({ factionId: true }),
+  SplitFleetOp.omit({ factionId: true }),
+  MergeFleetsOp.omit({ factionId: true }),
+]);
+export type OrganiseRequest = z.infer<typeof OrganiseRequestSchema>;
+export const OrganiseResultSchema = z.object({ notes: z.array(z.string()) });
+
 /** Omit `index` to clear everything; supply it to drop one declaration. */
 export const DiscardRequestSchema = z.object({
   index: z.number().int().min(0).optional(),
@@ -818,6 +832,7 @@ export const ROUTES = {
   endturn: '/api/endturn',
   discardStaged: '/api/staged/discard',
   cheat: '/api/cheat',
+  organise: '/api/fleet',
   talk: (factionId: string) => `/api/talk/${factionId}`,
   endtalk: (factionId: string) => `/api/endtalk/${factionId}`,
   settings: '/api/settings',

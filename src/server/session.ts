@@ -7,7 +7,8 @@ import type {
   TurnOutcomeResponse,
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
-import type { SaveSummary } from '../api/contract.js';
+import type { OrganiseRequest, SaveSummary } from '../api/contract.js';
+import { applyOps } from '../domain/reducer.js';
 import { observeOrders, worldAsSeenBy } from '../domain/intel.js';
 import { holdingFactor } from '../domain/regard.js';
 import { MAX_CHANNEL_MESSAGES, type CheatResult, type DiscardResult } from '../api/contract.js';
@@ -777,6 +778,30 @@ export class GameSession {
     if (res.rejections.length === 0) await campaign.save();
     this.pushState();
     return { notes: res.notes, rejections: res.rejections };
+  }
+
+  /**
+   * Organise the player's own fleets: rename, split or merge. Staged like a free
+   * declaration — no action point, withdrawable, and secret, since it is the
+   * player's own business — so it lands in order with the turn's orders and a
+   * move already declared by a fleet's old name still finds it. Tried first, so
+   * a refused one is never staged.
+   */
+  async organise(request: OrganiseRequest): Promise<{ notes: string[] }> {
+    const campaign = this.requirePlayable();
+    if (this.isBusy) throw new ApiFailure('conflict', `Busy: ${this.busyLabel}.`);
+    const player = campaign.state.playerFactionId;
+    const ops = [{ ...request, factionId: player }];
+    const trial = applyOps(campaign.state, ops, 'model', player, true, {}, 'organise');
+    if (trial.rejections.length > 0) {
+      throw new ApiFailure('bad_request', trial.rejections.map((r) => r.message).join(' '));
+    }
+    const res = campaign.stage(ops, `organise:${request.op}`, trial.notes.join(' '), 'model', player, {
+      path: 'organise',
+      secret: true,
+    });
+    this.pushState();
+    return { notes: res.notes };
   }
 
   async discardStaged(index?: number): Promise<DiscardResult> {

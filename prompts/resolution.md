@@ -65,7 +65,8 @@ leaves a faction with nobody following it.
 
 | op | use |
 |---|---|
-| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds — see Fleets |
+| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole — see Fleets |
+| `rename_fleet` · `split_fleet` · `merge_fleets` | organise your own fleets — see Fleets |
 | `fortify` | raise a world's garrison **ceiling** (`magnitude` 1..3) — see What work delivers |
 | `raise_garrison` | raise troops on a world now, up to its ceiling (`magnitude` 1..5) |
 | `develop` | develop a world (`magnitude` 1..2); at 7 it becomes a trade hub |
@@ -222,6 +223,16 @@ there is no abstract strength. A `move` commits a stated force drawn from the
 origin: **always set `force`** — a declared move without one is refused. "The
 battle line" is the warships, not the lifters and freighters beside them; if
 the player sends everything, write every hull at the origin.
+
+**Ships are organised into named fleets**, listed by name and id under each
+world in the state block ("Operating Group 2", "3rd Pack"). **When the player
+names a fleet, move it by name**: `"fleet": "Operating Group 2"` on the
+`move`, and no `force` — a named fleet sails whole from wherever it stands, and
+keeps its name. A move that names no fleet sends what `force` says as a
+detachment, which rejoins the senior fleet where it arrives. Organising is its
+own op and moves nothing: `rename_fleet` (`fleet`, `name`), `split_fleet`
+(`fleet`, `force`, optional `name`) and `merge_fleets` (`into`, `from`, at one
+world).
 
 **Narrate the departure, never the battle.** A fleet sent at a world another
 power holds, or into an orbit where another power's ships sit, arrives after
