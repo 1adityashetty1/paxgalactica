@@ -1,5 +1,5 @@
 import { WorldSprite, worldTypeLabel } from './WorldSprite.js';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
@@ -105,7 +105,7 @@ import {
 import type { Briefing } from '../../../src/engine/briefing.js';
 import type { EffectiveStats } from '../../../src/api/contract.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
-import { logWindow } from '../../../src/ui/logview.js';
+import { digestLog, logReader } from '../../../src/ui/logview.js';
 
 type Tab =
   | 'factions'
@@ -2758,8 +2758,15 @@ const LOG_PAGE = 200;
 function Log({ state }: { state: WorldState }) {
   const [kinds, setKinds] = useState<Set<string>>(new Set());
   const [limit, setLimit] = useState(LOG_PAGE);
+  // Routine lines — yards laid down, programmes begun, rulings — are most of
+  // the log and least of what a player needs; they are a press away.
+  const [importantOnly, setImportantOnly] = useState(true);
   const all = [...new Set(state.eventLog.map((e) => e.kind))];
-  const { shown, hidden, firstIndex } = logWindow(state.eventLog, kinds, limit);
+  const reader = useMemo(() => logReader(state), [state]);
+  const { attention, turns, hidden } = useMemo(
+    () => digestLog(state.eventLog, reader, { kinds, importantOnly, limit }),
+    [state.eventLog, reader, kinds, importantOnly, limit],
+  );
 
   const toggle = (k: string) =>
     setKinds((prev) => {
@@ -2771,21 +2778,42 @@ function Log({ state }: { state: WorldState }) {
 
   return (
     <div className="log">
-      {/* rejection and clamp entries are debugging gold — filterable, not hidden */}
+      {attention.length > 0 && (
+        <div className="log-attention">
+          <h4>Needs your attention</h4>
+          <ul>
+            {attention.map((e, i) => (
+              <li key={i} className={`log-${e.kind}`}>
+                <span className="turn">[{e.turn}]</span> {e.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="filters">
+        <button className={importantOnly ? 'chip on' : 'chip'} onClick={() => setImportantOnly((v) => !v)}>
+          {importantOnly ? 'important only' : 'everything'}
+        </button>
+        {/* rejection and clamp entries are debugging gold — filterable, not hidden */}
         {all.map((k) => (
           <button key={k} className={kinds.has(k) ? 'chip on' : 'chip'} onClick={() => toggle(k)}>
             {k}
           </button>
         ))}
       </div>
-      <ul>
-        {shown.map((e, i) => (
-          <li key={firstIndex + shown.length - i} className={`log-${e.kind}`}>
-            <span className="turn">[{e.turn}]</span> {e.text}
-          </li>
-        ))}
-      </ul>
+      {turns.map((t) => (
+        <div key={t.turn} className="log-turn">
+          <h4>Turn {t.turn}</h4>
+          <ul>
+            {t.entries.map(({ entry: e, weight, index }) => (
+              <li key={index} className={`log-${e.kind} weight-${weight}`}>
+                {e.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {turns.length === 0 && <p className="hint">Nothing {importantOnly ? 'of note ' : ''}matches.</p>}
       {hidden > 0 && (
         <button className="chip" onClick={() => setLimit((n) => n + LOG_PAGE)}>
           {hidden} older {hidden === 1 ? 'entry' : 'entries'}

@@ -7,6 +7,7 @@ import type {
   TurnOutcomeResponse,
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
+import type { SaveSummary } from '../api/contract.js';
 import { observeOrders, worldAsSeenBy } from '../domain/intel.js';
 import { holdingFactor } from '../domain/regard.js';
 import { MAX_CHANNEL_MESSAGES, type CheatResult, type DiscardResult } from '../api/contract.js';
@@ -342,8 +343,15 @@ export class GameSession {
     return this.campaign !== null;
   }
 
-  async factions(): Promise<{ factions: ReturnType<typeof playableFactions>; saves: string[] }> {
-    return { factions: playableFactions(), saves: await this.store.list() };
+  async factions(): Promise<{ factions: ReturnType<typeof playableFactions>; saves: string[]; saveDetails: SaveSummary[] }> {
+    const saveDetails = await this.store.describe();
+    return { factions: playableFactions(), saves: saveDetails.map((s) => s.name).sort(), saveDetails };
+  }
+
+  /** Delete a save from this server's store, from the title screen. */
+  async deleteSave(name: string): Promise<{ deleted: boolean; saveDetails: SaveSummary[] }> {
+    const deleted = await this.store.remove(name);
+    return { deleted, saveDetails: await this.store.describe() };
   }
 
   private pushState(): void {

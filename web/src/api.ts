@@ -6,6 +6,7 @@ import {
   DiscardResultSchema,
   CampaignViewSchema,
   ExportResultSchema,
+  DeleteSaveResultSchema,
   FactionListSchema,
   ImportOutcomeSchema,
   ROUTES,
@@ -108,11 +109,17 @@ let session: unknown = null;
 const DB_NAME = 'paxgalactica';
 const DB_STORE = 'session';
 const DB_KEY = 'current';
+/** Each campaign's feed, keyed by campaign — see `feedStore`. Added in version 2. */
+const FEED_STORE = 'feed';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      if (!db.objectStoreNames.contains(FEED_STORE)) db.createObjectStore(FEED_STORE);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -147,6 +154,43 @@ async function restorePersisted(): Promise<void> {
     session = null;
   }
 }
+
+/**
+ * The feed of each campaign this browser has played, so a reload or a resume
+ * puts back what was said rather than an empty page. Client-only: the feed is
+ * what the player was shown, not a fact of the campaign, so it rides neither
+ * the session nor a save file. Failures are swallowed, as the session's are.
+ */
+export const feedStore = {
+  async load(key: string): Promise<unknown[]> {
+    try {
+      const db = await openDb();
+      const value = await new Promise<unknown>((resolve, reject) => {
+        const req = db.transaction(FEED_STORE, 'readonly').objectStore(FEED_STORE).get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => reject(req.error);
+      });
+      db.close();
+      return Array.isArray(value) ? value : [];
+    } catch {
+      return [];
+    }
+  },
+  async save(key: string, messages: unknown[]): Promise<void> {
+    try {
+      const db = await openDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(FEED_STORE, 'readwrite');
+        tx.objectStore(FEED_STORE).put(messages, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch {
+      // No storage: the feed lasts as long as the tab.
+    }
+  },
+};
 
 function adopt(next: unknown): void {
   session = next;
@@ -324,6 +368,9 @@ async function plain<T>(path: string, schema: { parse: (v: unknown) => T }, body
 
 export const api = {
   factions: () => plain(ROUTES.factions, FactionListSchema),
+
+  /** Delete a save from this server's saves; answers with the list as it now stands. */
+  deleteSave: (name: string) => plain(ROUTES.deleteSave, DeleteSaveResultSchema, { name }),
 
   settings: (): Promise<SettingsView> => plain(ROUTES.settings, SettingsViewSchema),
 

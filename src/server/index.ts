@@ -177,6 +177,16 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const result = await dispatch(new GameSession(STORE), method, path, {});
     return sendJson(res, result.status, result.body);
   }
+  if (method === 'POST' && path === ROUTES.deleteSave) {
+    let body: unknown = {};
+    try {
+      body = await readBody(req);
+    } catch {
+      body = {};
+    }
+    const result = await dispatch(new GameSession(STORE), method, path, body);
+    return sendJson(res, result.status, result.body);
+  }
   if (path === ROUTES.settings && (method === 'GET' || method === 'POST')) {
     let body: unknown = {};
     if (method === 'POST') {

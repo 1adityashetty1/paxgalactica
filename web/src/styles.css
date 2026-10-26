@@ -95,6 +95,7 @@ ul { margin: 0; padding-left: 1.1em; }
 }
 .commandline button:disabled { opacity: 0.4; cursor: not-allowed; }
 .commandline .endturn { background: #14532d; border-color: #166534; color: #bbf7d0; }
+.commandline .endturn.confirm { background: #422006; border-color: var(--warn); color: var(--warn); }
 
 /* ---------- briefing ---------- */
 
@@ -243,6 +244,12 @@ button.chip:hover { background: #262c37; color: var(--text); }
 .log ul { list-style: none; padding: 0; }
 .log li { padding: 3px 0; border-bottom: 1px solid #171b23; font-size: 11px; line-height: 1.4; }
 .log .turn { color: var(--dim); }
+.log-attention { border: 1px solid var(--warn); border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; background: #1c1608; }
+.log-attention h4, .log-turn h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
+.log-attention h4 { color: var(--warn); }
+.log-turn h4 { color: var(--dim); margin-top: 8px; }
+.log li.weight-attention { border-left: 2px solid var(--warn); padding-left: 6px; }
+.log li.weight-routine { color: var(--dim); }
 .log-rejection { color: var(--bad); }
 .log-clamp { color: var(--warn); }
 .log-narrative { color: var(--text); }
@@ -262,6 +269,16 @@ button.chip:hover { background: #262c37; color: var(--text); }
 .faction-card span { color: var(--dim); font-size: 11px; line-height: 1.5; }
 .resume { margin-bottom: 24px; }
 .resume-btn { background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 8px 12px; border-radius: 4px; margin-right: 6px; }
+.save-filter { width: 100%; margin-bottom: 8px; background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 7px 10px; border-radius: 4px; font: inherit; }
+.save-list { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 4px; }
+.save-row { display: flex; gap: 4px; }
+.save-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 7px 10px; border-radius: 4px; }
+.save-open:hover { background: #171b24; }
+.save-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.save-meta { color: var(--dim); font-size: 11px; }
+.save-delete { background: var(--panel); border: 1px solid var(--line); color: var(--dim); width: 32px; border-radius: 4px; }
+.save-delete:hover { color: var(--bad); border-color: var(--bad); }
+.map-tooltip .travel-note { color: var(--accent); }
 .loading, .fatal { padding: 48px 24px; color: var(--dim); }
 .fatal pre { white-space: pre-wrap; color: var(--bad); background: var(--panel); padding: 12px; border-radius: 4px; }
 .error { color: var(--bad); }

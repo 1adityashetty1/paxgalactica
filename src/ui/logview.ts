@@ -38,32 +38,115 @@ export function spliceLog(prev: CampaignView | null, next: CampaignView): Campai
   };
 }
 
-/** What the log panel actually draws: newest first, bounded, plus what is left. */
-export interface LogWindow {
-  shown: EventLogEntry[];
+/**
+ * How much a log entry matters to the player, read off what is already there.
+ *
+ * - `attention` — something that happened to the player or their worlds and
+ *   changes their position: a battle, a world gained or lost, a war or peace,
+ *   an operative caught, a raid, a refusal, a debt gone bad.
+ * - `notable` — the same kind of event between other powers.
+ * - `routine` — everything else: yards laid down, programmes begun, rulings.
+ *
+ * A restructuring of the log and nothing more: no new state and no new
+ * entries, only which existing lines are shown first. Classified by kind and
+ * by the words the engine itself writes, which it writes the same way every
+ * time — so a test pins the phrases against lines the engine produced.
+ */
+export type LogWeight = 'attention' | 'notable' | 'routine';
+
+/** The engine's own phrases for a turn that changed something. */
+const CONSEQUENTIAL = new RegExp(
+  [
+    // Battles and ground, and a fleet sent at somebody.
+    '\\bagainst\\b', 'Fleets engage', 'Torpedoes run', '\\bstorms?\\b', 'takes possession', 'driven off', 'breaks off', 'thrown back',
+    'falls to', 'joins .+ of its own accord', '\\brises against\\b', 'is restless', 'answers to nobody', 'cedes?\\b', 'ceded',
+    // War and peace.
+    'war between', '\\btruce\\b', '\\bceasefire\\b', 'goes to war', 'calls .+ to war', 'ultimatum', '\\bconcedes?\\b',
+    'breaks (?:the|its|a)\\b', 'repudiat', 'Treaty lapsed', '\\bvoid',
+    // Covert work and its discovery.
+    '\\bexposes?\\b', '\\bcaught\\b', 'stand empty', 'turned out', 'Sabotage on', 'publishes proof', '\\bassassinat', '\\bkidnap', 'is held at', 'stirred',
+    // Money that went wrong, and prices put on a power.
+    '\\braid', '\\bdefault', 'delinquent', 'arrears', 'puts a price', '\\bbounty\\b',
+    // Its own people.
+    '\\bdissent\\b', '\\brefus', '\\bmutiny',
+  ].join('|'),
+  'i',
+);
+
+/** Lines the engine writes to keep the record, whatever they mention. */
+const ROUTINE = /^\[(?:declared|check)\]|^Turn \d+: \d+ credits from|commissions \d+ tons|holds its position/;
+
+export interface LogReader {
+  playerFactionId: string;
+  /** The player's name, and the names of the worlds they hold or once held. */
+  names: readonly string[];
+}
+
+/** Who is reading, from the world as served. */
+export function logReader(state: {
+  playerFactionId: string;
+  factions: readonly { id: string; name: string }[];
+  systems: readonly { name: string; controllerFactionId: string | null; homeFactionId?: string | null }[];
+}): LogReader {
+  const me = state.playerFactionId;
+  const name = state.factions.find((f) => f.id === me)?.name ?? me;
+  const worlds = state.systems.filter((s) => s.controllerFactionId === me || s.homeFactionId === me).map((s) => s.name);
+  return { playerFactionId: me, names: [name, ...worlds] };
+}
+
+/** One entry's weight — see `LogWeight`. */
+export function weighEntry(entry: EventLogEntry, reader: LogReader): LogWeight {
+  if (entry.kind === 'rejection' || entry.kind === 'clamp' || entry.kind === 'arbiter' || entry.kind === 'cheat') return 'routine';
+  if (ROUTINE.test(entry.text)) return 'routine';
+  const mine =
+    entry.factionId === reader.playerFactionId ||
+    /^Your\b|\byour\b/.test(entry.text) ||
+    reader.names.some((n) => entry.text.includes(n));
+  // What the Rim does to you, and your operatives' reports, are yours by scope.
+  if (entry.kind === 'rim') return mine ? 'attention' : 'notable';
+  if (!CONSEQUENTIAL.test(entry.text)) return 'routine';
+  return mine ? 'attention' : 'notable';
+}
+
+/** The log, turned into what the Log tab draws. */
+export interface LogDigest {
+  /** Entries that need the player, newest first, from the last `recentTurns`. */
+  attention: EventLogEntry[];
+  /** Every entry passing the filters, newest turn first, each turn's entries newest first. */
+  turns: { turn: number; entries: { entry: EventLogEntry; weight: LogWeight; index: number }[] }[];
+  /** Entries older than the window, not drawn. */
   hidden: number;
-  /** Index of `shown[0]` in the filtered log, so a stable React key can be derived. */
-  firstIndex: number;
 }
 
 /**
- * Filter by kind, take the newest `limit`, reverse.
+ * Group the log by turn and pull out what needs attention.
  *
- * Slicing BEFORE reversing is the point. The panel used to do
- * `[...shown].reverse()` over the whole log on every render, which copies every
- * entry to display twenty of them — ~1,100 at turn 30, twice that at 60, on
- * every state push.
+ * `importantOnly` leaves routine lines out of the turns; the kind filter
+ * works as it did. Windowed like `logWindow`: the newest `limit` entries that
+ * pass the filters, sliced before anything is reversed.
  */
-export function logWindow(
+export function digestLog(
   entries: readonly EventLogEntry[],
-  kinds: ReadonlySet<string>,
-  limit: number,
-): LogWindow {
-  const matching = kinds.size === 0 ? entries : entries.filter((e) => kinds.has(e.kind));
-  const start = Math.max(0, matching.length - Math.max(0, limit));
-  return {
-    shown: matching.slice(start).reverse(),
-    hidden: start,
-    firstIndex: start,
-  };
+  reader: LogReader,
+  opts: { kinds: ReadonlySet<string>; importantOnly: boolean; limit: number; recentTurns?: number; attentionCap?: number },
+): LogDigest {
+  const weighed = entries.map((entry, index) => ({ entry, index, weight: weighEntry(entry, reader) }));
+  const latest = entries.length > 0 ? entries[entries.length - 1]!.turn : 0;
+  const since = latest - (opts.recentTurns ?? 2);
+  const attention = weighed
+    .filter((w) => w.weight === 'attention' && w.entry.turn >= since)
+    .slice(-(opts.attentionCap ?? 12))
+    .reverse()
+    .map((w) => w.entry);
+  const passing = weighed.filter(
+    (w) => (opts.kinds.size === 0 || opts.kinds.has(w.entry.kind)) && (!opts.importantOnly || w.weight !== 'routine'),
+  );
+  const start = Math.max(0, passing.length - Math.max(0, opts.limit));
+  const turns: LogDigest['turns'] = [];
+  for (const w of passing.slice(start).reverse()) {
+    const last = turns[turns.length - 1];
+    if (last && last.turn === w.entry.turn) last.entries.push(w);
+    else turns.push({ turn: w.entry.turn, entries: [w] });
+  }
+  return { attention, turns, hidden: start };
 }

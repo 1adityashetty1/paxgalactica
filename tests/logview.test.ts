@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { logWindow, spliceLog } from '../src/ui/logview.js';
+import { digestLog, logReader, spliceLog, weighEntry } from '../src/ui/logview.js';
 import type { CampaignView } from '../src/api/contract.js';
 import type { EventLogEntry } from '../src/domain/state.js';
 
@@ -48,34 +48,69 @@ describe('a push carries a tail, and the client puts it back', () => {
 });
 
 describe('the panel draws a window, not the whole log', () => {
-  it('shows the newest entries, newest first', () => {
-    const { shown, hidden } = logWindow(log(1000), new Set(), 200);
-    expect(shown).toHaveLength(200);
-    expect(hidden).toBe(800);
-    expect(shown[0]!.text).toBe('entry 999');
-    expect(shown[199]!.text).toBe('entry 800');
-  });
+  const reader = { playerFactionId: 'meridian', names: ['Meridian Trade Authority', 'Sekkar Gate'] };
+  const window = (entries: EventLogEntry[], limit: number, kinds = new Set<string>()) =>
+    digestLog(entries, reader, { kinds, importantOnly: false, limit });
+  const flat = (d: ReturnType<typeof window>) => d.turns.flatMap((t) => t.entries.map((e) => e.entry));
 
-  it('never copies more than the window', () => {
-    // The defect was `[...shown].reverse()` over the whole array: 1,100 entries
-    // copied on every state push to display twenty. Asserted as a property of
-    // the result — the returned array is the window, not the log.
-    const { shown } = logWindow(log(5000), new Set(), 50);
-    expect(shown).toHaveLength(50);
+  it('shows the newest entries, newest first, grouped by turn', () => {
+    const d = window(log(1000), 200);
+    expect(flat(d)).toHaveLength(200);
+    expect(d.hidden).toBe(800);
+    expect(flat(d)[0]!.text).toBe('entry 999');
+    expect(flat(d)[199]!.text).toBe('entry 800');
+    expect(d.turns[0]!.turn).toBe(999);
   });
 
   it('filters by kind before windowing, so the count is of what matches', () => {
     const mixed = [...log(100), { ...entry(999), kind: 'rejection' as const }];
-    const { shown, hidden } = logWindow(mixed, new Set(['rejection']), 200);
-    expect(shown).toHaveLength(1);
-    expect(hidden).toBe(0);
-    expect(shown[0]!.kind).toBe('rejection');
+    const d = window(mixed, 200, new Set(['rejection']));
+    expect(flat(d)).toHaveLength(1);
+    expect(d.hidden).toBe(0);
+  });
+});
+
+describe('what matters is shown first', () => {
+  // Lines the engine wrote in a played campaign (loop18), as the player Meridian.
+  const reader = { playerFactionId: 'meridian', names: ['Meridian Trade Authority', 'Sekkar Gate', 'Sennex', 'Brannix'] };
+  const at = (turn: number, kind: EventLogEntry['kind'], text: string): EventLogEntry => ({ turn, kind, factionId: null, text, visibleTo: null });
+  const lines = [
+    at(1, 'system', 'Iron Vigil Remnant lays down 8 hull(s), begins university at Vantic at Vantic.'),
+    at(1, 'system', 'Iron Vigil Remnant sends 4 battleships, 1 escort, 2 lifters, 1 listener from Vantic against Threx.'),
+    at(4, 'order', 'Meridian Trade Authority and Arkane Free Worlds storms Sennex, breaking a garrison of 4 for 1 lifters; Meridian Trade Authority takes possession with 4 troops ashore.'),
+    at(5, 'system', 'Sennex rises against Meridian Trade Authority: its last troops desert, and Sennex answers to nobody.'),
+    at(5, 'order', 'Meridian Trade Authority moves 3 escorts from Corvid to Torrek Anchorage.'),
+    at(5, 'rejection', '[no_presence] meridian neither holds Ithaal nor has ships there.'),
+    at(6, 'rim', 'A border incident near Brannix: Meridian Trade Authority and Ojjul Nar Combine ships trade fire nobody ordered.'),
+    at(6, 'rim', 'A shortage of salvage runs through the Rim: buyers will pay 50% more for it for 3 turns.'),
+    at(6, 'system', 'Turn 6: 470 credits from 4 systems, 154 to upkeep.'),
+  ];
+
+  it('weighs a line by what it is and whose', () => {
+    expect(lines.map((l) => weighEntry(l, reader))).toEqual([
+      'routine', 'notable', 'attention', 'attention', 'routine', 'routine', 'attention', 'notable', 'routine',
+    ]);
   });
 
-  it('is a no-op on a log shorter than the window', () => {
-    const { shown, hidden, firstIndex } = logWindow(log(5), new Set(), 200);
-    expect(shown).toHaveLength(5);
-    expect(hidden).toBe(0);
-    expect(firstIndex).toBe(0);
+  it('puts what needs the player at the top, from the last turns only, newest first', () => {
+    const d = digestLog(lines, reader, { kinds: new Set(), importantOnly: true, limit: 200, recentTurns: 2 });
+    expect(d.attention.map((e) => e.turn)).toEqual([6, 5, 4]);
+    // Routine lines are left out of the turns, and nothing is invented.
+    expect(d.turns.flatMap((t) => t.entries).every((e) => e.weight !== 'routine')).toBe(true);
+    expect(d.turns.map((t) => t.turn)).toEqual([6, 5, 4, 1]);
+  });
+
+  it('reads the player and their worlds off the served world', () => {
+    expect(
+      logReader({
+        playerFactionId: 'meridian',
+        factions: [{ id: 'meridian', name: 'Meridian Trade Authority' }],
+        systems: [
+          { name: 'Sekkar Gate', controllerFactionId: 'meridian', homeFactionId: 'meridian' },
+          { name: 'Sennex', controllerFactionId: null, homeFactionId: null },
+          { name: 'Corvid', controllerFactionId: 'vigil', homeFactionId: 'meridian' },
+        ],
+      }).names,
+    ).toEqual(['Meridian Trade Authority', 'Sekkar Gate', 'Corvid']);
   });
 });
