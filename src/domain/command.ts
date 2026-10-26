@@ -1081,6 +1081,17 @@ const NAME_STOCK: Record<string, NameStock> = {
   },
 };
 
+/**
+ * Every word that names a generated person: each stock's given names, family
+ * names and officer titles. `pronouns.ts` reads it, because nobody named from
+ * these stocks has stated pronouns — they are they/them.
+ */
+export const GENERATED_PERSON_WORDS: readonly string[] = [
+  ...new Set(
+    Object.values(NAME_STOCK).flatMap((s) => [...s.first, ...s.last, ...Object.values(s.titles)]),
+  ),
+];
+
 /** The name stock an independent world's notable is drawn from. */
 export const RIM_STOCK = 'rim';
 
