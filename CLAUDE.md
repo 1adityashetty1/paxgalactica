@@ -6543,6 +6543,16 @@ opposite case — authored, with pronouns stated on their own sheets — and
 exactly the kind of convention that decays: the next person to write a paragraph
 about a commander will reach for a pronoun, and nothing else would notice.
 
+**And it is held in code, because the prompts did not hold it.** Every prompt
+that writes people says officers, operatives and notables are they/them, and
+the counsellor went on writing "his" and "she" of them for twenty loops of
+playtest. `theyThem` (`src/domain/pronouns.ts`) runs on every model reply in
+`callStructured`: a gendered pronoun in a sentence that names a generated
+person — a stock name, an officer's title, or a role such as "governor" — or
+that follows one with nobody else named, becomes they/them, with the verb after
+it agreed. A sentence naming a leader is left alone, since a leader's pronouns
+are on their sheet. Each rewrite is traced as `normalized: ['pronouns']`.
+
 > **The board moves, and it is a cliff rather than a gradient.** Bots keeping two
 > officers instead of one diverts roughly 420 credits a power over thirty turns
 > from hulls to officers, and the Vigil — buying at 0.85 appetite — feels it

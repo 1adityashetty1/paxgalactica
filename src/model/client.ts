@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { theyThemDeep } from '../domain/pronouns.js';
 import { ModelCallError, NotLoggedInError, SpendCapError, UsageLimitError } from './errors.js';
 import { activeProvider, type AttemptMetrics } from './provider.js';
 import type { CallKind } from './router.js';
@@ -504,9 +505,13 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
       }
     }
     if (parsed.success) {
+      // Officers, operatives and notables are they/them, held here rather than
+      // in each prompt: the prompts said so and were not kept (`pronouns.ts`).
+      const pronouns = theyThemDeep(parsed.data);
+      if (pronouns.changed) normalized = [...normalized, 'pronouns'];
       trace('ok', undefined, undefined, normalized);
       record(call.kind, (Date.now() - startedAt) / 1000, totalCost, stats.retries - retriesBefore);
-      return { value: parsed.data, attempts: attempt, costUsd: totalCost };
+      return { value: pronouns.value, attempts: attempt, costUsd: totalCost };
     }
 
     // A reply that never became a JSON object is kept, briefly, so its cause can
