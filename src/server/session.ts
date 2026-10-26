@@ -796,7 +796,9 @@ export class GameSession {
     if (trial.rejections.length > 0) {
       throw new ApiFailure('bad_request', trial.rejections.map((r) => r.message).join(' '));
     }
-    const res = campaign.stage(ops, `organise:${request.op}`, trial.notes.join(' '), 'model', player, {
+    // Labelled by what it did, which is what the declared list shows the player.
+    const label = trial.notes[0]?.replace(/\.$/, '') ?? request.op.replace(/_/g, ' ');
+    const res = campaign.stage(ops, label, trial.notes.join(' '), 'model', player, {
       path: 'organise',
       secret: true,
     });

@@ -10,7 +10,7 @@ import {
 import { ansi256ToHex } from '../color.js';
 import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
 import { CommanderIcon, StackGlyphs } from './BattleIcons.js';
-import { archetypeOf, veterancyLabel } from '../../../src/domain/command.js';
+import { archetypeOf, commandingAboard, commandingAt, veterancyLabel } from '../../../src/domain/command.js';
 import { fleetName, fleetsAt, type Fleet } from '../../../src/domain/fleets.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass } from '../../../src/domain/hulls.js';
 import type { OrganiseRequest } from '../../../src/api/contract.js';
@@ -124,6 +124,7 @@ export function FleetsPanel({
                 <div className="crews">
                   <StackGlyphs stack={o.force} size={12} />
                 </div>
+                <Commanding officer={commandingAboard(state.commanders, o.officers ?? [])} />
               </li>
             ))}
           </ul>
@@ -340,6 +341,7 @@ function OwnFleet({
         <StackGlyphs stack={fleet.stack} size={12} />
         <Officers state={state} ids={officers} />
       </div>
+      <Commanding officer={commandingAt(state.commanders, me, system.id)} shared={others.length > 0} />
       <div className="fleet-actions">
         <button className="chip" onClick={() => onDraft(`Move ${name} to `)} title="Write the order on the command line">
           move
@@ -405,5 +407,24 @@ function OwnFleet({
         </form>
       )}
     </li>
+  );
+}
+
+/**
+ * Who commands a fleet in battle — the senior officer where it stands, or the
+ * senior aboard it under way: the rule the battle itself reads. An officer
+ * commands the battle they are at, so fleets sharing a world share one.
+ */
+function Commanding({ officer, shared = false }: { officer: { name: string; archetype: Parameters<typeof archetypeOf>[0]; battles: number } | undefined; shared?: boolean }) {
+  if (!officer) return <div className="fleet-command muted">No officer: fights without one.</div>;
+  return (
+    <div className="fleet-command" title={`${archetypeOf(officer.archetype).effect}, ${veterancyLabel(officer.battles)}`}>
+      <span className="muted">Commanded by </span>
+      {officer.name}
+      <span className="muted">
+        {' '}· {veterancyLabel(officer.battles)}
+        {shared ? ' · commands every fleet of yours here' : ''}
+      </span>
+    </div>
   );
 }

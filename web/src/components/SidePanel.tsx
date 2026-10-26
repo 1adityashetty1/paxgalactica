@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
 import { fleetName, fleetsAt } from '../../../src/domain/fleets.js';
+import { commandingAt } from '../../../src/domain/command.js';
 import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
 import type { OrganiseRequest } from '../../../src/api/contract.js';
 import { TradePanel } from './TradePanel.js';
@@ -579,6 +580,12 @@ function SystemTab({
                         {fleetName(id, f)} <span className="muted">({hullsIn(f.stack)})</span>
                       </span>
                     ))}
+                  {/* The officer who would command here: the senior one standing
+                      on this world, the rule a battle reads (`commandingAt`). */}
+                  {(() => {
+                    const chief = commandingAt(state.commanders, id, sys.id);
+                    return chief ? <span className="muted">commanded by {chief.name}</span> : null;
+                  })()}
                 </div>
               )}
             </li>

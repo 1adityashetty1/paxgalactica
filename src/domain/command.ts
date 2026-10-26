@@ -1521,6 +1521,30 @@ export function commanderAt(
   );
 }
 
+/**
+ * Who would command a power's ships at a world if they fought there: its
+ * senior officer standing on it — most engagements, then id — the rule a
+ * battle reads (`resolveBattle`'s `senior`). Every fleet a power has at that
+ * world is under this one officer, because an officer commands the battle they
+ * are at, not a fleet. Undefined with nobody there.
+ */
+export function commandingAt(
+  commanders: Commander[] | undefined,
+  factionId: string,
+  systemId: string,
+): Commander | undefined {
+  return (commanders ?? [])
+    .filter((c) => c.factionId === factionId && c.status === 'active' && c.atSystemId === systemId)
+    .sort((a, b) => b.battles - a.battles || a.id.localeCompare(b.id))[0];
+}
+
+/** The same for a voyage: the senior of the officers aboard it. */
+export function commandingAboard(commanders: Commander[] | undefined, officerIds: readonly string[]): Commander | undefined {
+  return (commanders ?? [])
+    .filter((c) => officerIds.includes(c.id) && c.status === 'active')
+    .sort((a, b) => b.battles - a.battles || a.id.localeCompare(b.id))[0];
+}
+
 export function commanderFor(
   commanders: Commander[] | undefined,
   factionId: string,

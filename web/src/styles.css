@@ -287,6 +287,7 @@ button.chip:hover { background: #262c37; color: var(--text); }
 .split-class { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; }
 .fleet-tag { color: var(--text); }
 .fleets-here { display: flex; flex-wrap: wrap; gap: 4px 10px; width: 100%; padding-left: 14px; font-size: 11px; }
+.fleet-command { font-size: 11px; margin-top: 2px; }
 .loading, .fatal { padding: 48px 24px; color: var(--dim); }
 .fatal pre { white-space: pre-wrap; color: var(--bad); background: var(--panel); padding: 12px; border-radius: 4px; }
 .error { color: var(--bad); }

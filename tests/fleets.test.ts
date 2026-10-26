@@ -167,3 +167,31 @@ describe('a campaign with fleets', () => {
     expect(hullsIn(sys(c.state, 'ark-2').ships.meridian)).toBeGreaterThan(0);
   });
 });
+
+describe('who commands a fleet', () => {
+  it('is the senior officer where it stands, or aboard it under way — the rule a battle reads', async () => {
+    const { commandingAboard, commandingAt } = await import('../src/domain/command.js');
+    const s = createSeedState('meridian');
+    const here = commandingAt(s.commanders, 'meridian', 'sek-1');
+    expect(here?.name).toMatch(/Adrienne Sorel/);
+    expect(commandingAt(s.commanders, 'meridian', 'sek-2')).toBeUndefined();
+    const { state } = apply(s, [{ op: 'move', factionId: 'meridian', fleet: '1', targetId: 'sek-4' }]);
+    const order = state.pendingOrders.at(-1)!;
+    expect(commandingAboard(state.commanders, order.officers)?.id).toBe(here!.id);
+  });
+});
+
+describe('the organise route', () => {
+  it('stages a free, withdrawable change labelled by what it did, and refuses a bad one unstaged', async () => {
+    const { GameSession } = await import('../src/server/session.js');
+    const session = new GameSession(new MemoryCampaignStore());
+    await session.newCampaign('meridian', 'organise');
+    await session.organise({ op: 'split_fleet', fleet: '1', force: { battleship: 2 } });
+    const view = session.view();
+    expect(view.actionPoints.left).toBe(2);
+    expect(view.staged.at(-1)!.label).toBe('2 battleships split from Operating Group 1 at Sekkar Gate');
+    expect(view.state.systems.find((x) => x.id === 'sek-1')!.fleets!.filter((f) => f.factionId === 'meridian')).toHaveLength(2);
+    await expect(session.organise({ op: 'merge_fleets', into: '1', from: ['2'] })).rejects.toThrow(/not Sekkar Gate/);
+    expect(session.view().staged).toHaveLength(1);
+  });
+});
