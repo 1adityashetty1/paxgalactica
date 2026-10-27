@@ -6985,6 +6985,14 @@ function applyOpsUnderRules(
           break;
         }
 
+        // Unlabelled work says what it is and where, so two of a kind under way
+        // are two rows a player can tell apart: two envoys were both "political
+        // maneuver", with nothing in the Orders tab to say where either went.
+        const targetName = getSystem(state, op.targetId)?.name ?? op.targetId;
+        const plainLabel =
+          effect?.kind === 'court'
+            ? `envoy to ${targetName}`
+            : `${filedType.replace(/_/g, ' ')} ${isMovementType(op.type) ? 'to' : 'at'} ${targetName}`;
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -7001,8 +7009,8 @@ function applyOpsUnderRules(
           // the briefing, the log, the map — says which fleet it is.
           // Unless the label already says which fleet it is.
           label: departing && !departing.detached && !(op.label ?? '').toLowerCase().includes(fleetName(op.factionId, departing).toLowerCase())
-            ? `${fleetName(op.factionId, departing)}: ${op.label || filedType.replace(/_/g, ' ')}`
-            : op.label || filedType.replace(/_/g, ' '),
+            ? `${fleetName(op.factionId, departing)}: ${op.label || plainLabel}`
+            : op.label || plainLabel,
           durationRationale: rationale,
           path,
           force,
