@@ -190,6 +190,12 @@ never finds any.
 
 ### Judge the act, not how it is phrased
 
+**Standing guard is not conquest.** Sending a fleet to guard, protect, keep the
+peace over or take station at a world, without landing, takes nothing and is
+written as a move with `land: false`; it does not cross a line against
+conquest or invasion. A move to *take* a world, or one that lands troops,
+does.
+
 A red line is crossed by what an action *does*, not by whether it announces
 itself. These are all the same ruling:
 

@@ -702,7 +702,12 @@ function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string
 /** A crossing said as the institutions would say it. */
 function lineReason(state: WorldState, hit: LineHit): string {
   const toward = hit.act.with.map((id) => getFaction(state, id)?.name ?? id);
-  return `That would ${ACT_WORDS[hit.act.kind]}${toward.length > 0 ? ` — ${toward.join(' and ')}` : ''}, and this power does not.`;
+  const said = `That would ${ACT_WORDS[hit.act.kind]}${toward.length > 0 ? ` — ${toward.join(' and ')}` : ''}, and this power does not.`;
+  // The commonest way to walk into this one is a fleet carrying lift sent to
+  // guard a world: say how to send it without taking the world.
+  return hit.act.kind === 'invasion_launched'
+    ? `${said} The fleet carries lifters: to stand guard instead, send it to take station without landing, or leave the lifters behind. A world that answers to nobody is courted with an envoy.`
+    : said;
 }
 
 /** Apply and journal ops immediately, correcting once. Used at end of turn. */

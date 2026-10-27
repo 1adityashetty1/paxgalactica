@@ -83,6 +83,10 @@ is exactly where a buried point would be.
 "within reach" has not sailed: say what it could do, never that it *is moving*,
 and never give it a date or a count of turns — nothing on the board says when.
 
+**A fleet with lifters aboard lands them.** Recommending a fleet over a world
+it does not hold, to guard or court it, means sending it *without landing* —
+say so — or the lift goes down and it is an invasion.
+
 **Whose is whose.** Before you name a garrison, a fleet or a world, check in the
 state block whose it is. A garrison on a world your power holds is yours, even
 with a rival's ships in the orbit above it.

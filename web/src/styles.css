@@ -44,7 +44,22 @@ ul { margin: 0; padding-left: 1.1em; }
 .dot.on { background: var(--good); }
 .dot.off { background: var(--bad); }
 
-.grid { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
+/* The side column's width, the map's height and the briefing's height are the
+   player's to drag (`Splitter`, `src/ui/panes.ts`): each reads a custom
+   property set on `.app` once dragged, and the stylesheet's own size before. */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) auto var(--side-width, 380px); grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
+
+.splitter { flex: none; background: transparent; position: relative; z-index: 2; touch-action: none; }
+.splitter::after { content: ''; position: absolute; background: var(--line); transition: background 0.1s; }
+.splitter:hover::after, .splitter:active::after { background: var(--accent); }
+.splitter-v { width: 6px; margin: 0 -3px; cursor: col-resize; }
+.splitter-v::after { top: 0; bottom: 0; left: 2px; width: 2px; opacity: 0; }
+.splitter-v:hover::after, .splitter-v:active::after { opacity: 1; }
+.splitter-h { height: 6px; margin: -3px 0; cursor: row-resize; }
+.splitter-h::after { left: 0; right: 0; top: 2px; height: 2px; opacity: 0; }
+.splitter-h:hover::after, .splitter-h:active::after { opacity: 1; }
+body.resizing-v, body.resizing-v * { cursor: col-resize !important; user-select: none; }
+body.resizing-h, body.resizing-h * { cursor: row-resize !important; user-select: none; }
 /* `min-height: 0` so the column is held to the window and the feed scrolls
    inside it; a grid item's default minimum is its content, so the feed grew
    and took the whole page with it. */
@@ -99,7 +114,7 @@ ul { margin: 0; padding-left: 1.1em; }
 
 /* ---------- briefing ---------- */
 
-.briefing { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.briefing { padding: 12px 14px; border-bottom: 1px solid var(--line); flex: none; height: var(--briefing-height, auto); overflow-y: auto; }
 .staged { background: #14202e; border: 1px solid #1e3a5f; border-radius: 4px; padding: 8px 10px; margin-bottom: 10px; }
 .staged header { display: flex; justify-content: space-between; align-items: baseline; }
 .staged ul { margin: 6px 0 0; }
@@ -297,6 +312,8 @@ button.chip:hover { background: #262c37; color: var(--text); }
      its own, so a long campaign does not stretch the page without end. */
   .app { height: auto; min-height: 100vh; }
   .grid { grid-template-columns: 1fr; grid-template-rows: auto; }
+  /* Stacked, the column has no neighbour to share a width with. */
+  .splitter-v { display: none; }
   .feed { flex: none; height: 45vh; }
   .right { border-left: none; border-top: 1px solid var(--line); }
 }
@@ -319,6 +336,7 @@ button.chip:hover { background: #262c37; color: var(--text); }
 .portrait-img {
   display: block;
   width: 100%;
+  height: var(--stage-height, auto);
   aspect-ratio: 16 / 9;
   object-fit: cover;
   object-position: center 30%;
@@ -327,6 +345,7 @@ button.chip:hover { background: #262c37; color: var(--text); }
   display: flex;
   align-items: center;
   justify-content: center;
+  height: var(--stage-height, auto);
   aspect-ratio: 16 / 9;
   font-size: 18px;
   letter-spacing: 0.08em;
@@ -360,7 +379,7 @@ button.chip:hover { background: #262c37; color: var(--text); }
 .map-controls button:disabled { opacity: 0.35; cursor: default; }
 .map-controls .omitted { color: var(--dim); font-size: 10px; margin-left: 4px; }
 
-.map { display: block; width: 100%; height: 46vh; cursor: grab; touch-action: none; }
+.map { display: block; width: 100%; height: var(--stage-height, 46vh); cursor: grab; touch-action: none; }
 .map.dragging { cursor: grabbing; }
 .map .system { cursor: pointer; }
 .map .label { font-size: 15px; opacity: 0.7; pointer-events: none; paint-order: stroke;

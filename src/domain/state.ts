@@ -814,6 +814,12 @@ export const PendingOrderSchema = z.object({
     .optional(),
   /** The fleet under way, on a movement order of a campaign that keeps fleets — see `fleets.ts`. */
   fleet: FleetTagSchema.optional(),
+  /**
+   * Sent to stand guard, not to take the world (`MoveOp.land: false`): it lands
+   * nobody, and over ground nobody holds it takes station. Optional and only
+   * ever written true, so no older order changes shape.
+   */
+  holdLanding: z.literal(true).optional(),
 });
 export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 

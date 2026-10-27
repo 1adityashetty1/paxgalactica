@@ -65,7 +65,7 @@ leaves a faction with nobody following it.
 
 | op | use |
 |---|---|
-| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole — see Fleets |
+| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole; `land: false` stands guard without landing — see Fleets |
 | `rename_fleet` · `split_fleet` · `merge_fleets` | organise your own fleets — see Fleets |
 | `assign_command` · `relieve_command` | put an officer standing at a fleet's world in command of it, or leave it uncommanded — see Fleets |
 | `move_officer` | an officer travels alone to a world you hold or have ships at — see Fleets |
@@ -225,6 +225,13 @@ there is no abstract strength. A `move` commits a stated force drawn from the
 origin: **always set `force`** — a declared move without one is refused. "The
 battle line" is the warships, not the lifters and freighters beside them; if
 the player sends everything, write every hull at the origin.
+
+**A fleet that carries lifters lands them** on a world it does not hold: that
+is an invasion, and over a world nobody holds it storms the militia. When the
+player means to **guard, protect, keep the peace over, take station at or show
+the flag** at a world rather than take it, write `"land": false` on the `move`:
+the fleet arrives and holds the orbit, its lift stays aboard, and over ground
+nobody holds it takes station — the protection a world wants, not a conquest.
 
 **Ships are organised into named fleets**, listed by name and id under each
 world in the state block ("Operating Group 2", "3rd Pack"). **When the player

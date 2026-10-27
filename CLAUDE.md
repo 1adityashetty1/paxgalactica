@@ -6119,6 +6119,16 @@ with hulls. So an officer standing on a world contests no income, blocks no
 landing and anchors no suborning, which is decision 3 falling out of the storage
 choice rather than being guarded.
 
+**A fleet can stand guard without landing.** `move` takes `land: false`
+(`PendingOrder.holdLanding`): the fleet holds the orbit and its lift stays
+aboard, so over a world nobody holds it takes station — a world's protection
+want, not a conquest — and records no `invasion_launched`. It was missing, and
+the Combine's line against a war of conquest correctly refused a "peacekeeping"
+fleet that carried lifters: sent as it was, it would have stormed Var Hollow,
+which then rose against it at −80. The refusal now says how to stand guard
+instead, and the arbiter, resolution and counsellor prompts know the
+difference.
+
 **Every hull is in a fleet, as in Stellaris, and a lone officer's is a
 courier** (`fleets.ts`). A fleet has a `kind` — `line`, `listener`,
 `freighter` or `courier` — fixed when it is numbered, and each kind is numbered
@@ -8419,6 +8429,11 @@ component is logic nothing checks.
     Escape clears (`src/ui/history.ts`, kept in localStorage).
   - **End turn with actions unspent asks once**: the button says how many, and
     a second press within four seconds ends the turn.
+  - **The panes are the player's size.** A handle between the map and the
+    feed, between the two columns and under the briefing drags each pane, and a
+    double-click puts it back (`Splitter`, `src/ui/panes.ts`, kept in
+    localStorage). Each pane reads a custom property set only once dragged, so
+    the stylesheet's own layout is untouched until then.
   - **Main menu** sits beside Save and puts the title screen up without
     unloading the campaign; the title screen offers a way back to it until
     another is started or loaded.

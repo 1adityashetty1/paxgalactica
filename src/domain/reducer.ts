@@ -7010,6 +7010,7 @@ function applyOpsUnderRules(
           investedCredits: invested,
           ...(op.dark ? { dark: { turns: 0, heat: 0 } } : {}),
           ...(departing ? { fleet: departing } : {}),
+          ...(op.holdLanding && isMovementType(op.type) ? { holdLanding: true as const } : {}),
         };
         state.pendingOrders.push(order);
         {
@@ -7030,7 +7031,8 @@ function applyOpsUnderRules(
             isMovementType(op.type) &&
             holder !== op.factionId &&
             !isGuestOf(state, op.factionId, holder) &&
-            (force.lifter ?? 0) > 0
+            (force.lifter ?? 0) > 0 &&
+            !op.holdLanding
           ) {
             recordAct('invasion_launched', op.factionId, [other]);
           }
@@ -13213,6 +13215,11 @@ function resolveBattle(
   // is aboard and not merely how much.
   const arriving = new Map<string, ShipStack>();
   for (const o of orders) arriving.set(o.factionId, mergeStacks(arriving.get(o.factionId), o.force));
+  // Powers whose every fleet here was sent to stand guard (`MoveOp.land: false`):
+  // they land nobody, whatever lift is aboard.
+  const holding = new Set(
+    [...arriving.keys()].filter((id) => orders.filter((o) => o.factionId === id).every((o) => o.holdLanding === true)),
+  );
 
   // Whose fleets a faction's contingent was made of — each arriving voyage, and
   // any squadron already in the orbit that joins it — so what survives lands
@@ -13243,11 +13250,13 @@ function resolveBattle(
     const fb = state.factions.find((f) => f.id === b);
     return (fa?.disposition[b] ?? 0) > WAR_DISPOSITION_THRESHOLD && (fb?.disposition[a] ?? 0) > WAR_DISPOSITION_THRESHOLD;
   };
+  // A fleet sent to stand guard takes station over ground nobody holds whether
+  // or not anybody else is there, and whatever lift it carries.
   const stations = (id: string): boolean =>
     stationBesidePeers &&
     holder === null &&
-    (arriving.get(id)?.lifter ?? 0) === 0 &&
-    presentAt(target).some(([other, n]) => n > 0 && other !== id) &&
+    (holding.has(id) ||
+      ((arriving.get(id)?.lifter ?? 0) === 0 && presentAt(target).some(([other, n]) => n > 0 && other !== id))) &&
     presentAt(target).every(([other, n]) => n === 0 || other === id || atPeace(id, other)) &&
     [...arriving.keys()].every((other) => other === id || atPeace(id, other));
   const guest = (id: string): boolean =>
@@ -13300,7 +13309,9 @@ function resolveBattle(
       guests.length > 0 && holder !== null
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
         : guests.length > 0
-          ? `${guests.map(([id]) => nameOf(id)).join(' and ')} takes station over ${target.name} beside the ships already there.`
+          ? `${guests.map(([id]) => nameOf(id)).join(' and ')} takes station over ${target.name}${
+              presentAt(target).some(([id, n]) => n > 0 && !guests.some(([g]) => g === id)) ? ' beside the ships already there' : ', and lands nobody'
+            }.`
           : `${who} reinforces ${target.name}.`;
     // **The officers who sailed get off the ship.** This is the third exit found
     // to strand one, after the unopposed walk-in and `cancel_order`, and it is
@@ -13909,7 +13920,7 @@ function resolveBattle(
   // and Vergesse still read **69 of 9** four turns later. The window this
   // paragraph describes is "the transports are about to be irrelevant either
   // way", and with nothing coming ashore there is no window and no decision.
-  const inboundLift = [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
+  const inboundLift = [...attackShare.entries()].reduce((n, [id, st]) => n + (holding.has(id) ? 0 : (st.lifter ?? 0)), 0);
   if (holder !== null && (inboundLift > 0 || !landingNeedsLift)) {
     const held = defenders.find(([id]) => id === holder);
     const committed = held?.[1].lifter ?? 0;
@@ -14197,9 +14208,10 @@ function resolveBattle(
    * actually aboard, which is what gives conquest a dedicated cost and lets an
    * all-gun fleet win the orbitals and take nothing.
    */
+  // A power sent to stand guard keeps its lift aboard.
   const liftersIn = (): number =>
-    [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
-  const troops = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
+    [...attackShare.entries()].reduce((n, [id, st]) => n + (holding.has(id) ? 0 : (st.lifter ?? 0)), 0);
+  const troops = [...attackShare.entries()].reduce((n, [id, st]) => n + (holding.has(id) ? 0 : carryOf(st)), 0);
   // An `assault` officer multiplies what actually gets ashore. Attacker's only:
   // a defender has no lift phase, and the one thing an officer could do for
   // them on the ground is `DEFENSIVE_GARRISON_BONUS`, which is Arkane's whole
@@ -14233,7 +14245,8 @@ function resolveBattle(
   // that is all guns.
   if (troops <= 0) {
     for (const [id, st] of attackShare) land(id, st);
-    const note = `${notes.join(' ')} ${coalition} commands the orbitals of ${target.name} and has no troops aboard to land.`.trim();
+    const held = [...attackShare.entries()].some(([id, st]) => holding.has(id) && (st.lifter ?? 0) > 0);
+    const note = `${notes.join(' ')} ${coalition} commands the orbitals of ${target.name} and ${held ? 'lands nobody, as ordered' : 'has no troops aboard to land'}.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
     ground('no_lift', note);
     return finish(note);

@@ -497,3 +497,50 @@ describe('an officer with nothing to command', () => {
     indexHolds(landed);
   });
 });
+
+describe('standing guard over a world', () => {
+  // The Combine's 3rd House Fleet at Riqel carries a lifter; Var Hollow, a jump
+  // away, answers to nobody.
+  const send = (land?: boolean) =>
+    applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', fleet: '3rd', targetId: 'sek-5', ...(land === undefined ? {} : { land }) }],
+      'model',
+      'ojjul',
+      true,
+      {},
+      'declared',
+    );
+
+  it('lands the lift, and is an invasion, by default', () => {
+    const out = send();
+    expect(out.acts.some((a) => a.kind === 'invasion_launched')).toBe(true);
+  });
+
+  it('takes station with the lift aboard when sent without landing, and is no invasion', () => {
+    const out = send(false);
+    expect(out.rejections).toEqual([]);
+    expect(out.acts.some((a) => a.kind === 'invasion_launched')).toBe(false);
+    expect(out.state.pendingOrders.at(-1)!.holdLanding).toBe(true);
+    let s = out.state;
+    let report: ReturnType<typeof tickTurn>['report'] | null = null;
+    for (let i = 0; i < 3 && s.pendingOrders.some((o) => o.holdLanding); i++) {
+      const r = tickTurn(s, calm);
+      s = r.state;
+      report = r.report;
+    }
+    const vh = sys(s, 'sek-5');
+    expect(vh.controllerFactionId).toBeNull();
+    expect(vh.garrison).toBe(3);
+    expect(stackAt(vh, 'ojjul').lifter).toBe(1);
+    expect(report!.battles.some((b) => b.systemId === 'sek-5')).toBe(false);
+    expect(s.eventLog.some((e) => /takes station over Var Hollow, and lands nobody/.test(e.text))).toBe(true);
+  });
+
+  it('is not refused by the Combine as a war of conquest', async () => {
+    const { linesCrossed } = await import('../src/domain/acts.js');
+    const s = createSeedState('ojjul');
+    expect(linesCrossed(s.factions, send(false).acts, ['ojjul'])).toEqual([]);
+    expect(linesCrossed(s.factions, send().acts, ['ojjul']).length).toBeGreaterThan(0);
+  });
+});
