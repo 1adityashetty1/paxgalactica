@@ -321,8 +321,21 @@ const FLEET_STYLE: Record<string, (n: number) => string> = {
   drajk: (n) => `${ordinal(n)} Pack`,
 };
 
-/** What a single-vessel fleet is called by default; the line takes its power's style. */
-const KIND_STYLE: Record<Exclude<FleetKind, 'line'>, string> = {
+/**
+ * What a single-vessel fleet is called by default, in its power's own voice as
+ * its warfleets are: the Authority's analysts and contract haulers, the
+ * Remnant's pickets and tenders, the Family's ears and spice runs, the Drift's
+ * lanewatch and stonehaulers, and the Confederacy's hounds and prize crews. A
+ * power not listed takes the plain form.
+ */
+const KIND_STYLE: Record<string, Partial<Record<Exclude<FleetKind, 'line'>, string>>> = {
+  meridian: { listener: 'Market Watch', freighter: 'Contract Hauler' },
+  vigil: { listener: 'Signals Picket', freighter: 'Fleet Tender' },
+  ojjul: { listener: 'Ear of the Family', freighter: 'Spice Hauler' },
+  freeworlds: { listener: 'Lanewatch', freighter: 'Stonehauler' },
+  drajk: { listener: 'Scenthound', freighter: 'Prize Hauler' },
+};
+const PLAIN_KIND: Record<Exclude<FleetKind, 'line'>, string> = {
   listener: 'Listener',
   freighter: 'Freighter',
   courier: 'Courier',
@@ -333,7 +346,7 @@ export function fleetName(factionId: string, fleet: { number: number; name?: str
   if (fleet.name) return fleet.name;
   if (fleet.number === 0) return 'a new fleet';
   const kind = fleet.kind ?? 'line';
-  if (kind !== 'line') return `${KIND_STYLE[kind]} ${fleet.number}`;
+  if (kind !== 'line') return `${KIND_STYLE[factionId]?.[kind] ?? PLAIN_KIND[kind]} ${fleet.number}`;
   return (FLEET_STYLE[factionId] ?? ((n: number) => `${ordinal(n)} Fleet`))(fleet.number);
 }
 
@@ -368,7 +381,7 @@ export function resolveFleet<F extends { id: string; factionId: string; number: 
   const n = numberIn(q);
   if (n !== null) {
     // A bare number names a warfleet first: "the 3rd" is the 3rd Battle
-    // Squadron, not Listener 3, which is named by its kind.
+    // Squadron, not Ear of the Family 3, which is named by its kind.
     const line = fleets.filter((f) => f.number === n && (f.kind ?? 'line') === 'line');
     if (line.length === 1) return line[0]!;
     const byNumber = fleets.filter((f) => f.number === n);

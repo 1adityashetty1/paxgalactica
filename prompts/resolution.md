@@ -233,7 +233,7 @@ names a fleet, move it by name**: `"fleet": "Operating Group 2"` on the
 keeps its name. A move that names no fleet sends what `force` says as a
 detachment, which rejoins the senior fleet where it arrives. **Every hull is in
 a fleet, and a single-vessel job is a fleet of its own**: each listener and
-each freighter stands as a one-ship fleet ("Listener 2", "Freighter 3"), built
+each freighter stands as a one-ship fleet ("Ear of the Family 2", "Spice Hauler 3"), built
 and landed that way, and rides in a warfleet only once its power merges it in.
 A bare number names a warfleet. Organising is its own op and moves nothing:
 `rename_fleet` (`fleet`, `name`), `split_fleet` (`fleet`, `force`, optional

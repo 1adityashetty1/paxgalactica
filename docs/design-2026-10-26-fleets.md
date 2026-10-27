@@ -86,7 +86,8 @@ Every hull was already in some fleet, but a listener or a freighter was folded
 into the senior warfleet wherever it was built or landed, so it never stood as a
 unit of its own (12 of 12 over 40 bot turns). Now, as Stellaris does with its
 science ships, each is a one-ship fleet: `Fleet.kind` is `listener` or
-`freighter`, numbered on its own ("Listener 2"), and it rides in a warfleet only
+`freighter`, numbered on its own and named in its power's voice (the Combine's
+"Ear of the Family 2" and "Spice Hauler 3"; see `KIND_STYLE`), and it rides in a warfleet only
 once its power merges it in. A named fleet keeps whatever it carries; a bare
 number names a warfleet.
 

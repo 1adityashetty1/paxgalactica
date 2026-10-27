@@ -387,7 +387,7 @@ describe('a single-vessel job', () => {
       if (f.kind === 'listener' || f.kind === 'freighter') expect(f.stack).toEqual({ [f.kind]: 1 });
     }
     expect(kinds(s, 'ojjul').filter((f) => f.kind === 'listener')).toHaveLength(3);
-    expect(solos(s, 'sek-1')).toContain('Freighter 1');
+    expect(solos(s, 'sek-1')).toContain('Contract Hauler 1');
     indexHolds(s);
   });
 
@@ -398,7 +398,7 @@ describe('a single-vessel job', () => {
     ]);
     const listeners = fleetsAt(sys(state, 'sek-1'), 'meridian').filter((f) => f.kind === 'listener');
     expect(listeners.map((f) => f.stack)).toEqual([{ listener: 1 }, { listener: 1 }]);
-    expect(listeners.map((f) => fleetName('meridian', f))).toEqual(['Listener 1', 'Listener 2']);
+    expect(listeners.map((f) => fleetName('meridian', f))).toEqual(['Market Watch 1', 'Market Watch 2']);
     expect(solos(state, 'sek-1')).toHaveLength(before + 2);
     expect(names(state, 'sek-1')).toEqual(['Operating Group 1']);
     indexHolds(state);
@@ -436,7 +436,14 @@ describe('a single-vessel job', () => {
       { id: 'b', factionId: 'meridian', kind: 'listener' as const, number: 2, name: null },
     ];
     expect(resolveFleet(fleets, '2')?.id).toBe('a');
-    expect(resolveFleet(fleets, 'Listener 2')?.id).toBe('b');
+    expect(resolveFleet(fleets, 'Market Watch 2')?.id).toBe('b');
+  });
+
+  it('is named in its power\'s voice', () => {
+    expect(fleetName('ojjul', { kind: 'listener', number: 1, name: null })).toBe('Ear of the Family 1');
+    expect(fleetName('ojjul', { kind: 'freighter', number: 1, name: null })).toBe('Spice Hauler 1');
+    expect(fleetName('vigil', { kind: 'listener', number: 2, name: null })).toBe('Signals Picket 2');
+    expect(fleetName('elsewhere', { kind: 'freighter', number: 3, name: null })).toBe('Freighter 3');
   });
 });
 
