@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { AdvisorReplySchema, looksLikeAPlan } from '../src/model/calls.js';
+import { AdvisorReplySchema, looksLikeAList, looksLikeAPlan } from '../src/model/calls.js';
 import { AdvisorOutcomeSchema, ROUTES } from '../src/api/contract.js';
 import { createSeedState, playableFactions } from '../src/seed/scenario.js';
 import { WorldStateSchema } from '../src/domain/state.js';
@@ -63,23 +63,32 @@ describe('the advisor', () => {
     });
   });
 
-  describe('it must not become a solver', () => {
+  describe('it speaks in prose, and may say how', () => {
     /**
-     * The one rule a prompt cannot be trusted with. A solver announces itself
-     * structurally — it enumerates — so the check is a shape check rather than
-     * a second model asked whether the first was too prescriptive.
+     * Counsel is spoken, so a list is refused by its shape. A sequence said in
+     * prose is a direct answer to "how", which the counsellor is asked to give
+     * from 2026-10-27 (it was refused before, and read as obtuse).
      */
-    it('rejects a counsel shaped like a plan', () => {
-      const plans = [
+    it('rejects a counsel laid out as a list', () => {
+      const lists = [
         'Highwarden.\n- Take Sennex.\n- Then raise the garrison at Delvane.',
         'Highwarden:\n1. Move the fleet.\n2. Close the lane.\n3. Wait.',
-        'First, take Sennex. Second, close the Ilvenn lane. Third, wait them out.',
         'Highwarden.\n* Sennex is undefended.\n* Vashka is thin.',
       ];
-      for (const p of plans) {
-        expect(looksLikeAPlan(p), p).toBe(true);
+      for (const p of lists) {
+        expect(looksLikeAList(p), p).toBe(true);
         expect(AdvisorReplySchema.safeParse({ counsel: p }).success, p).toBe(false);
       }
+    });
+
+    it('accepts a sequence said in prose', () => {
+      const how = 'Send the 2nd Wardfleet to Sennex without landing; once it holds the orbit, land, and its garrison of three will not stand.';
+      expect(AdvisorReplySchema.safeParse({ counsel: how }).success).toBe(true);
+      expect(AdvisorReplySchema.safeParse({ counsel: 'First, take Sennex. Second, close the Ilvenn lane. Third, wait them out.' }).success).toBe(true);
+    });
+
+    it('still reads an enumeration as a plan where one act is wanted', () => {
+      expect(looksLikeAPlan('First, take Sennex. Second, close the Ilvenn lane. Third, wait them out.')).toBe(true);
     });
 
     it('accepts counsel that names pressures in prose', () => {
@@ -95,7 +104,7 @@ describe('the advisor', () => {
       }
     });
 
-    it('rejects an enumeration spread over whole paragraphs', () => {
+    it('reads an enumeration spread over whole paragraphs as a plan', () => {
       // The shape that escaped in the playtest of 2026-09-09. Three headings in
       // one unbroken paragraph, several sentences under each: the line branch
       // saw no line beginning with a marker because there are no line breaks,
@@ -107,7 +116,6 @@ describe('the advisor', () => {
         'None of it is unprofitable on its own. Third — the Drajk. We are at daggers drawn ' +
         'with them, and none of it costs us today.';
       expect(looksLikeAPlan(counsel)).toBe(true);
-      expect(AdvisorReplySchema.safeParse({ counsel }).success).toBe(false);
     });
 
     it('does not read a single dash or a lone "first" as a plan', () => {
@@ -169,10 +177,10 @@ describe('the advisor', () => {
   });
 
   describe('the prompt says the things the design rests on', () => {
-    it('forbids naming the move, and forbids the fourth wall', () => {
+    it('asks for a direct answer first, and forbids the fourth wall', () => {
       const text = prompt();
-      expect(text).toMatch(/do not tell them what to do/i);
-      expect(text).toMatch(/pressures, not moves/i);
+      expect(text).toMatch(/Help directly/);
+      expect(text).toMatch(/the answer comes in your first\s+sentence/i);
       // A counsellor who mentions action points has stopped being inside the
       // fiction, which is the whole register the call is written for.
       expect(text).toMatch(/action points|fourth wall/i);
@@ -183,6 +191,8 @@ describe('the advisor', () => {
       // different things; that is what makes an advisor worth having rather
       // than a generic optimizer.
       expect(prompt()).toMatch(/red lines and its\s+compulsions/i);
+      expect(prompt()).toMatch(/Check every act you recommend against them/);
+      expect(prompt()).toMatch(/nearest thing that does not/);
     });
   });
 });

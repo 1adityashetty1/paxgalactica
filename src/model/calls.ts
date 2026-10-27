@@ -1455,6 +1455,22 @@ export const STUB_REPLY_MAX_CHARS = 240;
  * the first was too prescriptive is the confirmation bias `verifyBreachRelevance`
  * exists to avoid; counting list markers is a lookup, and code does lookups.
  */
+/**
+ * Whether counsel is laid out as a list: two or more lines opening with a
+ * bullet, a number or a heading word. Counsel is spoken, so it is held to
+ * prose — but a sequence said in a sentence is a direct answer to "how", and
+ * from 2026-10-27 the counsellor is asked to give one. `looksLikeAPlan` stays
+ * the guard on the single recommended act.
+ */
+export function looksLikeAList(counsel: string): boolean {
+  return (
+    counsel
+      .trim()
+      .split(/\n/)
+      .filter((line) => /^\s*(?:[-*•]|\d+[.)]|(?:First|Second|Third|Then|Finally)\b[,:]?\s)/i.test(line)).length >= 2
+  );
+}
+
 export function looksLikeAPlan(counsel: string): boolean {
   const text = counsel.trim();
   // Two or more lines opening with a marker. One is a stray dash mid-sentence.
@@ -1587,10 +1603,10 @@ export const AdvisorReplySchema = z.object({
    * names. The prose has to carry it, and the refine below is what stops the
    * prose becoming the list anyway.
    */
-  counsel: cappedProse(640)
-    .refine((c) => !looksLikeAPlan(c), {
+  counsel: cappedProse(900)
+    .refine((c) => !looksLikeAList(c), {
       message:
-        'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',
+        'This is laid out as a list. You are speaking: say it in prose, in your own voice — a sequence said in a sentence is fine.',
     })
     .refine((c) => !breaksTheFourthWall(c), {
       message:
@@ -1725,10 +1741,10 @@ export async function askAdvisor(
             // changes what you speak to, not how you are allowed to answer.
             `> ${asked.replace(/\n+/g, ' ')}`,
             '',
-            `Answer the ${faction.title}'s question, in your own voice. Name what bears on it — what stands in the way, what it would cost, who would answer — and do not lay out the steps.`,
+            `Answer the ${faction.title}'s question directly, in your first sentence and in your own voice: what you would do, how, and what it costs. Check it against what your power will and will not do; if it crosses a red line, say so and give the nearest act that does not.`,
           ]
         : [
-            `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
+            `Speak to the ${faction.title}. Lead with what matters most on the board and what you would do about it, in your own voice — checked against what your power will and will not do.`,
           ]),
     ].join('\n'),
     // Asked what to do, the counsellor names one act: left optional, it named

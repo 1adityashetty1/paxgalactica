@@ -8495,21 +8495,30 @@ with what bears on it — what holds the place, what it costs, who would answer 
 never the order of march, and `looksLikeAPlan` still refuses an enumeration.
 The words are quoted as the leader's question, never read as instructions.
 
-### It must not become a solver, and that is enforced structurally
+### It answers directly, and is held to its power's sheet
 
-Advice that names the optimal line turns a campaign into a queue of
-instructions, and a leader who follows one has stopped playing. The prompt says
-so at length; a prompt can be argued out of its own rules, so `looksLikeAPlan`
-says it in code.
+It was built not to become a solver: told to name pressures rather than moves,
+never to lay out steps, and to speak in its power's voice, which for the
+Combine meant circling a point before arriving at it. Played, that read as
+obtuse — asked *how do I win Var Hollow*, it hinted. From 2026-10-27 it is
+asked to **help directly**: the answer in its first sentence, what it would do,
+how, and what it costs, with a sequence said in prose when the question is
+*how*. The voice colours the words and never delays the answer.
 
-A solver **announces itself structurally: it enumerates.** Two or more lines
-opening with a bullet, a number or a `First … Second … Third`, or the same
-enumeration run together in prose, is a plan. Deliberately shape-based rather
-than semantic — asking a second model whether the first was too prescriptive
-gets back the answer it already gave, which is the confirmation bias
-`verifyBreachRelevance` is shaped to avoid. Counting list markers is a lookup,
-and code does lookups. One marker is not enough to fire, because a single dash
-mid-sentence is ordinary speech and rejecting it would cost a retry every time.
+**What stays enforced in code** is the shape. `looksLikeAList` refuses counsel
+laid out as a list (two or more lines opening with a bullet, a number or a
+heading word) — it is spoken, not a memo — while a sequence in a sentence
+passes. The one recommended act keeps `looksLikeAPlan` and its no-"then" rule,
+since it is what the player declares, one act at a time. Shape rather than
+meaning, for the reason `verifyBreachRelevance` is a separate call: asking a
+model whether the first was too prescriptive gets back the answer it gave.
+
+**It checks every act against the power's sheet before it says it.** A red
+line is never recommended; asked for one, it says which line forbids it and
+offers the nearest act that does not — a fleet sent to stand guard *without
+landing* rather than a conquest, a hired proxy rather than its own hulls. A
+compulsion's defiance is recommended only when worth the dissent, with the
+cost said. Counsel runs to 900 characters, three to five sentences.
 
 **It is told what it can do and what has been done.** Two computed blocks sit
 beside `paperOf`. **This turn so far** lists each declaration and talk this
