@@ -323,16 +323,16 @@ const FLEET_STYLE: Record<string, (n: number) => string> = {
 
 /**
  * What a single-vessel fleet is called by default, in its power's own voice as
- * its warfleets are: the Authority's analysts and contract haulers, the
- * Remnant's pickets and tenders, the Family's ears and spice runs, the Drift's
- * lanewatch and stonehaulers, and the Confederacy's hounds and prize crews. A
+ * its warfleets are: the Authority's espionage platforms and contract haulers, the
+ * Remnant's pickets and logistics ships, the Family's ears and spice runs, the Drift's
+ * watchtowers and caravans, and the Confederacy's hounds and prize crews. A
  * power not listed takes the plain form.
  */
 const KIND_STYLE: Record<string, Partial<Record<Exclude<FleetKind, 'line'>, string>>> = {
-  meridian: { listener: 'Market Watch', freighter: 'Contract Hauler' },
-  vigil: { listener: 'Signals Picket', freighter: 'Fleet Tender' },
+  meridian: { listener: 'Espionage Platform', freighter: 'Contract Hauler' },
+  vigil: { listener: 'Signals Picket', freighter: 'Logistics Ship' },
   ojjul: { listener: 'Ear of the Family', freighter: 'Spice Hauler' },
-  freeworlds: { listener: 'Lanewatch', freighter: 'Stonehauler' },
+  freeworlds: { listener: 'Watchtower', freighter: 'Caravan' },
   drajk: { listener: 'Scenthound', freighter: 'Prize Hauler' },
 };
 const PLAIN_KIND: Record<Exclude<FleetKind, 'line'>, string> = {

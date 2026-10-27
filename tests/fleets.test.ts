@@ -398,7 +398,7 @@ describe('a single-vessel job', () => {
     ]);
     const listeners = fleetsAt(sys(state, 'sek-1'), 'meridian').filter((f) => f.kind === 'listener');
     expect(listeners.map((f) => f.stack)).toEqual([{ listener: 1 }, { listener: 1 }]);
-    expect(listeners.map((f) => fleetName('meridian', f))).toEqual(['Market Watch 1', 'Market Watch 2']);
+    expect(listeners.map((f) => fleetName('meridian', f))).toEqual(['Espionage Platform 1', 'Espionage Platform 2']);
     expect(solos(state, 'sek-1')).toHaveLength(before + 2);
     expect(names(state, 'sek-1')).toEqual(['Operating Group 1']);
     indexHolds(state);
@@ -436,7 +436,7 @@ describe('a single-vessel job', () => {
       { id: 'b', factionId: 'meridian', kind: 'listener' as const, number: 2, name: null },
     ];
     expect(resolveFleet(fleets, '2')?.id).toBe('a');
-    expect(resolveFleet(fleets, 'Market Watch 2')?.id).toBe('b');
+    expect(resolveFleet(fleets, 'Espionage Platform 2')?.id).toBe('b');
   });
 
   it('is named in its power\'s voice', () => {
