@@ -544,3 +544,23 @@ describe('standing guard over a world', () => {
     expect(linesCrossed(s.factions, send().acts, ['ojjul']).length).toBeGreaterThan(0);
   });
 });
+
+describe('landing as an action of its own', () => {
+  it('puts a stationed fleet\'s troops down from the orbit it holds', () => {
+    let s = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', fleet: '3rd', targetId: 'sek-5', land: false }],
+      'model', 'ojjul', true, {}, 'declared',
+    ).state;
+    s = until(s, (x) => !x.pendingOrders.some((o) => o.holdLanding));
+    expect(sys(s, 'sek-5').controllerFactionId).toBeNull();
+    const land = applyOps(s, [{ op: 'move', factionId: 'ojjul', fleet: '3rd', targetId: 'sek-5' }], 'model', 'ojjul', true, {}, 'declared');
+    expect(land.rejections).toEqual([]);
+    expect(land.acts.some((a) => a.kind === 'invasion_launched')).toBe(true);
+    const order = land.state.pendingOrders.at(-1)!;
+    expect(order).toMatchObject({ originId: 'sek-5', targetId: 'sek-5', durationTurns: 1 });
+    expect(order.holdLanding).toBeUndefined();
+    const r = tickTurn(land.state, calm);
+    expect(r.notes.some((n) => /storms Var Hollow/.test(n))).toBe(true);
+  });
+});

@@ -6127,7 +6127,11 @@ the Combine's line against a war of conquest correctly refused a "peacekeeping"
 fleet that carried lifters: sent as it was, it would have stormed Var Hollow,
 which then rose against it at −80. The refusal now says how to stand guard
 instead, and the arbiter, resolution and counsellor prompts know the
-difference.
+difference. **Landing is an action of its own**: the Fleets tab's
+and Command tab's move buttons draft a move *without landing* for a fleet
+carrying lift, and a fleet over a world its power does not hold gets a
+**land** button — a move of it onto the world it stands over, the assault from
+an orbit you hold.
 
 **Every hull is in a fleet, as in Stellaris, and a lone officer's is a
 courier** (`fleets.ts`). A fleet has a `kind` — `line`, `listener`,

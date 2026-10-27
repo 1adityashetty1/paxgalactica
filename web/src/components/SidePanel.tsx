@@ -1023,7 +1023,11 @@ function SailButton({
         <button
           className="chip"
           title="Writes the start of a move of the fleet they command; add where it goes."
-          onClick={() => onDraft(`Move ${fleetName(officer.factionId, commands)}, under ${callName}, to `)}
+          onClick={() =>
+            onDraft(
+              `Move ${fleetName(officer.factionId, commands)}, under ${callName},${(commands.stack.lifter ?? 0) > 0 ? ' without landing,' : ''} to `,
+            )
+          }
         >
           move their fleet
         </button>
@@ -1031,7 +1035,7 @@ function SailButton({
         <button
           className="chip"
           title="Writes the start of a fleet movement with this officer aboard; add where it goes."
-          onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, to `)}
+          onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, without landing, to `)}
         >
           sail with a fleet
         </button>

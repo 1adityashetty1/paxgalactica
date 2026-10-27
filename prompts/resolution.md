@@ -229,9 +229,13 @@ the player sends everything, write every hull at the origin.
 **A fleet that carries lifters lands them** on a world it does not hold: that
 is an invasion, and over a world nobody holds it storms the militia. When the
 player means to **guard, protect, keep the peace over, take station at or show
-the flag** at a world rather than take it, write `"land": false` on the `move`:
-the fleet arrives and holds the orbit, its lift stays aboard, and over ground
-nobody holds it takes station — the protection a world wants, not a conquest.
+the flag** at a world rather than take it — or says **without landing** — write
+`"land": false` on the `move`: the fleet arrives and holds the orbit, its lift
+stays aboard, and over ground nobody holds it takes station — the protection a
+world wants, not a conquest. **Landing is then an action of its own**: *"land
+the 2nd Pack's troops at Var Hollow"*, for a fleet already in that orbit, is a
+`move` of that fleet to the world it stands over, with no `land` field — the
+assault from an orbit you hold, a turn.
 
 **Ships are organised into named fleets**, listed by name and id under each
 world in the state block ("Operating Group 2", "3rd Pack"). **When the player
