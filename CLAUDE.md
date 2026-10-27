@@ -6114,10 +6114,21 @@ of truth for who and where; every behaviour of a unit is built on it:
 **Zero tons, and no weight either.** Tons are integers and drive cost, upkeep,
 the income contest and suborning, and an officer already has `COMMANDER_COST`
 and `COMMANDER_UPKEEP`. The reason freighters carry 0.01 weight — a side of
-nothing reads as "nothing to fight" — does not arise, because an officer is
-never a side on their own. So a lone officer contests no income, blocks no
+nothing reads as "nothing to fight" — does not arise while an officer rides
+with hulls. So an officer standing on a world contests no income, blocks no
 landing and anchors no suborning, which is decision 3 falling out of the storage
 choice rather than being guarded.
+
+**An officer travelling alone sails a courier** (`move_officer`). A courier is
+a hull class of its own — 1 ton, 0.01 weight, first in the loss order — and the
+passage is an ordinary `fleet_movement` of `{ courier: 1 }`, a one-unit fleet
+named *courier of …* and commanded by its passenger. So a lone officer is met
+and fought on arrival like any fleet: over ground their power holds they come
+down with the garrison when the courier is shot away, and anywhere else they
+fall with it. It was a passage that could not be intercepted before. A courier
+is never built (`NAVY_CLASSES` and `NavyClassSchema` leave it out of the yards,
+programmes, cheats and help), costs no tonnage, bill or upkeep (`navyTons`), and
+is stood down the moment it lands (`disembarkCouriers`).
 
 **Being present is what risks you; commanding is what helps.** Every officer on
 the field falls if their contingent does, while only the senior officer of the

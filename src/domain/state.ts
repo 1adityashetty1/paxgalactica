@@ -5,6 +5,7 @@ import {
   CREDITS_PER_TON,
   HULL_SPEC,
   HullClassSchema,
+  NavyClassSchema,
   ShipStackSchema,
   UPKEEP_PER_TON,
   hullsIn,
@@ -15,6 +16,7 @@ import {
   orbitalWeightOf,
   laneWeightOf,
   tonsIn,
+  navyTons,
   type HullClass,
   type ShipStack,
 } from './hulls.js';
@@ -721,7 +723,7 @@ export const OrderEffectSchema = z.object({
    * the difference between a programme that can take a world and one that can
    * only win the space over it.
    */
-  hull: HullClassSchema.default('battleship'),
+  hull: NavyClassSchema.default('battleship'),
   /**
    * Which archetype `found_fixture` raises. Ignored by every other kind.
    *
@@ -1211,10 +1213,12 @@ export function fleetStrengthOf(state: WorldState, factionId: string): number {
  * battleship are four ships either way, but ten tons against twelve.
  */
 export function fleetTonsOf(state: WorldState, factionId: string): number {
-  const inSystems = state.systems.reduce((sum, s) => sum + tonsAt(s, factionId), 0);
+  // An officer's courier is the officer's, not the navy's: it is neither
+  // billed by the yards nor charged upkeep (`navyTons`).
+  const inSystems = state.systems.reduce((sum, s) => sum + navyTons(stackAt(s, factionId)), 0);
   const inTransit = state.pendingOrders
     .filter((o) => o.factionId === factionId && isMovementType(o.type))
-    .reduce((sum, o) => sum + tonsIn(o.force), 0);
+    .reduce((sum, o) => sum + navyTons(o.force), 0);
   return inSystems + inTransit;
 }
 

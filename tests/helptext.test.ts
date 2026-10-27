@@ -19,7 +19,7 @@ import {
   spanLines,
   worldLines,
 } from '../src/ui/helptext.js';
-import { CREDITS_PER_TON, HULL_CLASSES, HULL_SPEC } from '../src/domain/hulls.js';
+import { CREDITS_PER_TON, HULL_CLASSES, NAVY_CLASSES, HULL_SPEC } from '../src/domain/hulls.js';
 import { FIXTURE_COST, FIXTURE_UPKEEP, MAX_FIXTURE_BONUS } from '../src/domain/diplomacy.js';
 import { ASSET_ARCHETYPES } from '../src/domain/assets.js';
 import { WORLD_TYPE_STAT, fixtureSlotRefusal, type WorldType } from '../src/domain/state.js';
@@ -36,7 +36,8 @@ describe('the help text', () => {
   const ships = shipClassLines().join('\n');
 
   it('lists every ship class at the price the yards charge', () => {
-    for (const hull of HULL_CLASSES) {
+    // A courier is never built, so it has no price to list.
+    for (const hull of NAVY_CLASSES) {
       const { label, tonnage } = HULL_SPEC[hull];
       expect(ships).toMatch(new RegExp(`${label}\\s+${tonnage}t\\s+${tonnage * CREDITS_PER_TON}cr`));
     }

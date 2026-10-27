@@ -79,3 +79,20 @@ its identity, as in *Stellaris*. Two decisions were taken with the user:
 - **A defender driven off keeps its fleets' identities** at the refuge. Fleets
   that were merged into one contingent are split back in proportion. They are
   not tracked hull by hull.
+
+## An officer travelling alone sails a courier
+
+A lone officer's passage was a special case in the tick: they arrived wherever
+they were sent, and nothing on the way could touch them. They now sail a
+**courier**, a hull class of one ton and 0.01 weight, first in the loss order.
+`move_officer` issues an ordinary `fleet_movement` of `{ courier: 1 }`, tagged as
+a fleet named *courier of <officer>* under that officer's command, so the
+arrival is resolved by the same battle code as any fleet. Over a world their
+power holds, an officer whose courier is shot away comes down with the garrison;
+anywhere else they fall with it.
+
+A courier is transport, not navy: it is never built, never billed, draws no
+upkeep and is not counted in fleet tonnage (`navyTons`), and it is stood down
+the moment it lands (`disembarkCouriers`), so no fleet of couriers is ever left
+on the board. The harness board is unchanged (5/5/6/5/4 at 30 turns): the bots
+never send an officer alone.

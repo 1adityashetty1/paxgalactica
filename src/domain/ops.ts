@@ -16,7 +16,7 @@ import {
 } from './diplomacy.js';
 import { CATEGORY_FLOORS, FibScaleSchema, type DurationCategory } from './duration.js';
 import { LentSchema } from './loan.js';
-import { HullClassSchema, TypedStackSchema } from './hulls.js';
+import { HullClassSchema, NavyClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
 import { AgentClassSchema, CommanderArchetypeSchema } from './command.js';
 import {
@@ -1413,7 +1413,7 @@ const WorkFields = {
 export const BuildShipsOp = z.object({
   op: z.literal('build_ships'),
   factionId: z.string().min(1),
-  hull: HullClassSchema,
+  hull: NavyClassSchema,
   count: z.number().int().min(1),
   /** A world you hold; omitted, your best one. A programme needs one named. */
   systemId: z.string().min(1).optional(),

@@ -243,7 +243,9 @@ world in command, one fleet each; `relieve_command` (`fleet`) leaves it
 without one. A commander sails with their fleet; other officers named in
 `officers` ride along beside them. An officer is still a unit of their own:
 `move_officer` (`officer`, `targetId`) sends one alone, a turn a jump, to a
-world the power holds or has ships at — to take a command there, say. An officer
+world the power holds or has ships at — to take a command there, say. They
+sail a **courier**, a one-hull fleet of nominal weight: met and fought on
+arrival like any fleet, and never built or bought. An officer
 takes command only where they stand: one sent alone takes a fleet at the far
 end in a later order, once arrived, never in the same declaration.
 

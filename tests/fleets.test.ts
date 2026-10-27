@@ -242,10 +242,14 @@ describe('a fleet commander', () => {
     const { state } = apply(createSeedState('meridian'), [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'tor-1' }]);
     expect(fleet(state, 'flt-meridian-1')!.commanderId).toBeNull();
     const order = state.pendingOrders.at(-1)!;
-    expect(order.force).toEqual({});
+    // They sail a courier: a one-hull fleet named for them, which they command.
+    expect(order.force).toEqual({ courier: 1 });
+    expect(order.fleet).toMatchObject({ name: expect.stringMatching(/^courier of .*Sorel/), commanderId: officer(state, 'Sorel').id });
     const s = until(state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
     expect(officer(s, 'Sorel').atSystemId).toBe('tor-1');
+    // The courier is set aside once they are down: nothing new stands at the world.
     expect(s.systems.find((x) => x.id === 'tor-1')!.ships.meridian).toEqual(state.systems.find((x) => x.id === 'tor-1')!.ships.meridian);
+    expect(s.systems.flatMap((x) => Object.values(x.ships)).some((st) => (st.courier ?? 0) > 0)).toBe(false);
     // And takes the fleet there once assigned.
     const t = apply(s, [{ op: 'assign_command', factionId: 'meridian', fleet: '2', officer: 'Sorel' }], 'organise').state;
     expect(fleet(t, 'flt-meridian-2')!.commanderId).toBe(officer(t, 'Sorel').id);
@@ -321,5 +325,51 @@ describe('holding position', () => {
     expect(out.rejections).toEqual([]);
     expect(out.state.pendingOrders.some((o) => o.factionId === 'vigil')).toBe(false);
     expect(out.notes.join(' ')).toMatch(/holds Vantic already/);
+  });
+});
+
+describe('an officer travelling alone', () => {
+  it('is a one-unit fleet of nominal weight, met and fought on arrival', () => {
+    const s0 = createSeedState('meridian');
+    // Six Vigil battleships squat over Corvid, a Meridian world.
+    s0.systems.find((x) => x.id === 'sek-2')!.ships.vigil = { battleship: 6 };
+    const { state } = apply(s0, [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'sek-2' }]);
+    const r = tickTurn(state, calm);
+    const battle = r.report.battles.find((b) => b.systemId === 'sek-2')!;
+    expect(battle).toBeDefined();
+    const sides = battle.rounds.flatMap((x) => [...x.attackers, ...x.defenders]);
+    expect(sides.some((c) => c.fleets?.some((n) => /^courier of .*Sorel/.test(n)))).toBe(true);
+    // The courier is shot away; the world is Meridian's, so Sorel comes down
+    // with the garrison, as any officer on a world their power holds does.
+    expect(r.state.systems.flatMap((x) => Object.values(x.ships)).some((st) => (st.courier ?? 0) > 0)).toBe(false);
+    const sorel = r.state.commanders.find((c) => c.name.includes('Sorel'))!;
+    expect(sorel.atSystemId).toBe('sek-2');
+  });
+
+  it('falls with the courier over ground their power does not hold', () => {
+    const s0 = createSeedState('meridian');
+    // One Meridian escort parked over the Vigil's Kalzir, under its guns.
+    const kalzir = s0.systems.find((x) => x.id === 'tor-2')!;
+    kalzir.ships.meridian = { escort: 1 };
+    kalzir.ships.vigil = { battleship: 12 };
+    const { state } = apply(s0, [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'tor-2' }]);
+    let w = state;
+    for (let i = 0; i < 6 && w.pendingOrders.some((o) => o.factionId === 'meridian' && o.targetId === 'tor-2'); i++) w = tickTurn(w, calm).state;
+    const sorel = w.commanders.find((c) => c.name.includes('Sorel'))!;
+    expect(sorel.status).not.toBe('active');
+  });
+
+  it('costs the navy nothing: the yards do not bill a courier and it draws no upkeep', async () => {
+    const { fleetTonsOf } = await import('../src/domain/state.js');
+    const s0 = createSeedState('meridian');
+    const before = s0.factions.find((f) => f.id === 'meridian')!.credits;
+    const { state } = apply(s0, [{ op: 'move_officer', factionId: 'meridian', officer: 'Sorel', targetId: 'tor-1' }]);
+    expect(state.factions.find((f) => f.id === 'meridian')!.credits).toBe(before);
+    expect(fleetTonsOf(state, 'meridian')).toBe(fleetTonsOf(s0, 'meridian'));
+  });
+
+  it('cannot be built', () => {
+    const out = applyOps(createSeedState('meridian'), [{ op: 'build_ships', factionId: 'meridian', hull: 'courier', count: 1 } as never], 'model', 'meridian', true, {}, 'declared');
+    expect(out.rejections.length).toBeGreaterThan(0);
   });
 });

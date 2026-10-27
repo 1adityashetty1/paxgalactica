@@ -442,7 +442,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
       const voyage = state.pendingOrders.find((o) => o.id === id && isMovementType(o.type));
       if (voyage) {
         if (voyage.factionId !== actor) return `"${id}" is another power's order, not this one.`;
-        if (hullsIn(voyage.force) === 0) return `"${id}" is an officer travelling alone; it carries no fleet, so no move of one is already under way.`;
+        if (hullsIn(voyage.force) === (voyage.force.courier ?? 0)) return `"${id}" is an officer travelling alone; it carries no fleet, so no move of one is already under way.`;
         const mine = state.systems.flatMap((x) => (x.fleets ?? []).filter((f) => f.factionId === actor));
         const named = mine.find((f) => lower(action).includes(lower(fleetName(actor, f))));
         if (named && voyage.fleet?.id !== named.id) {

@@ -4229,6 +4229,9 @@ function applyOpsUnderRules(
         }
         const from = officer.atSystemId;
         officer.atSystemId = null;
+        // They sail a courier: a one-unit fleet of nominal weight, met and
+        // fought on arrival like any other, and named for who it carries.
+        const number = lowestFree(numbersInUse(state, op.factionId));
         state.pendingOrders.push(
           PendingOrderSchema.parse({
             id: mintOrderId(state),
@@ -4245,7 +4248,14 @@ function applyOpsUnderRules(
             label: `${officer.name}: passage to ${target.name}`,
             durationRationale: `${jumps} jump(s), travelling alone.`,
             path: shortestPath(state.systems, from, target.id) ?? [],
-            force: {},
+            force: { courier: 1 },
+            fleet: {
+              id: fleetIdFor(op.factionId, number),
+              number,
+              name: `courier of ${officer.name}`.slice(0, 60),
+              detached: false,
+              commanderId: officer.id,
+            },
           }),
         );
         const note = `${officer.name} leaves ${getSystem(state, from)?.name} alone for ${target.name}, ${jumps} turn${jumps === 1 ? '' : 's'} away.`;
@@ -9971,6 +9981,7 @@ function applyOpsUnderRules(
   settleCourt(state);
   // Fleets end every batch numbered and in order, each under a commander who
   // is really there. See `fleets.ts`.
+  disembarkCouriers(state);
   settleFleets(state);
   settleCommand(state);
   if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
@@ -10581,6 +10592,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   try {
     return withNameStock(legacy.widerNames ?? true, () => {
       const out = tickTurnUnderRules(adopted(input), legacy);
+      disembarkCouriers(out.state);
       settleFleets(out.state);
       settleCommand(out.state);
       return out;
@@ -12076,19 +12088,6 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   const landings = new Map<string, PendingOrder[]>();
   for (const order of completed) {
     if (!isMovementType(order.type)) continue;
-    // An officer travelling alone fights nothing: put down at the world if
-    // their power still holds it or has ships there, else at its nearest base.
-    if (hullsIn(order.force) === 0 && order.officers.length > 0) {
-      const target = getSystem(state, order.targetId);
-      const standable = target && (target.controllerFactionId === order.factionId || hullsAt(target, order.factionId) > 0);
-      const lands = standable ? target!.id : (fleetBases(state, order.factionId)[0]?.id ?? order.originId);
-      returnRider(state, order, lands);
-      const note = `${order.label} — arrived at ${nameOf(lands)}.`;
-      notes.push(note);
-      logEvent(state, 'order', note, order.factionId);
-      report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(lands), outcome: 'arrived' });
-      continue;
-    }
     contested.add(order.targetId);
     const list = landings.get(order.targetId) ?? [];
     list.push(order);
@@ -12923,6 +12922,22 @@ function settleCommand(state: WorldState): void {
     const holds = c && c.status === 'active' && o.officers.includes(c.id) && !commanding.has(c.id);
     if (holds) commanding.add(c.id);
     else o.fleet = { ...o.fleet, commanderId: null };
+  }
+}
+
+/**
+ * A courier exists only while an officer travels alone: once it has arrived —
+ * landed, swept a squatter, or fallen back — the officer is down and the hull
+ * is set aside. Nothing is billed or refunded for it, since it was never the
+ * navy's (`navyTons`).
+ */
+function disembarkCouriers(state: WorldState): void {
+  for (const system of state.systems) {
+    if (!fleetMode(system)) continue;
+    for (const factionId of Object.keys(system.ships)) {
+      const stack = stackAt(system, factionId);
+      if ((stack.courier ?? 0) > 0) setStackAt(system, factionId, { ...stack, courier: 0 });
+    }
   }
 }
 

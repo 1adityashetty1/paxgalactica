@@ -55,6 +55,7 @@ import { CATEGORY_FLOORS } from '../domain/duration.js';
 import {
   CREDITS_PER_TON,
   HULL_CLASSES,
+  NAVY_CLASSES,
   HULL_SPEC,
   LIFTER_CARRY,
   UPKEEP_PER_TON,
@@ -113,6 +114,7 @@ const JOB: Record<HullClass, string> = {
   lifter: `carries ${LIFTER_CARRY} troops — the only way to take a world`,
   freighter: 'more of the trade over unclaimed ground',
   listener: `sees work where it stands; hears raids ${EMISSION_RANGE} jumps out`,
+  courier: 'an officer travelling alone; never built',
 };
 
 /** A class too light to count in the exchange: it is there to be protected. */
@@ -124,13 +126,13 @@ function names(list: string[]): string {
 
 export function shipClassLines(): string[] {
   const plural = (h: HullClass) => `${HULL_SPEC[h].label}s`;
-  const unarmed = HULL_CLASSES.filter((h) => HULL_SPEC[h].orbitalWeight < UNARMED).map(plural);
-  const byLoss = [...HULL_CLASSES].sort((a, b) => HULL_SPEC[a].lossOrder - HULL_SPEC[b].lossOrder);
+  const unarmed = NAVY_CLASSES.filter((h) => HULL_SPEC[h].orbitalWeight < UNARMED).map(plural);
+  const byLoss = [...NAVY_CLASSES].sort((a, b) => HULL_SPEC[a].lossOrder - HULL_SPEC[b].lossOrder);
   const first = byLoss[0]!;
   const last = byLoss.at(-1)!;
   return [
     `SHIP CLASSES — ${CREDITS_PER_TON} credits a ton to build, ${UPKEEP_PER_TON} a ton every turn after`,
-    ...HULL_CLASSES.map((h) => {
+    ...NAVY_CLASSES.map((h) => {
       const { label, tonnage } = HULL_SPEC[h];
       const cost = `${tonnage * CREDITS_PER_TON}cr`;
       return `  ${label.padEnd(13)} ${tonnage}t ${cost.padStart(5)}  ${JOB[h]}`;
