@@ -65,7 +65,10 @@ leaves a faction with nobody following it.
 
 | op | use |
 |---|---|
-| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds — see Fleets |
+| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole — see Fleets |
+| `rename_fleet` · `split_fleet` · `merge_fleets` | organise your own fleets — see Fleets |
+| `assign_command` · `relieve_command` | put an officer standing at a fleet's world in command of it, or leave it uncommanded — see Fleets |
+| `move_officer` | an officer travels alone to a world you hold or have ships at — see Fleets |
 | `fortify` | raise a world's garrison **ceiling** (`magnitude` 1..3) — see What work delivers |
 | `raise_garrison` | raise troops on a world now, up to its ceiling (`magnitude` 1..5) |
 | `develop` | develop a world (`magnitude` 1..2); at 7 it becomes a trade hub |
@@ -222,6 +225,35 @@ there is no abstract strength. A `move` commits a stated force drawn from the
 origin: **always set `force`** — a declared move without one is refused. "The
 battle line" is the warships, not the lifters and freighters beside them; if
 the player sends everything, write every hull at the origin.
+
+**Ships are organised into named fleets**, listed by name and id under each
+world in the state block ("Operating Group 2", "3rd Pack"). **When the player
+names a fleet, move it by name**: `"fleet": "Operating Group 2"` on the
+`move`, and no `force` — a named fleet sails whole from wherever it stands, and
+keeps its name. A move that names no fleet sends what `force` says as a
+detachment, which rejoins the senior fleet where it arrives. **Every hull is in
+a fleet, and a single-vessel job is a fleet of its own**: each listener and
+each freighter stands as a one-ship fleet ("Ear of the Family 2", "Spice Hauler 3"), built
+and landed that way, and rides in a warfleet only once its power merges it in.
+A bare number names a warfleet. Organising is its own op and moves nothing:
+`rename_fleet` (`fleet`, `name`), `split_fleet` (`fleet`, `force`, optional
+`name`) and `merge_fleets` (`into`, `from`, at one world).
+
+**A fleet may have a commander** — shown beside it in the state block — and
+the commander of a side's largest commanded fleet leads it in battle.
+`assign_command` (`fleet`, `officer`) puts an officer standing at the fleet's
+world in command, one fleet each; `relieve_command` (`fleet`) leaves it
+without one. A commander sails with their fleet; other officers named in
+`officers` ride along beside them. An officer is still a unit of their own:
+`move_officer` (`officer`, `targetId`) sends one alone, a turn a jump, to a
+world the power holds or has ships at — to take a command there, say. An
+officer with no fleet to command keeps a **courier**, a one-hull fleet of
+nominal weight they command ("courier of …"), and sails alone in it: met and
+fought on arrival like any fleet, never built or bought, and given up when they
+take a command. Moving a courier by name sends its officer; it is never split,
+merged or given to anyone else. An officer
+takes command only where they stand: one sent alone takes a fleet at the far
+end in a later order, once arrived, never in the same declaration.
 
 **Narrate the departure, never the battle.** A fleet sent at a world another
 power holds, or into an orbit where another power's ships sit, arrives after

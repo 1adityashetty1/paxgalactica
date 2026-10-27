@@ -1105,7 +1105,9 @@ describe('the order hulls are spent in a battle', () => {
     // do not fight sit where their softness puts them: a freighter is the
     // biggest unarmoured target in any fleet and goes before the lift arm, and
     // a listener is small enough to be picked out late.
+    // An officer's courier first of all: it carries one person and no guns.
     expect(order.map((x) => x.h)).toEqual([
+      'courier',
       'escort',
       'freighter',
       'lifter',

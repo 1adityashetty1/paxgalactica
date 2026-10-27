@@ -1,3 +1,4 @@
+import { fleetName, fleetsAt } from '../domain/fleets.js';
 import { ACT_WORDS } from '../domain/acts.js';
 import {
   CONTENT_REGARD,
@@ -804,7 +805,19 @@ export function serializeSystems(state: WorldState): string {
       (id) => !withShips.some(([f]) => f === id),
     );
     const ships = [
-      ...withShips.map(([id, stack]) => `${nameOfFaction(state, id)} ${describeStack(stack)}${officersOf(id)}`),
+      ...withShips.map(([id, stack]) => {
+        // By fleet where the campaign keeps them, so a fleet can be named in a `move`.
+        const fleets = fleetsAt(s, id).filter((f) => f.number > 0);
+        const held = fleets.length > 0
+          ? fleets
+              .map((f) => {
+                const chief = f.commanderId ? (state.commanders ?? []).find((c) => c.id === f.commanderId) : undefined;
+                return `${fleetName(id, f)} [${f.id}] ${describeStack(f.stack)}${chief ? `, commanded by ${chief.name}` : ', no commander'}`;
+              })
+              .join('; ')
+          : describeStack(stack);
+        return `${nameOfFaction(state, id)} ${held}${officersOf(id)}`;
+      }),
       ...ashore.map((id) => `${nameOfFaction(state, id)} no ships${officersOf(id)}`),
     ].join(', ');
     const payout = Object.entries(income.shares)

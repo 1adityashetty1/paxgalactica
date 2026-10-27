@@ -19,6 +19,8 @@ import { AgentSchema, BOUNTY_MIN, atWork } from './diplomacy.js';
 import { HEAT_MAX, HEAT_NOTORIOUS, NOTORIETY_WEIGHT } from './heat.js';
 import { buildAdjacency } from './graph.js';
 import {
+  addShipsAt,
+  setStackAt,
   dispositionBetween,
   liveAgentsOf,
   maxAgentsFor,
@@ -527,7 +529,7 @@ export function primeRimSandbox(state: WorldState, kind: RimEventKind): WorldSta
       const empty =
         worlds(state).find((s) => s.controllerFactionId === null && nextToMine(s)) ??
         worlds(state).find((s) => s.controllerFactionId === null);
-      if (empty) empty.ships[me] = { ...(empty.ships[me] ?? {}), escort: (empty.ships[me]?.escort ?? 0) + 2 };
+      if (empty) addShipsAt(empty, me, 2, 'escort');
       break;
     }
     case 'unrest': {
@@ -536,7 +538,7 @@ export function primeRimSandbox(state: WorldState, kind: RimEventKind): WorldSta
         .filter((s) => s.homeFactionId !== null && s.homeFactionId !== me && nextToMine(s))
         .slice(0, 2);
       for (const s of taken) {
-        for (const id of Object.keys(s.ships)) if (id !== me) delete s.ships[id];
+        for (const id of Object.keys(s.ships)) if (id !== me) setStackAt(s, id, {});
         s.controllerFactionId = me;
       }
       break;

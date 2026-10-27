@@ -4,6 +4,7 @@ import { addShipsAt, setShipsAt } from '../src/domain/state.js';
 import {
   CREDITS_PER_TON,
   HULL_CLASSES,
+  NAVY_CLASSES,
   HULL_SPEC,
   STACK_KEYS,
   ShipStackSchema,
@@ -186,7 +187,8 @@ describe('key order is canonical, so replay can compare by string', () => {
 
   it('orders every class the way HULL_CLASSES does', () => {
     const s = sys();
-    for (const hull of [...HULL_CLASSES].reverse()) addShipsAt(s, 'freeworlds', 1, hull);
-    expect(Object.keys(s.ships['freeworlds']!)).toEqual([...HULL_CLASSES]);
+    // A courier is never in the index: it is an officer's passage, not the navy.
+    for (const hull of [...NAVY_CLASSES].reverse()) addShipsAt(s, 'freeworlds', 1, hull);
+    expect(Object.keys(s.ships['freeworlds']!)).toEqual([...NAVY_CLASSES]);
   });
 });

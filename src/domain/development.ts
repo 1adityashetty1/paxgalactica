@@ -718,7 +718,9 @@ export function applyOrderEffect(
       }
       const whose = stillOurs
         ? ''
-        : ` The works now serve ${holder ?? 'nobody in particular'}, who holds the world.`;
+        : holder
+          ? ` The works now serve ${holder}, who holds the world.`
+          : ' The world answers to nobody now, and the works serve whoever comes for it.';
       return {
         note: `${label} completed at ${system.name}: strategic value ${before} -> ${system.strategicValue}.${whose}`,
         delivered: true,

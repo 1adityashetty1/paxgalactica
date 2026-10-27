@@ -52,6 +52,7 @@ export const HULL_CLASSES = [
   'lifter',
   'freighter',
   'listener',
+  'courier',
 ] as const;
 export const HullClassSchema = z.enum(HULL_CLASSES);
 export type HullClass = (typeof HULL_CLASSES)[number];
@@ -189,6 +190,16 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // the lawless middle of the map rather than a second way to be rich.
   freighter: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 1, label: 'freighter' },
 
+  // The hull an officer travels alone in: one ton, the nominal weight every
+  // unarmed hull carries, and spent first. An officer is a unit with nominal
+  // weight, so a lone one is met and fought on arrival like any fleet — killed
+  // or taken if the courier is lost. Never built or bought: it exists only
+  // while an officer is under way alone (`move_officer`), is set aside once
+  // they are down (`disembarkCouriers`), and is left out of a navy's tonnage
+  // (`navyTons`), so the yards never bill it and it draws no upkeep — it is
+  // the officer's, and the officer is paid for.
+  courier: { tonnage: 1, orbitalWeight: 0.01, carry: 0, lossOrder: -1, label: 'courier' },
+
   // SIGINT: it sees what an `intel` operative sees, at the world it sits on.
   //
   // Priced deliberately against the operative it duplicates, because two paths
@@ -257,6 +268,7 @@ export const TypedStackSchema = z.object({
   lifter: count,
   freighter: count,
   listener: count,
+  courier: count,
 });
 
 export const ShipStackSchema = z
@@ -595,3 +607,13 @@ export function strikeStack(
   }
   return { taken, left: normaliseStack(left) };
 }
+
+/** Tons in a stack that belong to a navy: every class but an officer's courier. */
+export function navyTons(stack: ShipStack | undefined): number {
+  return tonsIn(stack) - (stack?.courier ?? 0) * HULL_SPEC.courier.tonnage;
+}
+
+/** The classes a power builds, buys and is given: every hull but a courier. */
+export const NAVY_CLASSES = HULL_CLASSES.filter((h): h is Exclude<HullClass, 'courier'> => h !== 'courier');
+/** What a yard, a programme or the cheat menu may lay down. */
+export const NavyClassSchema = z.enum(['battleship', 'escort', 'torpedo_boat', 'lifter', 'freighter', 'listener']);

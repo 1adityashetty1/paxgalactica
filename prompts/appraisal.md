@@ -588,7 +588,8 @@ Two failure modes, in both directions:
   because it matters. Difficulty measures resistance, not consequence.
 
 An action with no meaningful way to fail — a decree in your own space, a
-courier to your own capital — is `trivial`, not exempt. **Moving the acting
+courier to your own capital — is `trivial`, not exempt. **Organising the acting power's own fleets** — renaming, splitting,
+merging, giving or taking a command — is `trivial` and costs nothing. **Moving the acting
 power's own ships between worlds it holds** is `trivial`, and so is laying down
 hulls it can pay for or striking off its own: nobody resists a shuffle inside
 your own territory, and what a fleet meets on arrival is settled by the battle,

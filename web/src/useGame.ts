@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Cheat } from '../../src/domain/cheats.js';
-import type { CampaignView } from '../../src/api/contract.js';
+import type { CampaignView, OrganiseRequest } from '../../src/api/contract.js';
 import { spliceLog } from '../../src/ui/logview.js';
 import { api, ApiError, feedStore, onConnection, onServerEvent } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
@@ -415,6 +415,16 @@ export function useGame() {
     [guard, say],
   );
 
+  /** Organise a fleet of the player's — see `fleets.ts`. Free; staged with the turn. */
+  const organise = useCallback(
+    (request: OrganiseRequest) =>
+      guard(async () => {
+        const { notes } = await api.organise(request);
+        notes.forEach((n) => say(n, 'system'));
+      }),
+    [guard, say],
+  );
+
   const talk = useCallback(
     (factionId: string, text: string, strike: string[] = []) =>
       guard(async () => {
@@ -574,6 +584,7 @@ export function useGame() {
     endTurn,
     discard,
     cheat,
+    organise,
     talk,
     endTalk,
   };

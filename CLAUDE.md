@@ -6114,10 +6114,30 @@ of truth for who and where; every behaviour of a unit is built on it:
 **Zero tons, and no weight either.** Tons are integers and drive cost, upkeep,
 the income contest and suborning, and an officer already has `COMMANDER_COST`
 and `COMMANDER_UPKEEP`. The reason freighters carry 0.01 weight — a side of
-nothing reads as "nothing to fight" — does not arise, because an officer is
-never a side on their own. So a lone officer contests no income, blocks no
+nothing reads as "nothing to fight" — does not arise while an officer rides
+with hulls. So an officer standing on a world contests no income, blocks no
 landing and anchors no suborning, which is decision 3 falling out of the storage
 choice rather than being guarded.
+
+**Every hull is in a fleet, as in Stellaris, and a lone officer's is a
+courier** (`fleets.ts`). A fleet has a `kind` — `line`, `listener`,
+`freighter` or `courier` — fixed when it is numbered, and each kind is numbered
+on its own, so the 3rd Battle Squadron is the third warfleet whatever the
+listeners are called. A listener or a freighter is a one-ship fleet of its own
+(`SOLO_CLASSES`): built, seeded and landed that way, and in a warfleet only once
+its power merges it in. An officer standing at a world who commands no fleet
+there keeps a **courier** (`settleCouriers`): a hull class of its own — 1 ton,
+0.01 weight, first in the loss order — in a one-ship fleet they command. It is
+given up when they take a command and raised again when they stand down. It is
+the officer's passage rather than the navy, so it is **never in the `ships`
+index**: it contests no income, holds no orbit, is never built
+(`NAVY_CLASSES`), billed or charged upkeep (`navyTons`). Sent alone
+(`move_officer`, or moving the courier by name) it is an ordinary
+`fleet_movement` of `{ courier: 1 }`, met and fought on arrival: over ground
+their power holds the officer comes down with the garrison when it is shot
+away, and anywhere else they fall with it. Measured: the harness board is
+unchanged at 5/5/6/5/4, and over 40 bot turns no hull stands outside a fleet
+and no listener or freighter rides in a warfleet.
 
 **Being present is what risks you; commanding is what helps.** Every officer on
 the field falls if their contingent does, while only the senior officer of the
@@ -8399,6 +8419,13 @@ component is logic nothing checks.
     Escape clears (`src/ui/history.ts`, kept in localStorage).
   - **End turn with actions unspent asks once**: the button says how many, and
     a second press within four seconds ends the turn.
+  - **Main menu** sits beside Save and puts the title screen up without
+    unloading the campaign; the title screen offers a way back to it until
+    another is started or loaded.
+  - **End Turn does not repeat a failed attempt.** A batch that landed nothing
+    — the first try of an action that was then corrected — is still journaled,
+    so replay reproduces the rejection, but its notes were told when it was
+    declared and `commitTurn` does not say them again.
   - **The map's tooltip says how long your nearest fleet takes** to reach a
     world (`travelTo` in `src/ui/travel.ts`): a turn a jump, or at once for one
     jump inside your own space — `movesAtOnce`, moved from the reducer to

@@ -464,6 +464,10 @@ export function HullIcon({
       return <ListenerIcon size={size} title={title} />;
     case 'battleship':
       return <ShipIcon size={size} title={title} />;
+    // An officer's courier is drawn as the officer it carries: the hull is
+    // nothing but their passage.
+    case 'courier':
+      return <CommanderIcon size={size} title={title} />;
   }
 }
 

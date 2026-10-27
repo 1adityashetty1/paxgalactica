@@ -6,6 +6,8 @@ import {
   DiscardResultSchema,
   CampaignViewSchema,
   ExportResultSchema,
+  OrganiseResultSchema,
+  type OrganiseRequest,
   DeleteSaveResultSchema,
   FactionListSchema,
   ImportOutcomeSchema,
@@ -408,6 +410,9 @@ export const api = {
   endTurn: (): Promise<TurnOutcomeResponse> => call(ROUTES.endturn, TurnOutcomeSchema),
 
   cheat: (cheat: Cheat) => call(ROUTES.cheat, CheatResultSchema, cheat),
+
+  /** Rename, split or merge the player's own fleets — staged, free, withdrawable. */
+  organise: (request: OrganiseRequest) => call(ROUTES.organise, OrganiseResultSchema, request),
 
   discardStaged: (index?: number) =>
     call(ROUTES.discardStaged, DiscardResultSchema, index === undefined ? {} : { index }),

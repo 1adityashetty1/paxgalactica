@@ -255,6 +255,14 @@ export function App() {
         >
           Save
         </button>
+        <button
+          type="button"
+          className="ghost-btn"
+          title="Back to the title screen. This campaign stays loaded until you start or load another, and the title screen offers a way back to it."
+          onClick={game.leaveCampaign}
+        >
+          Main menu
+        </button>
         <span className={game.connected ? 'dot on' : 'dot off'} title={game.connected ? 'server reachable' : 'cannot reach the server'} />
       </header>
 
@@ -434,6 +442,7 @@ export function App() {
             onTalk={setDraftChannel}
             onDraft={draft}
             onOffer={offer}
+            onOrganise={game.organise}
             activeChannel={activeChannel}
           />
         </div>

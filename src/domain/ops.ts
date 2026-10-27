@@ -16,7 +16,7 @@ import {
 } from './diplomacy.js';
 import { CATEGORY_FLOORS, FibScaleSchema, type DurationCategory } from './duration.js';
 import { LentSchema } from './loan.js';
-import { HullClassSchema, TypedStackSchema } from './hulls.js';
+import { HullClassSchema, NavyClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
 import { AgentClassSchema, CommanderArchetypeSchema } from './command.js';
 import {
@@ -680,6 +680,12 @@ export const IssueOrderOp = z.object({
    * is not is left behind with a note and the fleet still sails.
    */
   officers: z.array(z.string().min(1)).max(5).default([]),
+  /**
+   * The fleet that sails, by id, number or name — `fleet_movement` only, in a
+   * campaign that keeps fleets. It sails whole from wherever it stands: the
+   * origin is its world and `force` is ignored. See `fleets.ts`.
+   */
+  fleet: z.string().min(1).optional(),
   onInterrupt: OnInterruptSchema.default('cancel'),
   visibility: z.array(z.string()).default([]),
   label: z.string().default(''),
@@ -1407,7 +1413,7 @@ const WorkFields = {
 export const BuildShipsOp = z.object({
   op: z.literal('build_ships'),
   factionId: z.string().min(1),
-  hull: HullClassSchema,
+  hull: NavyClassSchema,
   count: z.number().int().min(1),
   /** A world you hold; omitted, your best one. A programme needs one named. */
   systemId: z.string().min(1).optional(),
@@ -1430,9 +1436,16 @@ export const BuildShipsOp = z.object({
 export const MoveOp = z.object({
   op: z.literal('move'),
   factionId: z.string().min(1),
-  originId: z.string().min(1),
+  /** Where the ships stand. Not needed when `fleet` is named: a fleet sails from wherever it is. */
+  originId: z.string().min(1).optional(),
   targetId: z.string().min(1),
-  /** A count, drawn proportionally, or a composition. Omitted, the whole port and its officers. */
+  /**
+   * A named fleet, by id, number or name ("2nd Pack", "Operating Group 3",
+   * "3"). It sails whole, and keeps its name. Without one, the ships sent go
+   * as a detachment that rejoins the senior fleet where it arrives.
+   */
+  fleet: z.string().min(1).optional(),
+  /** A count, drawn proportionally, or a composition. Omitted, the whole port and its officers. Ignored with `fleet`. */
   force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
   officers: z.array(z.string().min(1)).max(5).default([]),
   /** The power whose pact, truce, accord or contract this knowingly breaks. */
@@ -1441,6 +1454,70 @@ export const MoveOp = z.object({
   interruptible: z.boolean().default(true),
   onInterrupt: OnInterruptSchema.default('cancel'),
   visibility: z.array(z.string()).default([]),
+});
+
+/**
+ * Organising a power's own fleets — see `fleets.ts`. None is an act in the
+ * world: nothing moves, nothing is paid, and nobody else is touched. The
+ * player's come by the organise route, committed directly; a declaration,
+ * reaction or bot may write them too.
+ */
+export const RenameFleetOp = z.object({
+  op: z.literal('rename_fleet'),
+  factionId: z.string().min(1),
+  fleet: z.string().min(1),
+  /** Empty puts back the power's default name for the fleet's number. */
+  name: z.string().max(60),
+});
+
+/** Part of a fleet made a fleet of its own, at the same world. */
+export const SplitFleetOp = z.object({
+  op: z.literal('split_fleet'),
+  factionId: z.string().min(1),
+  fleet: z.string().min(1),
+  force: TypedStackSchema.partial(),
+  name: z.string().max(60).optional(),
+});
+
+/** Fleets at one world made one: `from` folded into `into`. */
+export const MergeFleetsOp = z.object({
+  op: z.literal('merge_fleets'),
+  factionId: z.string().min(1),
+  into: z.string().min(1),
+  from: z.array(z.string().min(1)).min(1).max(10),
+});
+
+/**
+ * Put an officer in command of a fleet — one of yours, standing at its world.
+ * They command it until they leave it, fall, or are given another; whoever
+ * commanded it before stays where they are, a unit of their own.
+ */
+export const AssignCommandOp = z.object({
+  op: z.literal('assign_command'),
+  factionId: z.string().min(1),
+  fleet: z.string().min(1),
+  /** By name — a family name is enough — or by id. */
+  officer: z.string().min(1),
+});
+
+/** Leave a fleet without a commander; its officer stays where they stand. */
+export const RelieveCommandOp = z.object({
+  op: z.literal('relieve_command'),
+  factionId: z.string().min(1),
+  fleet: z.string().min(1),
+});
+
+/**
+ * An officer travels on their own, a turn a jump, to a world their power holds
+ * or has ships at — to take up a command there, say. They sail with no hulls,
+ * fight nothing, and are put down at the end; a fleet's commander who goes
+ * leaves the fleet uncommanded.
+ */
+export const MoveOfficerOp = z.object({
+  op: z.literal('move_officer'),
+  factionId: z.string().min(1),
+  officer: z.string().min(1),
+  targetId: z.string().min(1),
 });
 
 /** Raise a world's garrison ceiling. Permanent, and it defends whoever holds the world next. */
@@ -1568,8 +1645,10 @@ export function orderFor(raw: unknown): Record<string, unknown> | null {
         op: 'issue_order',
         factionId: o.factionId,
         type: 'fleet_movement',
-        originId: o.originId,
+        // A named fleet's world is read by the reducer, which knows where it stands.
+        originId: o.originId ?? o.targetId,
         targetId: o.targetId,
+        ...(o.fleet !== undefined ? { fleet: o.fleet } : {}),
         ...(o.force !== undefined ? { force: o.force } : {}),
         officers: o.officers ?? [],
         ...(o.breaks !== undefined ? { breaks: o.breaks } : {}),
@@ -1656,6 +1735,12 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   GiftOp,
   BuildShipsOp,
   MoveOp,
+  RenameFleetOp,
+  SplitFleetOp,
+  MergeFleetsOp,
+  AssignCommandOp,
+  RelieveCommandOp,
+  MoveOfficerOp,
   FortifyOp,
   RaiseGarrisonOp,
   DevelopOp,
@@ -1765,6 +1850,12 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustFleetOp,
   BuildShipsOp,
   MoveOp,
+  RenameFleetOp,
+  SplitFleetOp,
+  MergeFleetsOp,
+  AssignCommandOp,
+  RelieveCommandOp,
+  MoveOfficerOp,
   FortifyOp,
   RaiseGarrisonOp,
   DevelopOp,
@@ -1857,7 +1948,7 @@ export const REDUCER_ONLY_OPS = new Set(['transfer_control']);
  * post-filters, and a reaction by nothing but the reducer
  * (`docs/design-2026-10-17-intent-ops.md` §7).
  */
-export const OP_PATHS_LIST = ['declared', 'reaction', 'bot', 'accord', 'engine', 'cheat'] as const;
+export const OP_PATHS_LIST = ['declared', 'reaction', 'bot', 'accord', 'engine', 'cheat', 'organise'] as const;
 export type OpPath = (typeof OP_PATHS_LIST)[number];
 
 const D = 'declared';
@@ -1935,6 +2026,15 @@ export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
   // Work is written as its own op (`move`, `fortify`, …); the order is the engine's.
   issue_order: [E],
   move: [D, ...NPC, E],
+  // Organising your own fleets is free and touches nobody: the player's come
+  // by the organise route, and any writer of a power's own ships may.
+  rename_fleet: [D, ...NPC, E, 'organise'],
+  split_fleet: [D, ...NPC, E, 'organise'],
+  merge_fleets: [D, ...NPC, E, 'organise'],
+  assign_command: [D, ...NPC, E, 'organise'],
+  relieve_command: [D, ...NPC, E, 'organise'],
+  // A journey, so an act: it costs the player an action, as any move does.
+  move_officer: [D, ...NPC, E],
   fortify: [D, ...NPC, E],
   raise_garrison: [D, ...NPC, E],
   develop: [D, ...NPC, E],

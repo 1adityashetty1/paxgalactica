@@ -8,7 +8,7 @@ import {
 } from '../../../src/domain/cheats.js';
 import { archetypeFor } from '../../../src/domain/assets.js';
 import { COMMANDER_ARCHETYPES } from '../../../src/domain/command.js';
-import { HULL_CLASSES } from '../../../src/domain/hulls.js';
+import { NAVY_CLASSES } from '../../../src/domain/hulls.js';
 import { hullsAt, type WorldState } from '../../../src/domain/state.js';
 
 /**
@@ -45,7 +45,7 @@ export function CheatPanel({
   const [assetAt, setAssetAt] = useState(heldBy(me)[0]?.id ?? held[0]?.id ?? '');
   const [shipsFor, setShipsFor] = useState(me);
   const [shipsAt, setShipsAt] = useState(standsAt(me)[0]?.id ?? '');
-  const [hull, setHull] = useState<(typeof HULL_CLASSES)[number]>('battleship');
+  const [hull, setHull] = useState<(typeof NAVY_CLASSES)[number]>('battleship');
   const [officerFor, setOfficerFor] = useState(me);
   const [officerAt, setOfficerAt] = useState(heldBy(me)[0]?.id ?? '');
   const [school, setSchool] = useState<(typeof COMMANDER_ARCHETYPES)[number]['kind']>('lineofbattle');
@@ -146,7 +146,7 @@ export function CheatPanel({
         <span className="muted">at</span>
         {worldSelect(shipsAt, setShipsAt, standsAt(shipsFor))}
         <select value={hull} onChange={(e) => setHull(e.target.value as typeof hull)}>
-          {HULL_CLASSES.map((h) => (
+          {NAVY_CLASSES.map((h) => (
             <option key={h} value={h}>
               {h.replace(/_/g, ' ')}
             </option>

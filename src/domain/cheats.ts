@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ASSET_ARCHETYPES } from './assets.js';
 import { CommanderArchetypeSchema } from './command.js';
-import { HullClassSchema } from './hulls.js';
+import { HullClassSchema, NavyClassSchema } from './hulls.js';
 
 /**
  * The cheat menu: a fixed set of things a player may do to the world directly,
@@ -72,7 +72,7 @@ export const CheatSchema = z.discriminatedUnion('kind', [
     kind: z.literal('ships'),
     factionId: z.string().min(1),
     systemId: z.string().min(1),
-    hull: HullClassSchema,
+    hull: NavyClassSchema,
     count: literals(CHEAT_SHIP_COUNTS),
   }),
   z.object({

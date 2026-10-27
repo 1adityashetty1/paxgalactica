@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 30;
+export const JOURNAL_VERSION = 31;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -119,6 +119,7 @@ export const JournalVersionSchema = z.union([
   z.literal(28),
   z.literal(29),
   z.literal(30),
+  z.literal(31),
 ]);
 
 export const JournalSchema = z.object({
@@ -270,6 +271,8 @@ export function replay(
     // No line was tagged with the acts it forbids, and Drajk's second red line
     // read "will not put its name to a written treaty", before version 27.
     lineActs: parsed.version >= 27,
+    // Ships were bare counts on each world, with no fleets, before version 31.
+    fleets: parsed.version >= 31,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's

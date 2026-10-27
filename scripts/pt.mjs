@@ -13,6 +13,7 @@
  *   node scripts/pt.mjs talk <id> "<text>" [--strike kind,kind]
  *   node scripts/pt.mjs endtalk <id>
  *   node scripts/pt.mjs discard [index]
+ *   node scripts/pt.mjs organise '<json>'  # rename, split, merge, assign or relieve a fleet's command
  *
  * Env: PT_BASE (default http://127.0.0.1:4173), PT_SESSION (default
  * ./saves/pt-session.json). Prints the route's result as JSON on stdout, and
@@ -40,6 +41,7 @@ const routes = {
   },
   endtalk: () => [`/api/endtalk/${args[0]}`, {}],
   discard: () => ['/api/staged/discard', args[0] !== undefined ? { index: Number(args[0]) } : {}],
+  organise: () => ['/api/fleet', JSON.parse(args.join(' '))],
 };
 if (!routes[cmd]) {
   console.error(`unknown command "${cmd}". One of: ${Object.keys(routes).join(', ')}`);

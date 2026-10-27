@@ -1,6 +1,6 @@
 import { addShipsAt, setShipsAt, stackAt } from '../src/domain/state.js';
 import { asOrders } from './orders.js';
-import { HULL_CLASSES, battleshipEquivalents, carryOf, type ShipStack } from '../src/domain/hulls.js';
+import { HULL_CLASSES, NAVY_CLASSES, battleshipEquivalents, carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -439,7 +439,8 @@ describe('the bots field composed navies', () => {
         for (const [hull, n] of Object.entries(stack)) if ((n ?? 0) > 0) seen.add(hull);
       }
     }
-    expect([...seen].sort()).toEqual([...HULL_CLASSES].sort());
+    // Every class a power buys; a courier is an officer's, and never bought.
+    expect([...seen].sort()).toEqual([...NAVY_CLASSES].sort());
   });
 
   it('gives the Confederacy boats rather than a battle line it could not win with', () => {
