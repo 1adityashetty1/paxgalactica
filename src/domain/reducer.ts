@@ -1,4 +1,4 @@
-import { adoptIndex, fleetIdFor, fleetMode, fleetName, fleetsAt, lowestFree, numbersInUse, resolveFleet, settleFleets, withFleet, type Fleet, type FleetTag } from './fleets.js';
+import { adoptIndex, fleetIdFor, fleetMode, fleetName, fleetsAt, lowestFree, numbersInUse, resolveFleet, settleCouriers, settleFleets, withFleet, type Fleet, type FleetTag } from './fleets.js';
 import {
   FIB_BUCKETS,
   MAX_DURATION,
@@ -4104,9 +4104,17 @@ function applyOpsUnderRules(
         notes.push(note);
         continue;
       }
+      // A courier is its officer's passage: sending it sends them, alone.
+      if (found.fleet.kind === 'courier' && found.fleet.commanderId) {
+        op = { op: 'move_officer', factionId: op.factionId, officer: found.fleet.commanderId, targetId: op.targetId };
+      }
+    }
+    if (op.op === 'issue_order' && op.fleet !== undefined) {
+      const found = findFleet(state, op.factionId, op.fleet);
+      if (typeof found === 'string') continue;
       const whole = Object.fromEntries(HULL_CLASSES.map((h) => [h, found.fleet.stack[h] ?? 0])) as Required<ShipStack>;
       op = { ...op, originId: found.system.id, force: whole };
-      sailing = { id: found.fleet.id, number: found.fleet.number, name: found.fleet.name, detached: false, commanderId: found.fleet.commanderId };
+      sailing = { id: found.fleet.id, kind: found.fleet.kind, number: found.fleet.number, name: found.fleet.name, detached: false, commanderId: found.fleet.commanderId };
       sailingWholePort = hullsIn(found.fleet.stack) === hullsAt(found.system, op.factionId);
     }
 
@@ -4130,6 +4138,13 @@ function applyOpsUnderRules(
         }
         const { fleet, system } = first;
         const was = fleetName(op.factionId, fleet);
+        // A courier is an officer's own passage, raised and stood down with
+        // them (`settleCouriers`): it is not split, merged or given another
+        // commander. Renaming it is harmless.
+        if (fleet.kind === 'courier' && op.op !== 'rename_fleet') {
+          reject(raw, 'illegal_value', `${was} is an officer's own passage, not a fleet to organise; give the officer command of a fleet, or send them on.`);
+          break;
+        }
         if (op.op === 'relieve_command') {
           const had = (state.commanders ?? []).find((c) => c.id === fleet.commanderId);
           fleet.commanderId = null;
@@ -4171,7 +4186,7 @@ function applyOpsUnderRules(
             break;
           }
           fleet.stack = subtractStack(fleet.stack, taken);
-          system.fleets!.push({ id: '', factionId: op.factionId, number: 0, name: op.name?.trim() || null, stack: taken, commanderId: null });
+          system.fleets!.push({ id: '', factionId: op.factionId, kind: 'line', number: 0, name: op.name?.trim() || null, stack: taken, commanderId: null });
           notes.push(`${describeStack(taken)} split from ${was} at ${system.name}.`);
           break;
         }
@@ -4185,6 +4200,10 @@ function applyOpsUnderRules(
           if (other.fleet === fleet) continue;
           if (other.system !== system) {
             reject(raw, 'illegal_value', `${fleetName(op.factionId, other.fleet)} is at ${other.system.name}, not ${system.name}: fleets merge where they both stand.`);
+            continue;
+          }
+          if (other.fleet.kind === 'courier') {
+            reject(raw, 'illegal_value', `${fleetName(op.factionId, other.fleet)} is an officer's own passage; give the officer command of ${was} instead.`);
             continue;
           }
           fleet.stack = mergeStacks(fleet.stack, other.fleet.stack);
@@ -4228,10 +4247,12 @@ function applyOpsUnderRules(
           break;
         }
         const from = officer.atSystemId;
+        // They sail their courier: a one-unit fleet of nominal weight, met and
+        // fought on arrival like any other, and named for who it carries. It
+        // keeps the name and number it stood under, where it had one.
+        const standing = (getSystem(state, from)?.fleets ?? []).find((f) => f.kind === 'courier' && f.commanderId === officer.id);
         officer.atSystemId = null;
-        // They sail a courier: a one-unit fleet of nominal weight, met and
-        // fought on arrival like any other, and named for who it carries.
-        const number = lowestFree(numbersInUse(state, op.factionId));
+        const number = standing?.number || lowestFree(numbersInUse(state, op.factionId, 'courier'));
         state.pendingOrders.push(
           PendingOrderSchema.parse({
             id: mintOrderId(state),
@@ -4250,9 +4271,10 @@ function applyOpsUnderRules(
             path: shortestPath(state.systems, from, target.id) ?? [],
             force: { courier: 1 },
             fleet: {
-              id: fleetIdFor(op.factionId, number),
+              id: fleetIdFor(op.factionId, number, 'courier'),
+              kind: 'courier',
               number,
-              name: `courier of ${officer.name}`.slice(0, 60),
+              name: standing?.name ?? `courier of ${officer.name}`.slice(0, 60),
               detached: false,
               commanderId: officer.id,
             },
@@ -6752,7 +6774,7 @@ function applyOpsUnderRules(
           if (fleetMode(origin)) {
             departing = sailing ?? (() => {
               const number = lowestFree(numbersInUse(state, op.factionId));
-              return { id: fleetIdFor(op.factionId, number), number, name: null, detached: true, commanderId: null };
+              return { id: fleetIdFor(op.factionId, number), kind: 'line' as const, number, name: null, detached: true, commanderId: null };
             })();
           }
         } else {
@@ -9982,8 +10004,9 @@ function applyOpsUnderRules(
   // Fleets end every batch numbered and in order, each under a commander who
   // is really there. See `fleets.ts`.
   disembarkCouriers(state);
-  settleFleets(state);
   settleCommand(state);
+  settleCouriers(state);
+  settleFleets(state);
   if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
   canonicalAgents(state);
   if (agentLists) settleAgentLists(state, notes);
@@ -10593,8 +10616,9 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     return withNameStock(legacy.widerNames ?? true, () => {
       const out = tickTurnUnderRules(adopted(input), legacy);
       disembarkCouriers(out.state);
-      settleFleets(out.state);
       settleCommand(out.state);
+      settleCouriers(out.state);
+      settleFleets(out.state);
       return out;
     });
   } finally {
@@ -12908,7 +12932,8 @@ function settleCommand(state: WorldState): void {
   const commanding = new Set<string>();
   const officer = (id: string) => (state.commanders ?? []).find((c) => c.id === id);
   for (const system of [...state.systems].sort((a, b) => a.id.localeCompare(b.id))) {
-    for (const f of system.fleets ?? []) {
+    // A courier's command is its officer's own, kept by `settleCouriers`.
+    for (const f of (system.fleets ?? []).filter((x) => x.kind !== 'courier')) {
       if (!f.commanderId) continue;
       const c = officer(f.commanderId);
       const holds = c && c.status === 'active' && c.factionId === f.factionId && c.atSystemId === system.id && !commanding.has(c.id);
@@ -12926,14 +12951,15 @@ function settleCommand(state: WorldState): void {
 }
 
 /**
- * A courier exists only while an officer travels alone: once it has arrived —
- * landed, swept a squatter, or fallen back — the officer is down and the hull
- * is set aside. Nothing is billed or refunded for it, since it was never the
- * navy's (`navyTons`).
+ * A courier is never in the `ships` index. Where a world keeps fleets the
+ * accessors set a landed one aside and `settleCouriers` raises the officer's
+ * own again; on a world that keeps none — a campaign from before fleets — the
+ * landed hull is struck from the index here. Nothing is billed or refunded for
+ * it, since it was never the navy's (`navyTons`).
  */
 function disembarkCouriers(state: WorldState): void {
   for (const system of state.systems) {
-    if (!fleetMode(system)) continue;
+    if (fleetMode(system)) continue;
     for (const factionId of Object.keys(system.ships)) {
       const stack = stackAt(system, factionId);
       if ((stack.courier ?? 0) > 0) setStackAt(system, factionId, { ...stack, courier: 0 });
@@ -12949,10 +12975,13 @@ interface FleetShare {
 
 /** The fleets a power has standing at a world, as shares of its contingent there. */
 function standingShares(system: StarSystem, factionId: string): FleetShare[] {
-  return fleetsAt(system, factionId).map((f) => ({
-    tag: f.number > 0 ? { id: f.id, number: f.number, name: f.name, detached: false, commanderId: f.commanderId } : undefined,
-    stack: f.stack,
-  }));
+  // A courier holds no orbit and is in no contingent; its officer stands with the rest.
+  return fleetsAt(system, factionId)
+    .filter((f) => f.kind !== 'courier')
+    .map((f) => ({
+      tag: f.number > 0 ? { id: f.id, kind: f.kind, number: f.number, name: f.name, detached: false, commanderId: f.commanderId } : undefined,
+      stack: f.stack,
+    }));
 }
 
 /**

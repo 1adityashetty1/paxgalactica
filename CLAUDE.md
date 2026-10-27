@@ -6119,16 +6119,25 @@ with hulls. So an officer standing on a world contests no income, blocks no
 landing and anchors no suborning, which is decision 3 falling out of the storage
 choice rather than being guarded.
 
-**An officer travelling alone sails a courier** (`move_officer`). A courier is
-a hull class of its own — 1 ton, 0.01 weight, first in the loss order — and the
-passage is an ordinary `fleet_movement` of `{ courier: 1 }`, a one-unit fleet
-named *courier of …* and commanded by its passenger. So a lone officer is met
-and fought on arrival like any fleet: over ground their power holds they come
-down with the garrison when the courier is shot away, and anywhere else they
-fall with it. It was a passage that could not be intercepted before. A courier
-is never built (`NAVY_CLASSES` and `NavyClassSchema` leave it out of the yards,
-programmes, cheats and help), costs no tonnage, bill or upkeep (`navyTons`), and
-is stood down the moment it lands (`disembarkCouriers`).
+**Every hull is in a fleet, as in Stellaris, and a lone officer's is a
+courier** (`fleets.ts`). A fleet has a `kind` — `line`, `listener`,
+`freighter` or `courier` — fixed when it is numbered, and each kind is numbered
+on its own, so the 3rd Battle Squadron is the third warfleet whatever the
+listeners are called. A listener or a freighter is a one-ship fleet of its own
+(`SOLO_CLASSES`): built, seeded and landed that way, and in a warfleet only once
+its power merges it in. An officer standing at a world who commands no fleet
+there keeps a **courier** (`settleCouriers`): a hull class of its own — 1 ton,
+0.01 weight, first in the loss order — in a one-ship fleet they command. It is
+given up when they take a command and raised again when they stand down. It is
+the officer's passage rather than the navy, so it is **never in the `ships`
+index**: it contests no income, holds no orbit, is never built
+(`NAVY_CLASSES`), billed or charged upkeep (`navyTons`). Sent alone
+(`move_officer`, or moving the courier by name) it is an ordinary
+`fleet_movement` of `{ courier: 1 }`, met and fought on arrival: over ground
+their power holds the officer comes down with the garrison when it is shot
+away, and anywhere else they fall with it. Measured: the harness board is
+unchanged at 5/5/6/5/4, and over 40 bot turns no hull stands outside a fleet
+and no listener or freighter rides in a warfleet.
 
 **Being present is what risks you; commanding is what helps.** Every officer on
 the field falls if their contingent does, while only the senior officer of the

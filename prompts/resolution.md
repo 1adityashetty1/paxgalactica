@@ -231,10 +231,13 @@ world in the state block ("Operating Group 2", "3rd Pack"). **When the player
 names a fleet, move it by name**: `"fleet": "Operating Group 2"` on the
 `move`, and no `force` — a named fleet sails whole from wherever it stands, and
 keeps its name. A move that names no fleet sends what `force` says as a
-detachment, which rejoins the senior fleet where it arrives. Organising is its
-own op and moves nothing: `rename_fleet` (`fleet`, `name`), `split_fleet`
-(`fleet`, `force`, optional `name`) and `merge_fleets` (`into`, `from`, at one
-world).
+detachment, which rejoins the senior fleet where it arrives. **Every hull is in
+a fleet, and a single-vessel job is a fleet of its own**: each listener and
+each freighter stands as a one-ship fleet ("Listener 2", "Freighter 3"), built
+and landed that way, and rides in a warfleet only once its power merges it in.
+A bare number names a warfleet. Organising is its own op and moves nothing:
+`rename_fleet` (`fleet`, `name`), `split_fleet` (`fleet`, `force`, optional
+`name`) and `merge_fleets` (`into`, `from`, at one world).
 
 **A fleet may have a commander** — shown beside it in the state block — and
 the commander of a side's largest commanded fleet leads it in battle.
@@ -243,9 +246,12 @@ world in command, one fleet each; `relieve_command` (`fleet`) leaves it
 without one. A commander sails with their fleet; other officers named in
 `officers` ride along beside them. An officer is still a unit of their own:
 `move_officer` (`officer`, `targetId`) sends one alone, a turn a jump, to a
-world the power holds or has ships at — to take a command there, say. They
-sail a **courier**, a one-hull fleet of nominal weight: met and fought on
-arrival like any fleet, and never built or bought. An officer
+world the power holds or has ships at — to take a command there, say. An
+officer with no fleet to command keeps a **courier**, a one-hull fleet of
+nominal weight they command ("courier of …"), and sails alone in it: met and
+fought on arrival like any fleet, never built or bought, and given up when they
+take a command. Moving a courier by name sends its officer; it is never split,
+merged or given to anyone else. An officer
 takes command only where they stand: one sent alone takes a fleet at the far
 end in a later order, once arrived, never in the same declaration.
 

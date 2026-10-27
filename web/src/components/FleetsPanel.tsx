@@ -11,7 +11,7 @@ import { ansi256ToHex } from '../color.js';
 import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
 import { CommanderIcon, StackGlyphs } from './BattleIcons.js';
 import { archetypeOf, commandingAboard, commandingAt, veterancyLabel } from '../../../src/domain/command.js';
-import { fleetName, fleetsAt, type Fleet } from '../../../src/domain/fleets.js';
+import { FLEET_KINDS, fleetName, fleetsAt, type Fleet } from '../../../src/domain/fleets.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass } from '../../../src/domain/hulls.js';
 import type { OrganiseRequest } from '../../../src/api/contract.js';
 import { useState } from 'react';
@@ -87,7 +87,11 @@ export function FleetsPanel({
     (o) => o.type === 'fleet_movement' && hullsIn(o.force) > 0,
   );
 
-  const mine = state.systems.flatMap((system) => fleetsAt(system, me).filter((f) => f.number > 0).map((fleet) => ({ fleet, system })));
+  // Warfleets first, then the one-ship fleets — listeners, freighters, and the
+  // couriers of officers with nothing to command — each kind by number.
+  const mine = state.systems
+    .flatMap((system) => fleetsAt(system, me).filter((f) => f.number > 0).map((fleet) => ({ fleet, system })))
+    .sort((a, b) => FLEET_KINDS.indexOf(a.fleet.kind) - FLEET_KINDS.indexOf(b.fleet.kind) || a.fleet.number - b.fleet.number);
   const mineUnderWay = state.pendingOrders.filter((o) => o.factionId === me && o.fleet && !o.fleet.detached);
 
   return (
@@ -339,8 +343,13 @@ function OwnFleet({
   // commander, with the fleet each already commands said, since taking this
   // one gives that one up.
   const commandOf = new Map(
-    [fleet, ...others].filter((f) => f.commanderId).map((f) => [f.commanderId!, fleetName(me, f)] as const),
+    [fleet, ...others].filter((f) => f.commanderId && f.kind !== 'courier').map((f) => [f.commanderId!, fleetName(me, f)] as const),
   );
+  // A courier is its officer's passage: it is sent, not organised.
+  const courier = fleet.kind === 'courier';
+  const passenger = courier ? (state.commanders ?? []).find((c) => c.id === fleet.commanderId) : undefined;
+  // What it may be folded into: a warfleet standing here.
+  const merges = others.filter((o) => o.kind === 'line');
   const candidates = (state.commanders ?? []).filter(
     (c) => c.status === 'active' && c.factionId === me && c.atSystemId === system.id && c.id !== fleet.commanderId,
   );
@@ -362,23 +371,29 @@ function OwnFleet({
         aboard={[]}
       />
       <div className="fleet-actions">
-        <button className="chip" onClick={() => onDraft(`Move ${name} to `)} title="Write the order on the command line">
-          move
-        </button>
+        {passenger ? (
+          <button className="chip" onClick={() => onDraft(`Send ${passenger.name} alone to `)} title="Write the order on the command line">
+            move
+          </button>
+        ) : (
+          <button className="chip" onClick={() => onDraft(`Move ${name} to `)} title="Write the order on the command line">
+            move
+          </button>
+        )}
         <button className={mode === 'rename' ? 'chip on' : 'chip'} onClick={() => setMode(mode === 'rename' ? 'idle' : 'rename')}>
           rename
         </button>
-        {hullsIn(fleet.stack) > 1 && (
+        {!courier && hullsIn(fleet.stack) > 1 && (
           <button className={mode === 'split' ? 'chip on' : 'chip'} onClick={() => setMode(mode === 'split' ? 'idle' : 'split')}>
             split
           </button>
         )}
-        {fleet.commanderId && (
+        {!courier && fleet.commanderId && (
           <button className="chip" onClick={() => onOrganise({ op: 'relieve_command', fleet: fleet.id })} title="The officer stays at this world, without a command">
             relieve
           </button>
         )}
-        {candidates.length > 0 && (
+        {!courier && candidates.length > 0 && (
           <select
             className="chip"
             value=""
@@ -394,7 +409,7 @@ function OwnFleet({
             ))}
           </select>
         )}
-        {others.map((o) => (
+        {!courier && merges.map((o) => (
           <button
             key={o.id}
             className="chip"
@@ -414,7 +429,7 @@ function OwnFleet({
             setMode('idle');
           }}
         >
-          <input value={newName} maxLength={60} placeholder={fleetName(me, { number: fleet.number, name: null })} onChange={(e) => setNewName(e.target.value)} aria-label="Fleet name" />
+          <input value={newName} maxLength={60} placeholder={fleetName(me, { number: fleet.number, name: null, kind: fleet.kind })} onChange={(e) => setNewName(e.target.value)} aria-label="Fleet name" />
           <button type="submit" className="chip">save</button>
         </form>
       )}

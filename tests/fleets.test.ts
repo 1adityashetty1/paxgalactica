@@ -11,7 +11,9 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 /** Named fleets own the hulls and keep their identity (`docs/design-2026-10-26-fleets.md`). */
 
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
-const names = (s: WorldState, id: string, f = 'meridian') => fleetsAt(sys(s, id), f).map((x) => fleetName(f, x));
+/** The warfleets at a world; listeners, freighters and couriers stand beside them as fleets of their own. */
+const names = (s: WorldState, id: string, f = 'meridian') => fleetsAt(sys(s, id), f).filter((x) => x.kind === 'line').map((x) => fleetName(f, x));
+const solos = (s: WorldState, id: string, f = 'meridian') => fleetsAt(sys(s, id), f).filter((x) => x.kind !== 'line').map((x) => fleetName(f, x));
 const apply = (s: WorldState, ops: OpInput[], path: 'declared' | 'organise' = 'declared') => {
   const out = applyOps(s, ops, 'model', 'meridian', true, {}, path);
   expect(out.rejections).toEqual([]);
@@ -27,7 +29,7 @@ const until = (s: WorldState, done: (s: WorldState) => boolean): WorldState => {
 function indexHolds(s: WorldState): void {
   for (const x of s.systems) {
     for (const f of new Set([...Object.keys(x.ships), ...(x.fleets ?? []).map((y) => y.factionId)])) {
-      const held = fleetsAt(x, f).reduce((acc, y) => mergeStacks(acc, y.stack), {});
+      const held = fleetsAt(x, f).filter((y) => y.kind !== 'courier').reduce((acc, y) => mergeStacks(acc, y.stack), {});
       expect(held, `${x.id} ${f}`).toEqual(stackAt(x, f));
     }
   }
@@ -190,7 +192,7 @@ describe('the organise route', () => {
     const view = session.view();
     expect(view.actionPoints.left).toBe(2);
     expect(view.staged.at(-1)!.label).toBe('2 battleships split from Operating Group 1 at Sekkar Gate');
-    expect(view.state.systems.find((x) => x.id === 'sek-1')!.fleets!.filter((f) => f.factionId === 'meridian')).toHaveLength(2);
+    expect(view.state.systems.find((x) => x.id === 'sek-1')!.fleets!.filter((f) => f.factionId === 'meridian' && f.kind === 'line')).toHaveLength(2);
     await expect(session.organise({ op: 'merge_fleets', into: '1', from: ['2'] })).rejects.toThrow(/not Sekkar Gate/);
     expect(session.view().staged).toHaveLength(1);
   });
@@ -371,5 +373,120 @@ describe('an officer travelling alone', () => {
   it('cannot be built', () => {
     const out = applyOps(createSeedState('meridian'), [{ op: 'build_ships', factionId: 'meridian', hull: 'courier', count: 1 } as never], 'model', 'meridian', true, {}, 'declared');
     expect(out.rejections.length).toBeGreaterThan(0);
+  });
+});
+
+describe('a single-vessel job', () => {
+  const kinds = (s: WorldState, f: string) => s.systems.flatMap((x) => fleetsAt(x, f));
+
+  it('stands as a one-ship fleet of its own from the opening board, never in a warfleet', () => {
+    const s = createSeedState('meridian');
+    for (const f of kinds(s, 'meridian').concat(kinds(s, 'ojjul'), kinds(s, 'vigil'))) {
+      if (f.kind === 'line') expect(f.stack.listener ?? 0, f.id).toBe(0);
+      if (f.kind === 'line') expect(f.stack.freighter ?? 0, f.id).toBe(0);
+      if (f.kind === 'listener' || f.kind === 'freighter') expect(f.stack).toEqual({ [f.kind]: 1 });
+    }
+    expect(kinds(s, 'ojjul').filter((f) => f.kind === 'listener')).toHaveLength(3);
+    expect(solos(s, 'sek-1')).toContain('Freighter 1');
+    indexHolds(s);
+  });
+
+  it('is built as a fleet of its own, while a warship joins the senior warfleet', () => {
+    const before = solos(createSeedState('meridian'), 'sek-1').length;
+    const { state } = apply(createSeedState('meridian'), [
+      { op: 'build_ships', factionId: 'meridian', hull: 'listener', count: 2, systemId: 'sek-1' },
+    ]);
+    const listeners = fleetsAt(sys(state, 'sek-1'), 'meridian').filter((f) => f.kind === 'listener');
+    expect(listeners.map((f) => f.stack)).toEqual([{ listener: 1 }, { listener: 1 }]);
+    expect(listeners.map((f) => fleetName('meridian', f))).toEqual(['Listener 1', 'Listener 2']);
+    expect(solos(state, 'sek-1')).toHaveLength(before + 2);
+    expect(names(state, 'sek-1')).toEqual(['Operating Group 1']);
+    indexHolds(state);
+  });
+
+  it('comes in unnamed as a fleet of its own, and sails by its own name', () => {
+    const s0 = createSeedState('meridian');
+    const freighter = fleetsAt(sys(s0, 'sek-1'), 'meridian').find((f) => f.kind === 'freighter')!;
+    const { state } = apply(s0, [{ op: 'move', factionId: 'meridian', fleet: fleetName('meridian', freighter), targetId: 'sek-4' }]);
+    const order = state.pendingOrders.at(-1)!;
+    expect(order.force).toMatchObject({ freighter: 1 });
+    expect(order.fleet).toMatchObject({ id: freighter.id, kind: 'freighter' });
+    const s = until(state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
+    expect(fleetsAt(sys(s, 'sek-4'), 'meridian').find((f) => f.id === freighter.id)?.stack).toEqual({ freighter: 1 });
+    expect(names(s, 'sek-4')).toEqual(['Operating Group 4']);
+    indexHolds(s);
+  });
+
+  it('rides in a warfleet when its power merges it in, and sails with it', () => {
+    const s0 = createSeedState('meridian');
+    const freighter = fleetsAt(sys(s0, 'sek-1'), 'meridian').find((f) => f.kind === 'freighter')!;
+    let s = apply(s0, [{ op: 'merge_fleets', factionId: 'meridian', into: 'Operating Group 1', from: [freighter.id] }], 'organise').state;
+    const og1 = fleetsAt(sys(s, 'sek-1'), 'meridian').find((f) => f.number === 1 && f.kind === 'line')!;
+    expect(og1.stack.freighter).toBe(1);
+    s = apply(s, [{ op: 'move', factionId: 'meridian', fleet: 'Operating Group 1', targetId: 'sek-4' }]).state;
+    expect(s.pendingOrders.at(-1)!.force).toMatchObject({ freighter: 1 });
+    s = until(s, (x) => !x.pendingOrders.some((o) => o.fleet?.id === og1.id));
+    expect(fleetsAt(sys(s, 'sek-4'), 'meridian').find((f) => f.id === og1.id)?.stack.freighter).toBe(1);
+    indexHolds(s);
+  });
+
+  it('is named by its kind, so a bare number still means a warfleet', () => {
+    const fleets = [
+      { id: 'a', factionId: 'meridian', kind: 'line' as const, number: 2, name: null },
+      { id: 'b', factionId: 'meridian', kind: 'listener' as const, number: 2, name: null },
+    ];
+    expect(resolveFleet(fleets, '2')?.id).toBe('a');
+    expect(resolveFleet(fleets, 'Listener 2')?.id).toBe('b');
+  });
+});
+
+describe('an officer with nothing to command', () => {
+  const twoOfficers = () => apply(createSeedState('meridian'), [{ op: 'recruit_commander', factionId: 'meridian', systemId: 'sek-1', school: 'gunnery' }]).state;
+  const couriers = (s: WorldState) => s.systems.flatMap((x) => (x.fleets ?? []).filter((f) => f.kind === 'courier').map((f) => ({ ...f, at: x.id })));
+
+  it('keeps a courier where they stand, commanded by them and out of the index', () => {
+    const s = twoOfficers();
+    const added = s.commanders.find((c) => c.status === 'active' && c.factionId === 'meridian' && !s.systems.some((x) => (x.fleets ?? []).some((f) => f.kind === 'line' && f.commanderId === c.id)))!;
+    const mine = couriers(s).filter((f) => f.commanderId === added.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ at: 'sek-1', stack: { courier: 1 }, kind: 'courier' });
+    expect(fleetName('meridian', mine[0]!)).toMatch(/^courier of /);
+    expect(stackAt(sys(s, 'sek-1'), 'meridian').courier ?? 0).toBe(0);
+    indexHolds(s);
+  });
+
+  it('gives it up on taking command, and has it back on standing down', () => {
+    let s = twoOfficers();
+    const sorel = s.commanders.find((c) => c.name.includes('Sorel'))!;
+    const other = s.commanders.find((c) => c.factionId === 'meridian' && c.status === 'active' && c.id !== sorel.id && c.atSystemId === 'sek-1')!;
+    s = apply(s, [{ op: 'assign_command', factionId: 'meridian', fleet: 'Operating Group 1', officer: other.id }], 'organise').state;
+    expect(couriers(s).some((f) => f.commanderId === other.id)).toBe(false);
+    expect(couriers(s).some((f) => f.commanderId === sorel.id && f.at === 'sek-1')).toBe(true);
+    s = apply(s, [{ op: 'relieve_command', factionId: 'meridian', fleet: 'Operating Group 1' }], 'organise').state;
+    expect(couriers(s).some((f) => f.commanderId === other.id)).toBe(true);
+  });
+
+  it('is not split, merged or given another commander', () => {
+    const s = twoOfficers();
+    const courier = couriers(s)[0]!;
+    for (const op of [
+      { op: 'merge_fleets', factionId: 'meridian', into: 'Operating Group 1', from: [courier.id] },
+      { op: 'relieve_command', factionId: 'meridian', fleet: courier.id },
+    ] as OpInput[]) {
+      expect(applyOps(s, [op], 'model', 'meridian', true, {}, 'organise').rejections[0]?.message).toMatch(/passage/);
+    }
+  });
+
+  it('sails alone when the courier is sent, under its own name', () => {
+    const s = twoOfficers();
+    const courier = couriers(s)[0]!;
+    const { state } = apply(s, [{ op: 'move', factionId: 'meridian', fleet: courier.id, targetId: 'sek-4' }]);
+    const order = state.pendingOrders.at(-1)!;
+    expect(order.force).toEqual({ courier: 1 });
+    expect(order.fleet).toMatchObject({ id: courier.id, kind: 'courier', commanderId: courier.commanderId });
+    expect(couriers(state).some((f) => f.id === courier.id)).toBe(false);
+    const landed = until(state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
+    expect(couriers(landed).some((f) => f.commanderId === courier.commanderId && f.at === 'sek-4')).toBe(true);
+    indexHolds(landed);
   });
 });

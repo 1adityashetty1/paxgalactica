@@ -1,4 +1,4 @@
-import { fleetIdFor, settleFleets } from '../domain/fleets.js';
+import { SOLO_CLASSES, fleetIdFor, settleCouriers, settleFleets, type FleetKind } from '../domain/fleets.js';
 import { seedRegard } from '../domain/regard.js';
 import { seedEstates } from '../domain/estates.js';
 import { stockAgentLists, stockOfficerLists, withNameStock } from '../domain/command.js';
@@ -1513,24 +1513,45 @@ function buildSeedState(
   return WorldStateSchema.parse(state);
 }
 
-/** The opening board's ships, organised into fleets — see `fleets.ts`. */
+/**
+ * The opening board's ships, organised into fleets — see `fleets.ts`: a
+ * warfleet at each world a power has warships or lift at, and every listener
+ * and freighter a one-ship fleet of its own, each kind numbered from the
+ * power's best world down.
+ */
 function raiseOpeningFleets(state: WorldState): void {
   const order = [...state.systems].sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id));
   const next = new Map<string, number>();
+  const numberFor = (factionId: string, kind: FleetKind): number => {
+    const n = (next.get(`${factionId}:${kind}`) ?? 0) + 1;
+    next.set(`${factionId}:${kind}`, n);
+    return n;
+  };
   for (const system of state.systems) system.fleets = [];
   for (const system of order) {
     for (const [factionId, stack] of Object.entries(system.ships)) {
-      if (hullsIn(stack) === 0) continue;
-      const number = (next.get(factionId) ?? 0) + 1;
-      next.set(factionId, number);
-      system.fleets!.push({ id: fleetIdFor(factionId, number), factionId, number, name: null, stack: normaliseStack(stack), commanderId: null });
+      const line = normaliseStack({ ...stack, ...Object.fromEntries(SOLO_CLASSES.map((h) => [h, 0])) });
+      if (hullsIn(line) > 0) {
+        const number = numberFor(factionId, 'line');
+        system.fleets!.push({ id: fleetIdFor(factionId, number), factionId, kind: 'line', number, name: null, stack: line, commanderId: null });
+      }
+      for (const hull of SOLO_CLASSES) {
+        for (let i = 0; i < (stack[hull] ?? 0); i++) {
+          const number = numberFor(factionId, hull);
+          system.fleets!.push({ id: fleetIdFor(factionId, number, hull), factionId, kind: hull, number, name: null, stack: { [hull]: 1 }, commanderId: null });
+        }
+      }
     }
   }
-  // Each power's officer in post commands the fleet at the world they stand on.
+  // Each power's officer in post commands the warfleet at the world they stand
+  // on; one with none there keeps a courier.
   for (const c of state.commanders ?? []) {
     if (c.status !== 'active' || !c.atSystemId) continue;
-    const fleet = state.systems.find((x) => x.id === c.atSystemId)?.fleets?.find((f) => f.factionId === c.factionId && f.commanderId === null);
+    const fleet = state.systems
+      .find((x) => x.id === c.atSystemId)
+      ?.fleets?.find((f) => f.factionId === c.factionId && f.kind === 'line' && f.commanderId === null);
     if (fleet) fleet.commanderId = c.id;
   }
+  settleCouriers(state);
   settleFleets(state);
 }

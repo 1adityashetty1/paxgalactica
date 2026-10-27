@@ -80,19 +80,30 @@ its identity, as in *Stellaris*. Two decisions were taken with the user:
   that were merged into one contingent are split back in proportion. They are
   not tracked hull by hull.
 
-## An officer travelling alone sails a courier
+## Every hull is in a fleet, and a single-vessel job is a fleet of its own
 
-A lone officer's passage was a special case in the tick: they arrived wherever
-they were sent, and nothing on the way could touch them. They now sail a
-**courier**, a hull class of one ton and 0.01 weight, first in the loss order.
-`move_officer` issues an ordinary `fleet_movement` of `{ courier: 1 }`, tagged as
-a fleet named *courier of <officer>* under that officer's command, so the
-arrival is resolved by the same battle code as any fleet. Over a world their
-power holds, an officer whose courier is shot away comes down with the garrison;
-anywhere else they fall with it.
+Every hull was already in some fleet, but a listener or a freighter was folded
+into the senior warfleet wherever it was built or landed, so it never stood as a
+unit of its own (12 of 12 over 40 bot turns). Now, as Stellaris does with its
+science ships, each is a one-ship fleet: `Fleet.kind` is `listener` or
+`freighter`, numbered on its own ("Listener 2"), and it rides in a warfleet only
+once its power merges it in. A named fleet keeps whatever it carries; a bare
+number names a warfleet.
 
-A courier is transport, not navy: it is never built, never billed, draws no
-upkeep and is not counted in fleet tonnage (`navyTons`), and it is stood down
-the moment it lands (`disembarkCouriers`), so no fleet of couriers is ever left
-on the board. The harness board is unchanged (5/5/6/5/4 at 30 turns): the bots
-never send an officer alone.
+## An officer with nothing to command keeps a courier
+
+A lone officer sails a **courier**: a hull class of one ton and 0.01 weight,
+first in the loss order. At rest it is kept, not stood down — an officer
+standing at a world who commands no fleet there has a one-ship courier fleet
+that they command (`settleCouriers`, after `settleCommand` in every batch and
+tick). It goes when they take a command, sail or fall, and is raised again when
+they stand down or land. It is never in the `ships` index, so it contests no
+income and holds no orbit; under way it is the movement's `force`, met and
+fought on arrival by the same battle code as any fleet. Over a world their
+power holds, an officer whose courier is shot away comes down with the
+garrison; anywhere else they fall with it. Moving a courier by name sends its
+officer, and it is never split, merged or given to another commander.
+
+A courier is the officer's passage, not the navy: it is never built, never
+billed, draws no upkeep and is not counted in fleet tonnage (`navyTons`). The
+harness board is unchanged (5/5/6/5/4 at 30 and 100 turns).

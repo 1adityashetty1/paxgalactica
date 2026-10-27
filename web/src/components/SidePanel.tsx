@@ -575,10 +575,16 @@ function SystemTab({
                   {fleetsAt(sys, id)
                     .filter((f) => f.number > 0)
                     .map((f) => (
-                      <span key={f.id} className="fleet-here" title={describeStack(f.stack)}>
-                        {fleetName(id, f)} <span className="muted">({hullsIn(f.stack)}
-                        {f.commanderId ? `, under ${(state.commanders ?? []).find((c) => c.id === f.commanderId)?.name ?? 'a commander'}` : ''})</span>
-                      </span>
+                      f.kind === 'courier' ? (
+                        <span key={f.id} className="fleet-here" title="An officer's own passage, while they command nothing">
+                          {fleetName(id, f)}
+                        </span>
+                      ) : (
+                        <span key={f.id} className="fleet-here" title={describeStack(f.stack)}>
+                          {fleetName(id, f)} <span className="muted">({hullsIn(f.stack)}
+                          {f.commanderId ? `, under ${(state.commanders ?? []).find((c) => c.id === f.commanderId)?.name ?? 'a commander'}` : ''})</span>
+                        </span>
+                      )
                     ))}
                   {/* The officer who would command here: the senior one standing
                       on this world, the rule a battle reads (`commandingAt`). */}
@@ -1010,7 +1016,7 @@ function SailButton({
   // The fleet they command, if any: moving it takes them with it.
   const commands = state.systems
     .flatMap((x) => x.fleets ?? [])
-    .find((f) => f.commanderId === officer.id);
+    .find((f) => f.commanderId === officer.id && f.kind !== 'courier');
   return (
     <>
       {commands ? (
