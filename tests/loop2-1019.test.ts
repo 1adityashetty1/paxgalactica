@@ -47,10 +47,5 @@ describe('structural fixes from loop 2', async () => {
     expect(flagged).toMatch(/it never breaks off/);
   });
 
-  it('L8: the counsellor may recommend one act, never a sequence', () => {
-    const counsel = 'Chief Executive, the Vigil has lift a jump from Torrek.';
-    expect(AdvisorReplySchema.safeParse({ counsel, recommendation: 'Raise the walls at Torrek Anchorage.' }).success).toBe(true);
-    expect(AdvisorReplySchema.safeParse({ counsel, recommendation: 'Raise the walls at Torrek, then strike Kalzir.' }).success).toBe(false);
-    expect(AdvisorReplySchema.safeParse({ counsel }).success).toBe(true);
-  });
+
 });

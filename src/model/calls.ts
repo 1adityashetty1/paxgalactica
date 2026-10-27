@@ -1443,24 +1443,13 @@ export const STUB_REPLY_MAX_CHARS = 240;
 /* ------------------------------------------------------------------ */
 
 /**
- * Whether a counsel has turned into a queue of instructions.
- *
- * The one rule this call has that a prompt cannot be trusted with. *"It must
- * not become a solver"* is the design note item 80 leads with, and a solver
- * announces itself structurally: it enumerates. A numbered list, a bulleted
- * list, or a sequence of `First … Second … Third` is a plan, and a plan is the
- * thing a leader is supposed to be making.
- *
- * Deliberately shape-based rather than semantic. Asking a second model whether
- * the first was too prescriptive is the confirmation bias `verifyBreachRelevance`
- * exists to avoid; counting list markers is a lookup, and code does lookups.
- */
-/**
  * Whether counsel is laid out as a list: two or more lines opening with a
  * bullet, a number or a heading word. Counsel is spoken, so it is held to
  * prose — but a sequence said in a sentence is a direct answer to "how", and
- * from 2026-10-27 the counsellor is asked to give one. `looksLikeAPlan` stays
- * the guard on the single recommended act.
+ * from 2026-10-27 the counsellor is asked to give one. One marker is a stray
+ * dash mid-sentence, not a list. Shape rather than meaning: asking a second
+ * model whether the first was too prescriptive is the confirmation bias
+ * `verifyBreachRelevance` exists to avoid, and counting markers is a lookup.
  */
 export function looksLikeAList(counsel: string): boolean {
   return (
@@ -1471,39 +1460,11 @@ export function looksLikeAList(counsel: string): boolean {
   );
 }
 
-export function looksLikeAPlan(counsel: string): boolean {
-  const text = counsel.trim();
-  // Two or more lines opening with a marker. One is a stray dash mid-sentence.
-  const markers = text
-    .split(/\n/)
-    .filter((line) => /^\s*(?:[-*•]|\d+[.)]|(?:First|Second|Third|Then|Finally)\b[,:]?\s)/i.test(line));
-  if (markers.length >= 2) return true;
-  // Or the same enumeration run together in prose.
-  //
-  // Counted as ordinals-followed-by-punctuation rather than as one regex over
-  // the whole run, because the first version required the markers to sit within
-  // one sentence of each other (`\bfirst\b[^.]*\.[^.]*\bsecond\b`) and real
-  // enumerated counsel puts several sentences under each heading. Measured live:
-  // "Three things, Chief Executive... First — Shalka. <four sentences> Second,
-  // the Combine ledger... <three sentences> Third — the Drajk." — three headings
-  // in one unbroken paragraph, which passed both branches. The line branch saw
-  // no line starting with a marker because there are no line breaks, and the
-  // prose branch allowed exactly one full stop between markers.
-  //
-  // The punctuation is what separates an enumeration from ordinary speech: a
-  // heading is written "First —" or "Second,", while a sentence says "the first
-  // time" or "First Elder" with a word next. Two are required for the same
-  // reason two line markers are — one is a turn of phrase.
-  const ordinals =
-    text.match(/\b(?:first|second|third|fourth|fifth|finally|lastly)\b\s*[—–\-:,;]/gi) ?? [];
-  return ordinals.length >= 2;
-}
-
 /**
  * Whether counsel has stepped outside the fiction into the game's own terms —
  * "that was turn five", an action point, a DC, the dice. The prompt forbids it
  * and a playtest (2026-10-16) caught "turn five" anyway. Shape, not meaning,
- * for the reason `looksLikeAPlan` gives.
+ * for the reason `looksLikeAList` gives.
  */
 export function breaksTheFourthWall(counsel: string): boolean {
   return /\bturns?\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b|\baction points?\b|\bDC\s*\d|\bd20\b|\bdice\b|\bdie roll\b/i.test(
@@ -1511,49 +1472,10 @@ export function breaksTheFourthWall(counsel: string): boolean {
   );
 }
 
-export const RecommendationSchema = cappedProse(220)
-  .refine((c) => !looksLikeAPlan(c) && !/\b(?:then|after that|next)\b/i.test(c), {
-    message: 'One act, not a sequence: name the single thing you would do, with no "then" and no list.',
-  })
-  .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' })
-  .refine((c) => !talksAndAnOrder(c), {
-    message: 'Talks are one act and an order is another: recommend either the talks or the order, not both.',
-  });
-
-/**
- * "Open talks with Arkane about Sennex, and commit 80 credits to Neth": talks
- * and an order joined in one recommendation. Declared whole, it is two acts in
- * one ruling (loop 8). Read off the words, as `looksLikeAPlan` is.
- */
-export function talksAndAnOrder(text: string): boolean {
-  if (!/\b(?:talks?|negotiat\w*|channel)\b/i.test(text)) return false;
-  const ORDER = String.raw`(?:commit|authori[sz]e|send|move|fortify|develop|build|raise|order|draw|sail|deploy|recruit|seat|post|blockade|raid)`;
-  return (
-    new RegExp(String.raw`\b(?:and|while)\s+${ORDER}\b`, 'i').test(text) ||
-    new RegExp(String.raw`^\s*${ORDER}\b.*\band\s+(?:open|begin|start|hold)\s+(?:talks|negotiations)\b`, 'i').test(text)
-  );
-}
-
-/**
- * A recommendation cut to its first act. A counsel whose one act ran on into
- * "…, then …" failed the guard three times and the player was handed a model
- * error instead of advice (loop 17): the first act is the recommendation, and
- * what followed it is dropped.
- */
-export function firstActOnly(value: unknown): unknown {
-  const v = value as { recommendation?: unknown };
-  if (!v || typeof v !== 'object' || typeof v.recommendation !== 'string') return value;
-  const cut = v.recommendation
-    .split(/[;:—]|\s[–-]\s|,?\s+(?:and\s+)?(?:then|after that|next)\b/i)[0]!
-    .replace(/[,\s]+(?:and|while)?\s*$/i, '')
-    .trim();
-  return cut.length >= 12 ? { ...v, recommendation: /[.!?]$/.test(cut) ? cut : `${cut}.` } : value;
-}
-
 /**
  * The power an act hands something to, when its words do: "cede Torrek
  * Anchorage to the Vigil", "sell the plate to the Combine". Read off the words,
- * as `talksAndAnOrder` is, and only consulted when the arbiter found nothing
+ * as `looksLikeAList` is, and only consulted when the arbiter found nothing
  * the power could do alone.
  */
 export function handedTo(state: WorldState, action: string): string | null {
@@ -1597,11 +1519,9 @@ export const AdvisorReplySchema = z.object({
   /**
    * What the counsellor actually says, out loud, to their leader.
    *
-   * One field and no second one, which is the design. A `pressures: []` beside
-   * it would render as a checklist however it was worded, and a checklist is a
-   * queue of instructions wearing a different label — the exact failure item 80
-   * names. The prose has to carry it, and the refine below is what stops the
-   * prose becoming the list anyway.
+   * One field, which is the design: the counsel itself says what to do and
+   * how. A separate one-line recommendation sat under it for a while
+   * (2026-10-19) and only repeated it, so it was dropped (2026-10-27).
    */
   counsel: cappedProse(900)
     .refine((c) => !looksLikeAList(c), {
@@ -1612,14 +1532,6 @@ export const AdvisorReplySchema = z.object({
       message:
         'This speaks of turns, action points, difficulty or dice. You are inside the fiction: say "last month", "soon", "it will not be easy" — never the game\'s own terms.',
     }),
-  /**
-   * One act the counsellor would take, if any: a single sentence, never a
-   * sequence. The counsel alone named problems and left the move implicit on
-   * three turns in ten, so a player following it had nothing to follow
-   * (playtest 2026-10-19, loop 2, L8). Held to the same guards, so it cannot
-   * become the plan the counsel is forbidden to be.
-   */
-  recommendation: RecommendationSchema.optional()
 });
 export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
 
@@ -1649,10 +1561,10 @@ export async function askAdvisor(
    */
   question?: string,
   /** What the counsellor said last time, so a change of course is said and explained. */
-  last?: { turn: number; counsel: string; recommendation: string | null; followed?: string | null } | null,
+  last?: { turn: number; counsel: string; followed?: string | null } | null,
   /** The turn so far: the actions left after this counsel, and what was declared and came of it. */
   turnSoFar?: { actionsLeft: number; perTurn: number; declared: string[] },
-): Promise<{ counsel: string; recommendation: string | null; attempts: number; costUsd: number }> {
+): Promise<{ counsel: string; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
   const asked = question?.trim();
@@ -1672,7 +1584,6 @@ export async function askAdvisor(
             `## What you told your leader ${last.turn === state.turn ? 'earlier this turn' : `on turn ${last.turn}`}`,
             '',
             `> ${last.counsel}`,
-            ...(last.recommendation ? ['', `Your recommendation then: ${last.recommendation}`] : []),
             ...(last.followed
               ? ['', `What came of the next order your leader gave: ${last.followed}.`, 'An order refused by your own people, turned back as needing another power, or a settlement the other power has already rejected, will go the same way again: do not urge it a second time in other words. Something that came to nothing is not standing now.']
               : []),
@@ -1747,12 +1658,9 @@ export async function askAdvisor(
             `Speak to the ${faction.title}. Lead with what matters most on the board and what you would do about it, in your own voice — checked against what your power will and will not do.`,
           ]),
     ].join('\n'),
-    // Asked what to do, the counsellor names one act: left optional, it named
-    // none in ten turns of ten (playtest 2026-10-19, loop 3).
-    schema: asked ? AdvisorReplySchema.extend({ recommendation: RecommendationSchema }) : AdvisorReplySchema,
-    lenient: firstActOnly,
+    schema: AdvisorReplySchema,
   });
-  return { counsel: res.value.counsel, recommendation: res.value.recommendation ?? null, attempts: res.attempts, costUsd: res.costUsd };
+  return { counsel: res.value.counsel, attempts: res.attempts, costUsd: res.costUsd };
 }
 
 /**

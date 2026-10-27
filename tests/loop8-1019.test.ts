@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { DeclaredRulingSchema, oneActPerRuling, rulingToAppraisal } from '../src/domain/ops.js';
-import { talksAndAnOrder, RecommendationSchema } from '../src/model/calls.js';
 
 /** Fixes from the eighth loop of the advisor playtest (2026-10-19). */
 
@@ -25,11 +24,4 @@ describe('a ruling on two acts', () => {
   });
 });
 
-describe('a recommendation of talks and an order', () => {
-  it('is refused, either way round', () => {
-    expect(talksAndAnOrder('Open talks with Arkane about Sennex, and commit 80 credits to a development programme at Neth.')).toBe(true);
-    expect(talksAndAnOrder('Authorize the fortification programme at Ithaal and open talks with the Combine about freight.')).toBe(true);
-    expect(talksAndAnOrder('Open talks with the Vigil about Torrek and what settles it.')).toBe(false);
-    expect(RecommendationSchema.safeParse('Fortify Torrek Anchorage and open talks with the Vigil.').success).toBe(false);
-  });
-});
+

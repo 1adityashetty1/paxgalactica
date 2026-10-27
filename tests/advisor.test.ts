@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { AdvisorReplySchema, looksLikeAList, looksLikeAPlan } from '../src/model/calls.js';
+import { AdvisorReplySchema, looksLikeAList } from '../src/model/calls.js';
 import { AdvisorOutcomeSchema, ROUTES } from '../src/api/contract.js';
 import { createSeedState, playableFactions } from '../src/seed/scenario.js';
 import { WorldStateSchema } from '../src/domain/state.js';
@@ -87,9 +87,7 @@ describe('the advisor', () => {
       expect(AdvisorReplySchema.safeParse({ counsel: 'First, take Sennex. Second, close the Ilvenn lane. Third, wait them out.' }).success).toBe(true);
     });
 
-    it('still reads an enumeration as a plan where one act is wanted', () => {
-      expect(looksLikeAPlan('First, take Sennex. Second, close the Ilvenn lane. Third, wait them out.')).toBe(true);
-    });
+
 
     it('accepts counsel that names pressures in prose', () => {
       const counsel = [
@@ -99,42 +97,24 @@ describe('the advisor', () => {
         'First Elder — Drajk owes us four hundred and eighty and has stopped paying, and the family notices.',
       ];
       for (const c of counsel) {
-        expect(looksLikeAPlan(c), c).toBe(false);
+        expect(looksLikeAList(c), c).toBe(false);
         expect(AdvisorReplySchema.safeParse({ counsel: c }).success, c).toBe(true);
       }
     });
 
-    it('reads an enumeration spread over whole paragraphs as a plan', () => {
-      // The shape that escaped in the playtest of 2026-09-09. Three headings in
-      // one unbroken paragraph, several sentences under each: the line branch
-      // saw no line beginning with a marker because there are no line breaks,
-      // and the prose branch allowed exactly one full stop between markers.
-      const counsel =
-        'Three things, Chief Executive, and then I will stop. First — Shalka. We are holding ' +
-        'it with four battleships that are not ours. That is an exposure sitting on contested ' +
-        'ground. Second, the Combine ledger generally — two facilities running against us. ' +
-        'None of it is unprofitable on its own. Third — the Drajk. We are at daggers drawn ' +
-        'with them, and none of it costs us today.';
-      expect(looksLikeAPlan(counsel)).toBe(true);
-    });
 
-    it('does not read a single dash or a lone "first" as a plan', () => {
+
+    it('does not read a single dash or a lone "first" as a list', () => {
       // One marker is a stray dash mid-sentence, not an enumeration. Firing on
       // it would reject ordinary speech and cost a retry every time.
-      expect(looksLikeAPlan('Highwarden — Vashka is thin, and that is all.')).toBe(false);
-      expect(looksLikeAPlan('First, the obvious thing: Vashka is thin.')).toBe(false);
+      expect(looksLikeAList('Highwarden — Vashka is thin, and that is all.')).toBe(false);
+      expect(looksLikeAList('First, the obvious thing: Vashka is thin.')).toBe(false);
     });
 
-    it('has no field to put a plan in', () => {
-      // Counsel, and at most one recommended act (playtest 2026-10-19, loop 2,
-      // L8) — never a list field. A `pressures: []` beside the prose would
-      // render as a checklist however it was worded, which is a queue of
-      // instructions wearing a different label; the recommendation is one
-      // sentence, held to the same guards and refused as a sequence.
-      expect(Object.keys(AdvisorReplySchema.shape)).toEqual(['counsel', 'recommendation']);
-      const sequence = AdvisorReplySchema.safeParse({ counsel: 'The Vigil is at Kalzir.', recommendation: 'Fortify Torrek, then strike Kalzir.' });
-      expect(sequence.success).toBe(false);
+    it('has one field, the counsel itself', () => {
+      expect(Object.keys(AdvisorReplySchema.shape)).toEqual(['counsel']);
     });
+
   });
 
   describe('it costs an action, which is the design', () => {

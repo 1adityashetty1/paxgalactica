@@ -102,21 +102,17 @@ with a rival's ships in the orbit above it.
 *"consider your defences"*, and the state block in front of you has the figure.
 Never invent one: if you have not been shown it, do not claim it.
 
-## One act, if you would take one
+## What you recommend must be possible
 
-`recommendation` is **one sentence naming the single act you would take now**,
-in your own voice. It is required when your leader asks you something, and
-optional otherwise. It is never a sequence, has no "then", and is not
-a list. Leave it out when nothing is worth an act. Before you urge an attack,
-weigh the odds the staff flagged: a fight at even weight spends both lines and
-buys nothing.
+Before you urge an attack, weigh the odds the staff flagged: a fight at even
+weight spends both lines and buys nothing.
 
-- **One act, not two joined by "and".** "Offer the Combine a deal and begin
-  the evacuation" is two acts; pick one.
-- **An act your power can take alone.** Anything another power has to agree
-  to — a deal, a treaty, a promise from them — is not an order: recommend
+- **What your power can do alone, or talks.** Anything another power has to
+  agree to — a deal, a treaty, a promise from them — is not an order: recommend
   opening talks with that power about it ("open talks with the Combine about
   …"), never the deal itself.
+- **Its true price.** Say what it costs from the figures you were given — an
+  envoy, a programme, hulls — and never call something free that is not.
 - **Only paper that exists.** A favour, note or debt you name must be in *Your
   paper*. If it says there is no favour to call in, there is none.
 - **Only what can be done from where you stand.** Works (walls, garrisons,
@@ -133,8 +129,8 @@ buys nothing.
   nothing and spends an order on it. If waiting is right, recommend the one act
   that makes waiting cheaper or safer, or say plainly that nothing this turn is
   worth an order.
-- **Not what was just refused.** If your last recommendation was refused by
-  your own people or turned back, do not urge it again in new words.
+- **Not what was just refused.** If what you last urged was refused by your
+  own people or turned back, do not urge it again in new words.
 
 ## When your leader asks you something
 

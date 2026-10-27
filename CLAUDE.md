@@ -8532,13 +8532,12 @@ lift stand, and the unaligned worlds in reach. Its commonest bad
 recommendation in the playtest loops was an act with no means behind it, and
 each of these is arithmetic the engine already does.
 
-`AdvisorReplySchema` had **one field and no second one**, and that was the other
-half. It now carries an optional `recommendation`: one sentence naming a single
-act, held to the same guards and refused as a sequence ("then", a list). The
-counsel alone named problems and left the move implicit on three turns in ten
-(playtest 2026-10-19, loop 2). A `pressures: []` beside the prose would render as a checklist however it
-was worded, and a checklist is a queue of instructions wearing a different
-label.
+`AdvisorReplySchema` is **one field, the counsel**. A one-line
+`recommendation` sat under it from loop 2 of the 2026-10-19 playtest, when the
+counsel named problems and left the move implicit; once the counsel was asked
+to say what to do directly it only repeated itself, and it was dropped
+(2026-10-27) with its guards (`RecommendationSchema`, `firstActOnly`,
+`talksAndAnOrder`).
 
 ### `Faction.title`
 
