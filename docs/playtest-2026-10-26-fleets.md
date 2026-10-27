@@ -32,4 +32,4 @@ They held throughout. The campaign replays from its journal.
 - **Narration overstates.** "The warships multiply" was written of a split. "Nakagawa hands the Home Guard off to Sorel" was written when no command changed hands. No op was wrong.
 - **The epilogue misattributes.** Losses at Kalzir were credited to the taking of Sennex, and Meridian was called "a war never joined" after attacking Kalzir. The dossier is right; the prose departs from it.
 - **The counsellor invented "frigates".** Left as asked: counsellor mistakes are out of scope.
-- **The end-of-turn notes repeat an attempt's failed first batch** ("Nothing in this batch was applied…"). This predates fleets.
+- **The end-of-turn notes repeated an attempt's failed first batch** ("Nothing in this batch was applied…"). This predates fleets. Fixed afterwards: `commitTurn` journals a batch that lands nothing, so replay reproduces the rejection, and does not say its notes a second time.

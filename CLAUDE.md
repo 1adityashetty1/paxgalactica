@@ -8419,6 +8419,13 @@ component is logic nothing checks.
     Escape clears (`src/ui/history.ts`, kept in localStorage).
   - **End turn with actions unspent asks once**: the button says how many, and
     a second press within four seconds ends the turn.
+  - **Main menu** sits beside Save and puts the title screen up without
+    unloading the campaign; the title screen offers a way back to it until
+    another is started or loaded.
+  - **End Turn does not repeat a failed attempt.** A batch that landed nothing
+    — the first try of an action that was then corrected — is still journaled,
+    so replay reproduces the rejection, but its notes were told when it was
+    declared and `commitTurn` does not say them again.
   - **The map's tooltip says how long your nearest fleet takes** to reach a
     world (`travelTo` in `src/ui/travel.ts`): a turn a jump, or at once for one
     jump inside your own space — `movesAtOnce`, moved from the reducer to

@@ -569,7 +569,11 @@ export class Campaign {
         // asserts on.
         actor: batch.actor,
       });
-      notes.push(...res.notes);
+      // A batch that lands nothing is the failed first attempt of an action
+      // that was corrected, or refused outright, and the player was told so
+      // when it was declared. It is committed so replay reproduces the
+      // rejection, and its notes are not said a second time at End Turn.
+      if (res.rejections.length === 0) notes.push(...res.notes);
     }
 
     this.stagedBatches = [];
