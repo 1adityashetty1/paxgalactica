@@ -11,7 +11,7 @@ describe('a ruling on two acts', () => {
     expect(DeclaredRulingSchema.safeParse(raw).success).toBe(false);
     const fixed = DeclaredRulingSchema.parse(oneActPerRuling(raw));
     expect(fixed.kind === 'act' && fixed.parts.map((p) => p.kind)).toEqual(['overt', 'unexpressed']);
-    expect(JSON.stringify(fixed)).toMatch(/Declare it as its own act: fortify Ithaal/);
+    expect(JSON.stringify(fixed)).toMatch(/a second act, which needs an order of its own — fortify Ithaal/);
   });
 
   it('notes a negotiation beside an act, and is the negotiation when that is all it is', () => {

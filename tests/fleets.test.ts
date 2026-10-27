@@ -564,3 +564,28 @@ describe('landing as an action of its own', () => {
     expect(r.notes.some((n) => /storms Var Hollow/.test(n))).toBe(true);
   });
 });
+
+describe('bughunt 2026-10-27', () => {
+  it('refuses standing guard in a friendly power\'s orbit without basing rights, rather than fighting there', () => {
+    // Hollow Star is the Confederacy's, and the Combine is on good terms with it.
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', originId: 'ilv-1', targetId: 'ilv-7', force: { battleship: 2 }, land: false }],
+      'model', 'ojjul', true, {}, 'declared',
+    );
+    expect(out.rejections[0]?.message).toMatch(/basing rights/);
+    expect(out.state.pendingOrders.some((o) => o.targetId === 'ilv-7' && o.factionId === 'ojjul')).toBe(false);
+  });
+
+  it('takes station over a militia with no lift aboard, rather than reporting a battle', () => {
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', originId: 'ilv-3', targetId: 'sek-5', force: { battleship: 2, escort: 2 } }],
+      'model', 'ojjul', true, {}, 'declared',
+    );
+    const r = tickTurn(out.state, calm);
+    expect(r.report.battles.some((b) => b.systemId === 'sek-5')).toBe(false);
+    expect(r.notes.some((n) => /takes station over Var Hollow\.$/.test(n))).toBe(true);
+    expect(sys(r.state, 'sek-5').garrison).toBe(3);
+  });
+});

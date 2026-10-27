@@ -187,3 +187,12 @@ describe('the advisor stays inside the fiction', () => {
     expect(breaksTheFourthWall('The tide will turn on Vantic.')).toBe(false);
   });
 });
+
+describe('organising said in words', () => {
+  it('is only organising when nothing else is in it', async () => {
+    const { onlyOrganising } = await import('../src/domain/refusals.js');
+    expect(onlyOrganising([{ op: 'log_narrative' }, { op: 'merge_fleets' }])).toBe(true);
+    expect(onlyOrganising([{ op: 'split_fleet' }, { op: 'move' }])).toBe(false);
+    expect(onlyOrganising([{ op: 'log_narrative' }])).toBe(false);
+  });
+});

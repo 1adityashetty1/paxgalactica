@@ -74,7 +74,7 @@ leaves a faction with nobody following it.
 | `develop` | develop a world (`magnitude` 1..2); at 7 it becomes a trade hub |
 | `found_fixture` | raise a fixture of a catalogue `kind` on a world you hold |
 | `repair_fixture` | mend sabotage damage on a fixture (`kind`, `magnitude` 1..2) |
-| `send_envoy` | court a world — one you hold, or an independent one you border or orbit |
+| `send_envoy` | court a world — one you hold, or an independent one you border or orbit. The envoy is the whole of it: write no commitment for a courtship, which the world's standing already records |
 | `blockade` | close every lane through a world your fleet sits over |
 | `raid` | raid the shipping through a world, from a fleet on it or a jump out; `dark` runs it unowned |
 | `sweep` | counter-intelligence on a world of your own |

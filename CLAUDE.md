@@ -6127,7 +6127,12 @@ the Combine's line against a war of conquest correctly refused a "peacekeeping"
 fleet that carried lifters: sent as it was, it would have stormed Var Hollow,
 which then rose against it at −80. The refusal now says how to stand guard
 instead, and the arbiter, resolution and counsellor prompts know the
-difference. **Landing is an action of its own**: the Fleets tab's
+difference. **Standing guard is peaceful, so another power's orbit needs its basing rights**
+(journal version 32, `guardNeedsBasing`): sent without landing over a world a
+power holds that you are not at war with, a fleet is refused, and the order
+spends no action; at war it is an attack in orbit that lands nobody. And a
+fleet with no lift arriving over a militia nobody else orbits takes station
+rather than being reported as a battle (`stationAlone`). **Landing is an action of its own**: the Fleets tab's
 and Command tab's move buttons draft a move *without landing* for a fleet
 carrying lift, and a fleet over a world its power does not hold gets a
 **land** button — a move of it onto the world it stands over, the assault from

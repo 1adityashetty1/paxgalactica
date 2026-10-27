@@ -2601,7 +2601,7 @@ export function oneActPerRuling(value: unknown): unknown {
   let overt = 0;
   const kept = parts.flatMap((p) => {
     if (p.kind === 'overt' && overt++ === 0) return [p];
-    if (p.kind === 'overt') return [{ kind: 'unexpressed', outcome: clip(`Declare it as its own act: ${said(p)}`) }];
+    if (p.kind === 'overt') return [{ kind: 'unexpressed', outcome: clip(`a second act, which needs an order of its own — ${said(p)}`) }];
     if (p.kind === 'negotiation') {
       const who = Array.isArray(p.withFactionIds) ? p.withFactionIds.join(' and ') : 'another power';
       return [{ kind: 'unexpressed', outcome: clip(`Needs ${who} to agree; open a channel: ${said(p)}`) }];

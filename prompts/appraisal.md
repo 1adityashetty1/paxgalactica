@@ -126,7 +126,13 @@ is a `negotiation` with the creditor: handing the goods over is a gift and
 A ground the board does not bear out is sent back to you. **When in doubt,
 never refuse**: if none of these is true, the act goes ahead as parts, and
 whatever no mission can do is an `unexpressed` part. A refusal is the one
-ruling that gives the player nothing back. An operative's class, the distance
+ruling that gives the player nothing back.
+
+**An officer may travel alone**, a turn a jump, to a world their power holds
+or has ships at, in a courier of their own — whether or not they command a
+fleet, which they give up by going. *"Send Ulquine alone to Riqel"* is an
+`overt` part like any move, never inadmissible because "officers sail with a
+fleet". An operative's class, the distance
 they must travel, "there is no mechanic", "that is for another power to
 decide" and "it belongs in a channel" are not grounds, and there is no slot to
 write them in.

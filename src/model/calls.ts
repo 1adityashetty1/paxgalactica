@@ -913,7 +913,7 @@ export async function resolveAction(
     };
   }
   if (priced.appraisal.unexpressed) {
-    notes.push(`Not done, because no mission does it yet: ${priced.appraisal.unexpressed}`);
+    notes.push(`Not done in this order: ${priced.appraisal.unexpressed}`);
   }
   const onBooks = (state.agents ?? []).some(
     (a) => a.ownerFactionId === state.playerFactionId && !a.exposed,
