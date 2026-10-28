@@ -3358,6 +3358,12 @@ export interface LegacyRules {
   oneJumpOnce?: boolean;
   /** Standing guard in another power's orbit needs its basing rights or a war (journal version 32). */
   guardNeedsBasing?: boolean;
+  /**
+   * An ultimatum running out puts nobody at war with a power it is bound to
+   * peace with — a backer that signed a ceasefire with the issuer after
+   * declaring for the target stays out (journal version 33).
+   */
+  peaceHoldsAtDeadline?: boolean;
   stealNamesARivalsThing?: boolean;
   secretsAreHidden?: boolean;
   fleetsMeetInBattle?: boolean;
@@ -6021,7 +6027,7 @@ function applyOpsUnderRules(
           text: op.text,
         });
         (state.demands ??= []).push(demand);
-        const note = `${nameFor(state, from)} issues an ultimatum to ${nameFor(state, to)}, to be answered by turn ${demand.deadlineTurn}: ${op.text}`;
+        const note = `${nameFor(state, from)} issues an ultimatum to ${nameFor(state, to)}, to be answered before turn ${demand.deadlineTurn} begins: ${op.text}`;
         notes.push(note);
         // Public: a threat nobody hears is not a threat.
         logEvent(state, 'diplomacy', note, from);
@@ -6053,7 +6059,7 @@ function applyOpsUnderRules(
           break;
         }
         demand.backers = [...demand.backers.filter((b) => b.factionId !== who), { factionId: who, side: op.side }];
-        const note = `${nameFor(state, who)} declares for ${nameFor(state, op.side === 'from' ? demand.fromFactionId : demand.toFactionId)} in the ultimatum over ${nameFor(state, demand.toFactionId)}.`;
+        const note = `${nameFor(state, who)} declares for ${nameFor(state, op.side === 'from' ? demand.fromFactionId : demand.toFactionId)} in ${nameFor(state, demand.fromFactionId)}'s ultimatum to ${nameFor(state, demand.toFactionId)}.`;
         notes.push(note);
         logEvent(state, 'diplomacy', note, who);
         break;
@@ -7923,16 +7929,23 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_treaty', `No treaty "${op.treatyId}".`);
           break;
         }
+        // Who breaks it: the actor, or — from an accord — the other party,
+        // ending a treaty of its own it agreed to end across the table.
+        if (op.factionId !== undefined && actor !== undefined && op.factionId !== actor && source !== 'extraction') {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} cannot break a treaty on ${nameFor(state, op.factionId)}'s behalf.`);
+          break;
+        }
+        const breaker = op.factionId ?? actor;
         // A treaty is broken by a power bound by it, and only while it stands.
         // Before version 24 neither was asked: any power could declare two
         // others' pact void and leave them 25 colder toward each other, for
         // nothing, and breaking a dead treaty charged again.
-        if (breachPrices && actor !== undefined) {
-          if (!treaty.parties.includes(actor)) {
+        if (breachPrices && breaker !== undefined) {
+          if (!treaty.parties.includes(breaker)) {
             reject(
               raw,
               'illegal_value',
-              `${nameFor(state, actor)} is not bound by "${treaty.summary}", so it is not ${nameFor(state, actor)}'s to break. Setting two other powers against each other is an operative's work — a discord mission.`,
+              `${nameFor(state, breaker)} is not bound by "${treaty.summary}", so it is not ${nameFor(state, breaker)}'s to break. Setting two other powers against each other is an operative's work — a discord mission.`,
             );
             break;
           }
@@ -7942,8 +7955,8 @@ function applyOpsUnderRules(
           }
         }
         // A marriage carries a ward, whose fate turns on who broke it.
-        if (treaty.type === 'marriage' && isTreatyLive(treaty, state.turn) && actor !== undefined && treaty.parties.includes(actor)) {
-          notes.push(breakMarriage(state, treaty, actor, 'marriage_repudiated'));
+        if (treaty.type === 'marriage' && isTreatyLive(treaty, state.turn) && breaker !== undefined && treaty.parties.includes(breaker)) {
+          notes.push(breakMarriage(state, treaty, breaker, 'marriage_repudiated'));
           break;
         }
         treaty.status = 'broken';
@@ -7951,10 +7964,13 @@ function applyOpsUnderRules(
         // broken by no party (the engine) charges each side's view of the other.
         chargeBreach(state, {
           kind: 'treaty_repudiated',
-          breaker: actor !== undefined && treaty.parties.includes(actor) ? actor : null,
+          breaker: breaker !== undefined && treaty.parties.includes(breaker) ? breaker : null,
           parties: treaty.parties,
         });
         logEvent(state, 'diplomacy', `Treaty broken: ${treaty.summary}. ${op.reason}`.trim());
+        // Said, as every other act in a batch is: an accord that ended a
+        // letter of marque landed with no line saying so.
+        notes.push(`Treaty broken${breaker !== undefined ? ` by ${nameFor(state, breaker)}` : ''}: ${treaty.summary}.`);
         // A marriage broken by nobody's hand — an engine batch — ends with its
         // ward sent home.
         if (treaty.type === 'marriage') notes.push(endMarriage(state, treaty, 'home'));
@@ -11396,19 +11412,29 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       continue;
     }
     demand.status = 'war';
+    // A pair bound to peace is not put at war by somebody else's deadline: a
+    // backer that signed a ceasefire with the other side since declaring was
+    // dragged across it (bughunt 2026-10-28).
+    const peaceHolds = legacy.peaceHoldsAtDeadline ?? true;
+    const bound = (a: string, b: string) =>
+      peaceHolds &&
+      (treatyBetween(state.treaties, state.turn, a, b, PEACE_TREATIES) || truceBetween(state.truces, state.turn, a, b));
+    const atWar = new Set<string>();
     for (const a of fromSide) {
       for (const b of toSide) {
-        if (a === b) continue;
+        if (a === b || bound(a, b)) continue;
+        atWar.add(a).add(b);
         for (const [x, y] of [[a, b], [b, a]] as [string, string][]) {
           const f = state.factions.find((q) => q.id === x);
           if (f && (f.disposition[y] ?? 0) > WAR_DISPOSITION_THRESHOLD) f.disposition[y] = WAR_DISPOSITION_THRESHOLD;
         }
       }
     }
+    const joined = peaceHolds
+      ? [...fromSide.slice(1), ...toSide.slice(1)].filter((id) => atWar.has(id))
+      : [...fromSide.slice(1), ...toSide.slice(1)];
     const note = `${nameFor(state, demand.toFactionId)} lets ${nameFor(state, demand.fromFactionId)}'s ultimatum run out. It is war${
-      fromSide.length + toSide.length > 2
-        ? `, and ${[...fromSide.slice(1), ...toSide.slice(1)].map((id) => nameFor(state, id)).join(' and ')} are in it`
-        : ''
+      joined.length > 0 ? `, and ${joined.map((id) => nameFor(state, id)).join(' and ')} ${peaceHolds && joined.length === 1 ? 'is' : 'are'} in it` : ''
     }.`;
     notes.push(note);
     logEvent(state, 'diplomacy', note, demand.fromFactionId);
@@ -13408,6 +13434,9 @@ function resolveBattle(
   }
 
   const coalition = attackers.map(([id]) => nameOf(id)).join(' and ');
+  // A coalition of two takes the plural verb; a count of one takes the singular noun.
+  const verb = (one: string, more: string) => (attackers.length > 1 ? more : one);
+  const ships = (n: number) => `${n} ship${n === 1 ? '' : 's'}`;
   /** One side of one round: what it had at the round's start, and what it has now. */
   /** Each side's fleets by name, for the report — filled as the sides are drawn up. */
   const fleetNames = new Map<string, string[]>();
@@ -13678,7 +13707,7 @@ function resolveBattle(
     const seatNote = onWorldChangesHands(state, target, holder, 'conquest', () => mintId(state, 'ast'));
     if (seatNote) logEvent(state, 'system', seatNote, owner);
     if (worldTakesAssets) assetsGoWithWorld(state, target, owner);
-    const note = `${coalition} occupies ${target.name} unopposed; ${nameOf(owner)} takes possession.`;
+    const note = `${coalition} ${verb('occupies', 'occupy')} ${target.name} unopposed; ${nameOf(owner)} takes possession.`;
     logEvent(state, 'order', note, owner);
     rounds.push({
       turn: state.turn, phase: 'ground', outcome: 'unopposed',
@@ -13922,7 +13951,7 @@ function resolveBattle(
       for (const [i, entry] of defenders.entries()) {
         defenders[i] = [entry[0], stackAt(target, entry[0])];
       }
-      const struck = `Torpedoes run in ahead of the fleets over ${target.name}: ${coalition} loses ${beforeAtk - attackHulls()} ships, the defenders lose ${beforeDef - defenceForce}.`;
+      const struck = `Torpedoes run in ahead of the fleets over ${target.name}: ${coalition} ${verb('loses', 'lose')} ${ships(beforeAtk - attackHulls())}, the defenders lose ${beforeDef - defenceForce}.`;
       notes.push(struck);
       rounds.push({
         turn: state.turn, phase: 'strike', outcome: 'torpedo_strike',
@@ -13981,7 +14010,7 @@ function resolveBattle(
         if (entry[0] === holder) entry[1] = stackAt(target, holder);
       }
       defenceForce = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
-      const put = `${nameOf(holder)} puts ${troops} troops down from ${committed} transport(s) over ${target.name}; the garrison stands at ${target.garrison} of ${target.garrisonMax}.`;
+      const put = `${nameOf(holder)} puts ${troops} troop${troops === 1 ? '' : 's'} down from ${committed} transport${committed === 1 ? '' : 's'} over ${target.name}; the garrison stands at ${target.garrison} of ${target.garrisonMax}.`;
       notes.push(put);
       logEvent(state, 'order', put, holder);
       defendSnapshot = new Map(defenders);
@@ -14027,7 +14056,7 @@ function resolveBattle(
       lost += hullsIn(st);
       attackShare.set(id, {});
     }
-    const note = `${coalition} arrives over ${target.name} with nothing that can fight; ${lost} unarmed ships are destroyed by its defenders.`;
+    const note = `${coalition} ${verb('arrives', 'arrive')} over ${target.name} with nothing that can fight; ${lost} unarmed ship${lost === 1 ? ' is' : 's are'} destroyed by its defenders.`;
     logEvent(state, 'order', note, attackers[0]![0]);
     rounds.push({
       turn: state.turn, phase: 'orbital', outcome: 'attacker_driven_off',
@@ -14104,7 +14133,10 @@ function resolveBattle(
         }
       }
       beatenSide = 'defend';
-      const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
+      const broke =
+        defenders.length > 1
+          ? `${defenders.map(([id]) => nameOf(id)).join(' and ')} break off over ${target.name}, losing ${lost} ship${lost === 1 ? '' : 's'} between them.`
+          : `${nameOf(defenders[0]![0])} breaks off over ${target.name}, losing ${lost} ship${lost === 1 ? '' : 's'}.`;
       notes.push(broke);
       orbital('defender_broke_off', broke);
       defenceForce = 0;
@@ -14131,7 +14163,7 @@ function resolveBattle(
         }
       }
       for (const [id] of attackShare) attackShare.set(id, {});
-      const note = `${coalition}'s attack on ${target.name} is driven off by its defenders, losing ${lost} ships.`;
+      const note = `${coalition}'s attack on ${target.name} is driven off by its defenders, losing ${ships(lost)}.`;
       logEvent(state, 'order', note, attackers[0]![0]);
       orbital('attacker_driven_off', note);
       return finish(note);
@@ -14199,7 +14231,7 @@ function resolveBattle(
       }
       defenceForce = defenders.reduce((sum, [id]) => sum + hullsAt(target, id), 0);
 
-      const engaged = `Fleets engage over ${target.name}: ${coalition} loses ${hullsBeforeExchange - attackHulls()} ships, the defenders lose ${defendHullsBefore - defenceForce}.`;
+      const engaged = `Fleets engage over ${target.name}: ${coalition} ${verb('loses', 'lose')} ${ships(hullsBeforeExchange - attackHulls())}, the defenders lose ${defendHullsBefore - defenceForce}.`;
       notes.push(engaged);
       // Recorded after the redistribution, so the per-contingent numbers are
       // the ones that actually landed on the board.
@@ -14295,7 +14327,7 @@ function resolveBattle(
   if (troops <= 0) {
     for (const [id, st] of attackShare) land(id, st);
     const held = [...attackShare.entries()].some(([id, st]) => holding.has(id) && (st.lifter ?? 0) > 0);
-    const note = `${notes.join(' ')} ${coalition} commands the orbitals of ${target.name} and ${held ? 'lands nobody, as ordered' : 'has no troops aboard to land'}.`.trim();
+    const note = `${notes.join(' ')} ${coalition} ${verb('commands', 'command')} the orbitals of ${target.name} and ${held ? verb('lands nobody, as ordered', 'land nobody, as ordered') : verb('has no troops aboard to land', 'have no troops aboard to land')}.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
     ground('no_lift', note);
     return finish(note);
@@ -14382,7 +14414,7 @@ function resolveBattle(
     if (takesHostages && holder !== null && holder !== owner && hostageTaken(roll)) {
       takeHostage(state, owner, holder, target, 'taken when the world was stormed');
     }
-    const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifters; ${nameOf(owner)} takes possession with ${target.garrison} troops ashore.`.trim();
+    const note = `${notes.join(' ')} ${coalition} ${verb('storms', 'storm')} ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifter${lifterLosses === 1 ? '' : 's'}; ${nameOf(owner)} takes possession with ${target.garrison} troop${target.garrison === 1 ? '' : 's'} ashore.`.trim();
     logEvent(state, 'order', note, owner);
     ground('world_taken', note);
     return finish(note);
@@ -14392,7 +14424,7 @@ function resolveBattle(
   target.garrison = Math.max(0, garrison - Math.ceil(troops / 4));
   spendLifters(attackShare, lifterLosses);
   for (const [id, st] of attackShare) land(id, st);
-  const note = `${notes.join(' ')} ${coalition}'s landing on ${target.name} is thrown back by its garrison; ${lifterLosses} lifters lost.`.trim();
+  const note = `${notes.join(' ')} ${coalition}'s landing on ${target.name} is thrown back by its garrison; ${lifterLosses} lifter${lifterLosses === 1 ? '' : 's'} lost.`.trim();
   logEvent(state, 'order', note, attackers[0]![0]);
   ground('landing_thrown_back', note);
   return finish(note);

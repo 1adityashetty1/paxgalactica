@@ -775,6 +775,12 @@ export const BreakTreatyOp = z.object({
   op: z.literal('break_treaty'),
   treatyId: z.string().min(1),
   reason: z.string().default(''),
+  /**
+   * The power breaking it, when that is not the actor: the other party to an
+   * accord, ending a treaty of its own it agreed across the table to end —
+   * built from its concession's `ends`, never written by extraction.
+   */
+  factionId: z.string().min(1).optional(),
 });
 
 /** A rider as the arbiter writes it: the price is the engine's. */

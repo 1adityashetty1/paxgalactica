@@ -80,9 +80,6 @@ leaves a faction with nobody following it.
 | `sweep` | counter-intelligence on a world of your own |
 | `sway` | an influence attempt moves how another power sees you (`whom`). The roll sizes it; it does nothing unless the check was influence and it worked |
 | `gift` | credits given to another power (`to`, `amount`), which buy its regard at 20 credits a point, ten at most |
-
-`regard` is how a reacting power records what it thinks of you, for a reason
-from a closed list; it is never yours to write about yourself.
 | `build_ships` | lay down new hulls of your own, now, at a world you hold — or, with `programme: true`, as a hidden yard programme delivered later |
 | `pay` | your credits to another power (`to`, `amount`, `for`) |
 | `spend` | your credits to nobody on the board — a bribe, a hire, materials (`amount`, `for`) |
@@ -132,6 +129,11 @@ from a closed list; it is never yours to write about yourself.
 | `recruit_commander` | appoint an officer off your Lists — named in `officer`, or the first of a `school` — to a world you hold; up to five in post; **an action of its own** |
 | `dissolve_commitment` | end one, by id |
 | `log_narrative` | a note for the event log |
+
+**Never write `regard`.** How another power feels about what you did is its own
+to record, in its reaction after the turn — a declaration that writes it is
+refused whole. An influence check that worked is `sway`; credits that buy
+goodwill are `gift`.
 
 `transfer_control` is **not available to you.** A system changes hands only when
 a fleet you `move` physically arrives.

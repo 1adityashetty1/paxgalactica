@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 32;
+export const JOURNAL_VERSION = 33;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -121,6 +121,7 @@ export const JournalVersionSchema = z.union([
   z.literal(30),
   z.literal(31),
   z.literal(32),
+  z.literal(33),
 ]);
 
 export const JournalSchema = z.object({
@@ -427,6 +428,8 @@ export function replay(
     // A fleet sent to stand guard in another power's orbit, without its basing
     // rights and not at war, sailed in and was fought as an attack.
     guardNeedsBasing: parsed.version >= 32,
+    // A backer at peace with the other side went to war at the deadline anyway.
+    peaceHoldsAtDeadline: parsed.version >= 33,
     stealNamesARivalsThing: parsed.version >= 26,
     secretsAreHidden: parsed.version >= 26,
     fleetsMeetInBattle: parsed.version >= 26,

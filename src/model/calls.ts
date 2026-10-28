@@ -1093,6 +1093,20 @@ export async function resolveAction(
             'method itself, and groundwork costs the action alone.',
             '',
           ]),
+      // What the ruling left out is not this order's to do. The player is told
+      // "not done in this order", and resolution wrote the second move anyway
+      // and it landed (bughunt 2026-10-28).
+      ...(priced.appraisal.unexpressed
+        ? [
+            '### Left out of this order',
+            '',
+            `${priced.appraisal.unexpressed}`,
+            '',
+            'That is not done here, and the player has been told so. Emit no ops for it',
+            'and do not narrate it as done.',
+            '',
+          ]
+        : []),
       ...(breach?.kind === 'compulsion'
         ? [
             '### Your institutions object, and the order stands',

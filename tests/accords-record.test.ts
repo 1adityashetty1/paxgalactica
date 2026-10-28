@@ -183,3 +183,49 @@ describe('an accord built from the record', () => {
     expect(campaign.state.factions.find((f) => f.id === 'meridian')!.credits).toBe(before);
   });
 });
+
+describe('a treaty ended across the table (bughunt 2026-10-28)', () => {
+  const marque = () => {
+    const s = createSeedState('vigil');
+    const out = applyOps(
+      s,
+      [
+        {
+          op: 'form_treaty',
+          parties: ['ojjul', 'drajk'],
+          treatyType: 'contract',
+          terms: { incomePerTurn: { ojjul: -10, drajk: 10 }, commission: { raider: 'drajk', against: ['vigil'], share: 25 } },
+          durationTurns: 10,
+          summary: 'Ojjul Nar Combine commissions Drajk Confederacy to raid Iron Vigil Remnant',
+        },
+      ],
+      'engine',
+    );
+    const id = out.state.treaties.find((t) => t.type === 'contract' && t.parties.includes('drajk'))!.id;
+    return { s: out.state, id };
+  };
+
+  it('is broken by the power that conceded it, at the price of a breach', () => {
+    const { s, id } = marque();
+    const built = transfersFromRecord(s, [c('ojjul', 'end_letter_of_marque', { ends: [id] }), c('vigil', 'price', { credits: 150 })], 'vigil', 'ojjul');
+    expect(built.ops).toContainEqual({ op: 'break_treaty', treatyId: id, factionId: 'ojjul', reason: 'ojjul gives end_letter_of_marque.' });
+    const before = s.factions.find((f) => f.id === 'drajk')!.disposition.ojjul ?? 0;
+    const out = applyOps(s, built.ops, 'extraction', 'vigil');
+    expect(out.rejections).toEqual([]);
+    expect(out.state.treaties.find((t) => t.id === id)!.status).toBe('broken');
+    expect(out.state.factions.find((f) => f.id === 'drajk')!.disposition.ojjul ?? 0).toBeLessThan(before);
+  });
+
+  it('builds nothing for a treaty the conceder is not bound by', () => {
+    const { s, id } = marque();
+    const built = transfersFromRecord(s, [c('meridian', 'end_it', { ends: [id] })], 'vigil', 'meridian');
+    expect(built.ops).toEqual([]);
+    expect(built.notes[0]).toMatch(/No treaty/);
+  });
+
+  it('cannot be broken on another power’s behalf by a declaration', () => {
+    const { s, id } = marque();
+    const out = applyOps(s, [{ op: 'break_treaty', treatyId: id, factionId: 'ojjul' }], 'model', 'vigil');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+});

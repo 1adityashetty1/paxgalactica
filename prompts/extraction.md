@@ -47,7 +47,8 @@ is purely a **record** of the conversation:
 `establish_loan` · `return_loan` · `forgive_loan` · `establish_obligation` ·
 `concede_ultimatum` · `create_asset` (a dossier only)
 
-— and, through the record, every payment, thing, favour, world and toll lift.
+— and, through the record, every payment, thing, favour, world, toll lift and
+treaty ended.
 
 **A thing changing hands is on the record.** Prisoners ransomed back, an
 heirloom handed over, a lot of ore delivered, a promissory note given: the power
@@ -150,7 +151,11 @@ whenever the parties named one.
 ends with the squadron going home or being made a gift of.
 
 **A toll lifted is on the record** — the power that charges it wrote whom it
-stops charging in `lifts`, and for how long in `liftTurns`. Imposing a toll
+stops charging in `lifts`, and for how long in `liftTurns`.
+
+**A treaty ended is on the record** — a letter of marque revoked, a pact with a
+third power left: the power ending it wrote its id in `ends`, and the engine
+breaks it, at the price a breach costs. Do not also write `break_treaty` for it. Imposing a toll
 needs nobody's agreement, so it is a declared action, never an accord.
 
 Everything else is **unilateral work the player pays an action for**, and the
@@ -288,6 +293,15 @@ Specifically:
 
   Write either only when the power bound by it agreed in its own voice: the
   protector to stop, the raider to take the commission, the paymaster to pay.
+
+  **A promise not to raid is `protection`, whatever else was signed.** A
+  ceasefire or a non-aggression pact is a promise not to attack, and does not
+  stop raids. When a power agreed to leave the other's shipping alone — even
+  beside a ceasefire, even for no fee — also write a `contract` with
+  `protection` naming the power it spares, for the same term, with an empty
+  `incomePerTurn` when nothing is paid for it. Without it the promise is words:
+  a raider that swore off the Vigil's shipping in a ceasefire raided it the next
+  turn.
 
   **`tribute` and `contract` carry the same machinery and are not the same
   word, and words bind here.** Tribute is money paid to be left alone; a

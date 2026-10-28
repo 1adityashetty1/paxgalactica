@@ -3160,7 +3160,13 @@ when the issuer's side outguns its own by `ULTIMATUM_YIELD_RATIO` (1.5), in
 battleship-equivalents (`sideStrength`); the player concedes by declaring it, a
 model-driven power by its reaction, and a target in the issuer's own channel by
 the transcript. Otherwise every party on each side goes to war with every party
-on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer.
+on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer
+— except a pair bound to peace or a truce by then: a backer that made peace with
+the other side after declaring stays out of the war (journal version 33,
+`peaceHoldsAtDeadline`). It comes due on the tick that starts `deadlineTurn`, so
+the briefing's **Ultimatums** group (`ultimatumLines`) says *"within N turns"*
+or *"before this turn ends"* — a demand made of the player was in the log alone
+until it did.
 
 **A cession comes out of the target's hands.** `cedeTerritory` moves a named
 world from whichever party holds it, so an issuer that took the world by force
@@ -4239,7 +4245,11 @@ commitment, a debt, a loan, a favour owed. `transfersFromRecord` builds every
 payment, thing handed over, favour released or sold, cession and toll lift from
 the ids each power wrote as it spoke (`Concession` gained `lifts` and
 `liftTurns`), and `withoutRecordTransfers` drops any extraction wrote itself, so
-a sale is paid once. A cession carries the buyer's credits and things as its
+a sale is paid once. A treaty a power agreed to end — a letter of marque
+revoked, a pact with a third power left — is `Concession.ends`, built as a
+`break_treaty` naming that power as `factionId`, which only an accord may
+(bughunt 2026-10-28: the price for revoking a marque landed and the revocation
+was narrated and never done). A cession carries the buyer's credits and things as its
 `terms.payment` and `terms.assets`. The built transfers go in as `fixed`: one
 the reducer refuses fails the accord with no correction (a refused transfer
 cannot be reworded), and a correction may fix a term but never drop one. The
@@ -7133,7 +7143,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME`. A declared income is chartered on `systemId` (a world the power holds, else its richest) and pays at most a quarter of it |
 | `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party, and heat; onlookers only at three or more, and never the parties |
-| `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts` |
+| `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts`. `factionId` names the breaker when it is not the actor — from an accord only |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |

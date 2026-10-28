@@ -243,6 +243,11 @@ function incursions(state: WorldState, factionId: string): string[] {
  * "at war with vigil and no fleet under way" is something a player can act on,
  * where "compulsion violated" is not.
  */
+/** A power's name, for a reason a player reads: ids are machinery. */
+function nameOf(state: WorldState, id: string): string {
+  return state.factions.find((f) => f.id === id)?.name ?? id;
+}
+
 function evaluate(
   state: WorldState,
   factionId: string,
@@ -258,7 +263,7 @@ function evaluate(
       const enemies = warsFor(state, factionId);
       if (enemies.length === 0) return null;
       if (hasFleetUnderWay(state, factionId)) return null;
-      return `at war with ${enemies.join(', ')} and no fleet under way`;
+      return `at war with ${enemies.map((id) => nameOf(state, id)).join(', ')} and no fleet under way`;
     }
 
     case 'unanswered_incursion': {
@@ -309,7 +314,7 @@ function evaluate(
       });
 
       return unpursued.length > 0
-        ? `${unpursued.join(', ')} owe you and have defaulted, and nothing has been sent`
+        ? `${unpursued.map((id) => nameOf(state, id)).join(', ')} owe you and have defaulted, and nothing has been sent`
         : null;
     }
   }

@@ -722,7 +722,7 @@ async function commitWithCorrection(
   actor?: string,
   /** Covert work: its notes are written for the actor alone, correction included. */
   secret = false,
-): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
+): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number; landed: unknown[] }> {
   // **A reaction has no check behind it**, so it cannot found a fixture. The rest
   // of an NPC's ops are unbounded on purpose — it is answering the turn, not
   // rolling for it — but a fixture is a thing a power sets out to build, and
@@ -733,22 +733,29 @@ async function commitWithCorrection(
   // Only reactions come through here: an NPC answering the turn (`OP_PATHS`).
   const first = campaign.commit(seal(ops), 'model', label, actor, 'reaction');
   if (first.rejections.length === 0) {
-    return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
+    return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0, landed: ops };
   }
 
   const revised = await reviseRejected(campaign, first.rejections, label, context, ops);
   if (!revised) {
-    return { rejections: first.rejections, notes: [...bound.notes, ...first.notes], costUsd: 0 };
+    return { rejections: first.rejections, notes: [...bound.notes, ...first.notes], costUsd: 0, landed: [] };
   }
 
   // The correction batch is filtered too: a retry that re-emitted the fixture
   // would otherwise be the hole, exactly as it is for an `onComplete` payload.
   const again = boundPayloadsToOutcome(revised.ops, 'success', undefined);
   const second = campaign.commit(seal(again.ops), 'model', `${label}:correction`, actor, 'reaction');
+  // The first batch's all-or-nothing note is dropped when the correction
+  // landed, as a declaration's is rewritten: the player was told "nothing in
+  // this batch was applied" about a reaction whose correction then did apply
+  // (bughunt 2026-10-28).
+  const corrected = second.rejections.length === 0;
+  const firstNotes = corrected ? first.notes.filter((n) => !n.startsWith('Nothing in this batch was applied')) : first.notes;
   return {
     rejections: second.rejections,
-    notes: [...bound.notes, ...first.notes, ...again.notes, ...second.notes],
+    notes: [...bound.notes, ...firstNotes, ...again.notes, ...second.notes],
     costUsd: revised.costUsd,
+    landed: corrected ? again.ops : [],
   };
 }
 
@@ -1271,7 +1278,10 @@ export async function endTurn(
             factionName: faction.name,
             color: faction.displayColor,
             narrative: reaction.narrative,
-            ops: applied.rejections.length > 0 ? [] : lined.ops,
+            // What landed: the correction's ops when the first try was
+            // refused, never the first try's — the card showed a raid on
+            // Sarsuma that the correction had dropped (bughunt 2026-10-28).
+            ops: applied.rejections.length > 0 ? [] : (applied.landed as typeof lined.ops),
             heldBack: heldBack > 0 ? heldBack : null,
             // An invitation to talk, if this power wants something. Passed
             // through rather than acted on: the player opens the channel.
@@ -1657,6 +1667,20 @@ export function transfersFromRecord(
       );
     }
   }
+  // A treaty a power agreed to end: only its own, and only one still in force.
+  const ending = new Set<string>();
+  for (const c of agreed) {
+    for (const id of c.ends ?? []) {
+      const treaty = state.treaties.find((t) => t.id === id);
+      if (!treaty || !treaty.parties.includes(c.by) || (treaty.status !== 'active' && treaty.status !== 'pending')) {
+        notes.push(`No treaty "${id}" of ${getFaction(state, c.by)?.name ?? c.by}'s in force to end; ${c.text}`);
+        continue;
+      }
+      if (ending.has(id)) continue;
+      ending.add(id);
+      ops.push({ op: 'break_treaty', treatyId: id, factionId: c.by, reason: c.text.slice(0, 240) });
+    }
+  }
   for (const by of [player, other]) {
     const lifting = agreed.filter((c) => c.by === by && c.lifts.length > 0);
     if (lifting.length === 0) continue;
@@ -1826,6 +1850,14 @@ export async function closeChannel(
   const unknownTerms = [...accepted].filter((k) => !conceded.some((c) => `${c.by}:${c.kind}` === k));
   const built = transfersFromRecord(campaign.state, agreed, player, factionId);
   const stripped = withoutRecordTransfers(extraction.output.ops);
+  // A treaty the record ends is ended once: extraction's own break of it would
+  // be refused as already void, and sink the accord. And only the record names
+  // another power as the breaker: extraction may not break on its behalf.
+  const recordEnds = new Set(built.ops.filter((o) => o.op === 'break_treaty').map((o) => String(o.treatyId)));
+  stripped.ops = stripped.ops.filter((raw) => {
+    const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+    return !(o?.op === 'break_treaty' && (recordEnds.has(String(o.treatyId)) || (o.factionId !== undefined && o.factionId !== player)));
+  });
   const recordNotes = [
     ...built.notes,
     ...unknownTerms.map((k) => `"${k}" is not on the record, so nothing was built for it.`),

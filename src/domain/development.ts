@@ -819,7 +819,7 @@ export function applyOrderEffect(
       }
       const whose = stillOurs
         ? ''
-        : ` It serves ${holder}, who holds the world now.`;
+        : ' It serves the power that holds the world now.';
       return {
         note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} stands.${whose}`,
         delivered: true,

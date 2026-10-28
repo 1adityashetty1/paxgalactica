@@ -77,7 +77,7 @@ describe('what matters is shown first', () => {
   const lines = [
     at(1, 'system', 'Iron Vigil Remnant lays down 8 hull(s), begins university at Vantic at Vantic.'),
     at(1, 'system', 'Iron Vigil Remnant sends 4 battleships, 1 escort, 2 lifters, 1 listener from Vantic against Threx.'),
-    at(4, 'order', 'Meridian Trade Authority and Arkane Free Worlds storms Sennex, breaking a garrison of 4 for 1 lifters; Meridian Trade Authority takes possession with 4 troops ashore.'),
+    at(4, 'order', 'Meridian Trade Authority and Arkane Free Worlds storm Sennex, breaking a garrison of 4 for 1 lifter; Meridian Trade Authority takes possession with 4 troops ashore.'),
     at(5, 'system', 'Sennex rises against Meridian Trade Authority: its last troops desert, and Sennex answers to nobody.'),
     at(5, 'order', 'Meridian Trade Authority moves 3 escorts from Corvid to Torrek Anchorage.'),
     at(5, 'rejection', '[no_presence] meridian neither holds Ithaal nor has ships there.'),

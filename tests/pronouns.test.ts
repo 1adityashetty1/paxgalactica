@@ -17,6 +17,15 @@ describe('a generated person', () => {
     );
   });
 
+  it('reads "her" before an adverb as an object, and before a noun as a possessive', () => {
+    expect(theyThem('Sabina Macer joins the cadre, which takes to her immediately.')).toBe(
+      'Sabina Macer joins the cadre, which takes to them immediately.',
+    );
+    expect(theyThem("Sabina Macer sends word to her family and her only contact.")).toBe(
+      'Sabina Macer sends word to their family and their only contact.',
+    );
+  });
+
   it('is found by a joined family name too', () => {
     expect(theyThem('Galbavarro was taken at Threx; he is held there.')).toBe('Galbavarro was taken at Threx; they are held there.');
   });
