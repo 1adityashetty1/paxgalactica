@@ -387,6 +387,13 @@ import {
   type WorldState,
 } from './state.js';
 
+/** "2 crates", "1 crate", "3 people": a count of a thing in its own unit. */
+function countOf(n: number, unit: string): string {
+  if (n === 1) return `1 ${unit}`;
+  if (unit === 'person') return `${n} people`;
+  return `${n} ${/s$/.test(unit) ? unit : `${unit}s`}`;
+}
+
 /**
  * Where a batch came from, which some guards depend on.
  *
@@ -2921,7 +2928,7 @@ function settleAssetTerms(state: WorldState, treaty: Treaty, peopleStanding = tr
 
     if (peopleStanding) regardForHandover(state, asset, holder, receiver);
     asset.heldBy = receiver;
-    notes.push(`${asset.quantity} ${asset.unit} of ${asset.kind} passes to ${receiver} under ${treaty.summary}.`);
+    notes.push(`${countOf(asset.quantity, asset.unit)} of ${asset.kind} passes to ${receiver} under ${treaty.summary}.`);
   }
   for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]!);
   return notes;
@@ -2975,7 +2982,7 @@ function assetsGoWithWorld(state: WorldState, system: StarSystem, to: string | n
     if (asset.heldBy === to) continue;
     const wasHeldBy = asset.heldBy;
     asset.heldBy = to;
-    const taken = `${nameFor(state, to)} takes ${asset.quantity} ${asset.unit} with ${system.name}: ${asset.text}`;
+    const taken = `${nameFor(state, to)} takes ${countOf(asset.quantity, asset.unit)} with ${system.name}: ${asset.text}`;
     notes.push(taken);
     logEvent(state, 'system', taken, to, [wasHeldBy, to]);
   }
@@ -5256,9 +5263,12 @@ function applyOpsUnderRules(
         if (left === 0) {
           state.assets = state.assets.filter((a) => a.id !== asset.id);
         }
+        // Named by kind, its own sentence beside it: "the last of Sorted hull
+        // plate … underwritten. Salvage stock fed …" ran two sentences together.
+        const what = `its ${asset.kind.replace(/_/g, ' ')} (${asset.text.replace(/[.\s]+$/, '')})`;
         const note = left === 0
-          ? `${nameFor(state, asset.heldBy)} spends the last of ${asset.text} ${op.reason}`.trim()
-          : `${nameFor(state, asset.heldBy)} spends ${spent} ${instrument ? 'of its plays' : asset.unit} of ${asset.text}; ${left} left. ${op.reason}`.trim();
+          ? `${nameFor(state, asset.heldBy)} spends the last of ${what}. ${op.reason}`.trim()
+          : `${nameFor(state, asset.heldBy)} spends ${instrument ? `${spent} of its plays` : countOf(spent, asset.unit)} of ${what}; ${left} left. ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
@@ -5505,7 +5515,7 @@ function applyOpsUnderRules(
         const from = asset.heldBy;
         if (peopleStanding) regardForHandover(state, asset, from, op.toFactionId);
         asset.heldBy = op.toFactionId;
-        const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
+        const note = `${nameFor(state, from)} hands ${countOf(asset.quantity, asset.unit)} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, op.toFactionId, [from, op.toFactionId]);
         break;
@@ -6237,7 +6247,7 @@ function applyOpsUnderRules(
           commanderId: null,
           agentId: null,
         });
-        const note = `${nameFor(state, asset.heldBy)} sets aside ${op.quantity} ${asset.unit} of ${asset.text} ${op.reason}`.trim();
+        const note = `${nameFor(state, asset.heldBy)} sets aside ${countOf(op.quantity, asset.unit)} of ${asset.text} ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
@@ -7083,6 +7093,21 @@ function applyOpsUnderRules(
           ) {
             recordAct('invasion_launched', op.factionId, [other]);
           }
+          // A landing with nothing to land with. "Land troops on Ithaal" from
+          // a squadron of battleships was rolled, narrated as shuttles going in,
+          // and took station — with nothing saying why (bughunt 2026-10-28).
+          if (
+            isMovementType(op.type) &&
+            holder !== op.factionId &&
+            !isGuestOf(state, op.factionId, holder) &&
+            (force.lifter ?? 0) === 0 &&
+            !op.holdLanding &&
+            (getSystem(state, op.targetId)?.garrison ?? 0) > 0
+          ) {
+            notes.push(
+              `No lifters sail with ${order.label}: it can win the orbit over ${getSystem(state, op.targetId)?.name ?? op.targetId}, but nobody lands.`,
+            );
+          }
           if (op.type === 'blockade') recordAct('blockade_ordered', op.factionId, [other]);
           if (op.type === 'commerce_raiding') recordAct('raid_ordered', op.factionId, [other]);
         }
@@ -7096,7 +7121,7 @@ function applyOpsUnderRules(
         logEvent(
           state,
           'order',
-          `${op.factionId} begins ${order.label} (${duration} turns) -> ${op.targetId}${delivers}.`,
+          `${nameFor(state, op.factionId)} begins ${order.label} (${duration} turn${duration === 1 ? '' : 's'}) at ${getSystem(state, op.targetId)?.name ?? op.targetId}${delivers}.`,
           op.factionId,
           isPublicOrderType(order.type) ? null : [op.factionId, ...order.visibility],
         );
@@ -8394,7 +8419,9 @@ function applyOpsUnderRules(
             turns === 0
               ? 'already there'
               : `${jumps} jump${jumps === 1 ? '' : 's'}, at work from turn ${spy.inPlaceFrom}`;
-          const sent = `${spy.name || 'An operative'} leaves ${from} for ${host.name} on ${op.mission}${rider ? `, with ${rider.mission} riding on it` : ''}, for ${bill} credits — ${when}.`;
+          // "leaves Shalka for Shalka … already there" (bughunt 2026-10-28).
+          const where = from === host.name ? `goes to work at ${host.name}` : `leaves ${from} for ${host.name}`;
+          const sent = `${spy.name || 'An operative'} ${where} on ${op.mission}${rider ? `, with ${rider.mission} riding on it` : ''}, for ${bill} credits — ${when}.`;
           notes.push(sent);
           logEvent(state, 'order', sent, ownerId, [ownerId]);
           break;
@@ -9599,7 +9626,15 @@ function applyOpsUnderRules(
           text: amendRecord(op.text, corrections),
         };
         state.loans.push(loan);
-        const note = `${nameFor(state, op.lenderFactionId)} lends ${nameFor(state, op.borrowerFactionId)} ${describeOutstanding(loan)}${rent > 0 ? ` at ${rent} a turn` : ' for nothing'}${loan.dueTurn === null ? '' : `, back by turn ${loan.dueTurn}`}. ${op.text}`;
+        // Hulls change flag where they stand, which is the lender's world and
+        // not wherever the deal said they were wanted: a hire "delivered at
+        // Corvid" flipped at Shalka and the note said Corvid (bughunt
+        // 2026-10-28). Said, so the borrower knows to sail them.
+        const handedAt =
+          lentOut.kind === 'hulls'
+            ? ` They change flag at ${state.systems.find((x) => x.id === (lentOut as { atSystemId: string }).atSystemId)?.name ?? 'the lender’s world'}, and ${nameFor(state, op.borrowerFactionId)} sails them from there.`
+            : '';
+        const note = `${nameFor(state, op.lenderFactionId)} lends ${nameFor(state, op.borrowerFactionId)} ${describeOutstanding(loan)}${rent > 0 ? ` at ${rent} a turn` : ' for nothing'}${loan.dueTurn === null ? '' : `, back by turn ${loan.dueTurn}`}.${handedAt} ${op.text}`;
         notes.push(note);
         logEvent(state, 'diplomacy', note, op.lenderFactionId, [
           op.lenderFactionId,
@@ -9956,13 +9991,13 @@ function applyOpsUnderRules(
           debt.status = 'current';
           debt.missedPayments = 0;
         }
-        logEvent(
-          state,
-          'diplomacy',
-          `${debt.debtorFactionId} pays ${paid} against ${debt.id}; ${debt.balance} remains${debt.status === 'settled' ? ' — settled' : ''}. ${op.reason}`.trim(),
-          debt.debtorFactionId,
-          [debt.creditorFactionId, debt.debtorFactionId],
-        );
+        // Named, and said: it was logged with raw ids and reached no note, so
+        // paying off a debt in full landed in silence (bughunt 2026-10-28).
+        const settled = `${nameFor(state, debt.debtorFactionId)} pays ${nameFor(state, debt.creditorFactionId)} ${paid} against its debt; ${
+          debt.status === 'settled' ? 'it is settled' : `${debt.balance} remains`
+        }.`;
+        notes.push(settled);
+        logEvent(state, 'diplomacy', `${settled} ${op.reason}`.trim(), debt.debtorFactionId, [debt.creditorFactionId, debt.debtorFactionId]);
         break;
       }
 
@@ -11179,7 +11214,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const earned = asset.quantity * (asset.valuePerUnit[buyer.id] ?? COMMODITY_VALUE);
     buyer.credits += earned;
     state.assets = state.assets.filter((a) => a.id !== asset.id);
-    const note = `${buyer.name} sells ${asset.quantity} ${asset.unit} of ${nameFor(state, asset.issuedBy!)}'s ${asset.kind.replace(/_/g, ' ')} at market for ${earned} credits.`;
+    const note = `${buyer.name} sells ${countOf(asset.quantity, asset.unit)} of ${nameFor(state, asset.issuedBy!)}'s ${asset.kind.replace(/_/g, ' ')} at market for ${earned} credits.`;
     if (buyer.id === state.playerFactionId || asset.issuedBy === state.playerFactionId) notes.push(note);
     logEvent(state, 'system', note, buyer.id, [buyer.id, asset.issuedBy!]);
   }
@@ -11594,6 +11629,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
    * broken.
    */
   const watchNotes = new Map<string, string>();
+  // What each was sent to do, read before a one-attempt mission resets it to
+  // awaiting orders: the report was headed "[null · Shalka]" (bughunt 2026-10-28).
+  const missionBefore = new Map(state.agents.map((a) => [a.id, a.mission] as const));
 
   for (const agent of state.agents) {
     if (agent.exposed) {
@@ -12109,10 +12147,16 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (agent.ownerFactionId !== state.playerFactionId) continue;
     const note = watchNotes.get(agent.id) ?? 'has nothing to report.';
     const where = state.systems.find((sys) => sys.id === agent.systemId)?.name ?? agent.systemId;
+    const sentOn = agent.mission ?? missionBefore.get(agent.id) ?? 'awaiting orders';
+    // A one-attempt mission's outcome is news, and it reached the log alone: a
+    // governor kidnapped, a thing stolen, said nowhere the turn it happened.
+    if (watchNotes.has(agent.id) && agent.mission === null && missionBefore.get(agent.id)) {
+      notes.push(`${agent.name || 'Your operative'} (${sentOn}, ${where}) ${note}`);
+    }
     logEvent(
       state,
       'intel',
-      `[${agent.mission} · ${where}] Your operative ${note}`,
+      `[${sentOn} · ${where}] Your operative ${note}`,
       agent.ownerFactionId,
       // SCOPED, and it was not. The fourth argument is attribution; `visibleTo`
       // is the fifth and defaults to null, which is public — so every operative

@@ -304,6 +304,11 @@ correcting a diplomatic draft, not a database.
 You may also simply refuse to record what you never agreed to. Silence is
 sufficient; the retraction is for something already written.
 
+**The other side's silence is not their agreement.** A term you raised and they
+did not answer is still open: ask again, or drop it. Never say *"you didn't argue
+it, so it stands"* — a widow's clause the other power never spoke to was written
+into a marriage that way (bughunt 2026-10-28).
+
 **Strike the other side's withdrawals too.** When the power across the table
 takes back a term of its own — *"we withdraw the cession"*, *"no deal"* — write a
 retraction with **its** `by` and `kind`. You recorded their side, so you are the

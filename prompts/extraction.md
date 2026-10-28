@@ -132,6 +132,9 @@ Three things can be lent and nothing else:
 
 - **`hulls`** — `stack` by class, and `atSystemId` where they are standing now.
   The lender must actually have them there; the hire is trimmed to what is.
+  They change flag **there**, not where the deal wanted them — so pick the
+  lender's world nearest that place that holds enough of them, and say in
+  `text` where they change flag, never "delivered at" a world they are not on.
   While it is out the **borrower commands it**: the ships are theirs to order,
   count in their strength, and cost them upkeep. The rent is on top.
 - **`credits`** — an advance that comes back whole, with rent while it is out.
@@ -202,6 +205,11 @@ Specifically:
 - **A withdrawn term is not accepted**, even if it still stands on the record:
   a power that said *"we withdraw it"* or *"no deal"* later in the conversation
   agreed nothing by it, whatever was written down earlier.
+- **A term one side raised and the other never answered was not agreed** —
+  leave it out, and do not record it in a `log_narrative` as something "both
+  parties agreed". A narrative line binds nothing, and one claiming a term the
+  engine does not enforce — a ward keeping a seat when the spouse dies — tells
+  both powers a promise exists that nothing will keep.
 - **An unanswered offer produces nothing.** If the channel closed before the
   other side responded, nothing was agreed.
 - **A conditional promise produces nothing yet.** "If you withdraw from

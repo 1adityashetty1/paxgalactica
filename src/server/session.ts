@@ -420,6 +420,10 @@ export class GameSession {
   /** Adopt a snapshot the browser sent. Replaces whatever this session held. */
   restore(snapshot: SessionSnapshot): void {
     this.campaign = Campaign.fromSnapshot(snapshot.campaign, BUILD_ID, this.store);
+    // Every request restores, so this is where a campaign is adopted now: the
+    // trace was pointed only on new and resume, and a campaign played on past
+    // a server restart recorded nothing (bughunt 2026-10-28).
+    this.traceTo(this.campaign.name);
     this.adoptChannel(snapshot.channel);
     this.lastBriefing =
       (snapshot.briefing as Briefing | null) ?? briefingFromState(this.campaign.state);

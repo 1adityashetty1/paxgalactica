@@ -6570,6 +6570,14 @@ clean success swayed three powers by the model's 9 rather than the band's 6, and
 nine declared commitments carried no ruled mechanism; and a correction call's
 batch went to staging through none of them (playtest 2026-10-18).
 
+**A declaration spends only what the player put at stake** (`spendsAsSaid`): a
+`consume_asset` of a thing the player's words do not name — by id, or by every
+word of its kind — is left out, said. And **work that pays for itself carries no
+income charter**: a fixture, a development, a build or a levy beside an
+`establish_commitment` drops the commitment, since founding a factory once also
+minted a 12-a-turn charter for it (bughunt 2026-10-28). Only a dropped income is
+told to the player; a dropped record goes without a word.
+
 **Sends are the ruling's.** A resolution call may fill in a send the arbiter
 ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any
 `deploy_agent` or `lay_groundwork` that matches no covert or groundwork part, and
@@ -8817,8 +8825,10 @@ Five decisions shaped it:
 - **Always on**, because an opt-in flag is exactly why the data did not exist.
   A dozen numbers a record and no prompt text. The default sink records
   nothing, so the suite writes no files; the server installs a file sink when a
-  campaign starts or resumes, at `CampaignStore.tracePath` — on the store, so
-  wherever saves move the traces follow.
+  campaign starts, resumes or is restored from a request's snapshot, at
+  `CampaignStore.tracePath` — on the store, so wherever saves move the traces
+  follow. Restoring was missed at first, so a campaign played on past a server
+  restart recorded nothing.
 - **Context rides `AsyncLocalStorage`**, not parameters, so a call deep in
   `resolveAction` knows its turn and action without either being threaded
   through, and three parallel reactions stay attributed to the end of turn

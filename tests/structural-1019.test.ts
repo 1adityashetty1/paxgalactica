@@ -37,7 +37,7 @@ describe('S1: a record beside an act that has a mechanism', () => {
   const record = { op: 'establish_commitment', kind: 'torrek_fortification', factionIds: ['meridian'], text: 'Torrek is hardened.' };
   it('is dropped; an income charter on its own is kept', () => {
     const fortify = { op: 'fortify', factionId: 'meridian', systemId: 'tor-1', magnitude: 1 };
-    expect(commitmentsAsRuled([fortify, record], { kind: 'torrek_fortification', mechanism: 'record' })).toEqual({ ops: [fortify], dropped: ['torrek_fortification'] });
+    expect(commitmentsAsRuled([fortify, record], { kind: 'torrek_fortification', mechanism: 'record' })).toEqual({ ops: [fortify], dropped: ['torrek_fortification'], paying: [] });
     const charter = { ...record, kind: 'free_port', incomePerTurn: 20 };
     expect(commitmentsAsRuled([charter], { kind: 'free_port', mechanism: 'income' }).ops).toHaveLength(1);
   });

@@ -40,6 +40,8 @@ import { holdToRuling, noPaymentBesideAGift,
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
 import { isMovementType } from '../domain/state.js';
+import { ASSET_ARCHETYPES } from '../domain/assets.js';
+import { lineReadByCode } from '../domain/line-reach.js';
 import { PEACE_TREATIES, type Concession } from '../domain/diplomacy.js';
 import type { WorldState } from '../domain/state.js';
 import {
@@ -595,7 +597,7 @@ export function applyBonus(
  * a ruling filter dropped, a trim or clamp, a correction (§5). Read off the
  * notes the engine and the reducer already write, so nothing new is tracked.
  */
-const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect|barracks are already full|lay down nothing/;
+const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect|barracks are already full|lay down nothing|fixture unbuilt/;
 
 export function storyDiverged(notes: readonly string[], rejections: readonly unknown[]): boolean {
   if (rejections.length > 0) return true;
@@ -658,7 +660,15 @@ async function reconcileStory(
   const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
   if (!out?.narrative) {
     const base = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
-    const corrected = holders.length > 0 ? `${base}\n\nNot as told: ${holders.map((h) => h.replace(/^- HOLDER: /, '')).join(' ')}` : base;
+    // What did not happen yet, as well as whose a world is: a fleet three
+    // turns out "makes Corvid days ahead" stood uncorrected when the rewrite
+    // failed (bughunt 2026-10-28).
+    const untold = [
+      ...holders.map((h) => h.replace(/^- HOLDER: /, '')),
+      ...timing.map((t) => t.replace(/^- TIMING: /, '')),
+    ];
+    const corrected =
+      untold.length === 0 ? base : base.includes('\n\nNot as told: ') ? `${base} ${untold.join(' ')}` : `${base}\n\nNot as told: ${untold.join(' ')}`;
     campaign.rewriteNarrative(from, corrected);
     return { narrative: corrected, costUsd: out?.costUsd ?? 0, reconciled: false };
   }
@@ -968,6 +978,20 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   if (inKind.dropped) {
     routed.ops = inKind.ops;
     routed.notes.push('Goods handed to a creditor are a gift, not a payment: the cash paid beside them is left out. Settling a debt in goods needs the creditor to agree — open a channel.');
+  }
+
+  // A fixture on a partial is unbuilt, and the model usually leaves its
+  // `found_fixture` out rather than having it stripped — so nothing said so,
+  // and the story told the player the exchange "stands" (bughunt 2026-10-28).
+  // Named here, which also sends the story to be reconciled.
+  if (resolution.check?.outcome === 'partial' && !routed.ops.some((o) => (o as { op?: string } | null)?.op === 'found_fixture')) {
+    const words = ` ${action.toLowerCase().replace(/[^a-z\s]/g, ' ')} `;
+    const named = ASSET_ARCHETYPES.find((a) => a.fixture && words.includes(` ${a.kind.replace(/_/g, ' ')} `));
+    if (named) {
+      routed.notes.push(
+        `A ${named.kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`,
+      );
+    }
   }
 
   // Secret when the arbiter ruled it covert OR anything in it places an
@@ -2132,7 +2156,12 @@ export async function closeChannel(
       counterpartyCost = theirRuling?.costUsd ?? 0;
       const theirNamed = theirRuling?.appraisal.breach?.principles ?? [];
       theirBreach = other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
-      if (theirBreach?.kind === 'compulsion' && breachContradictsState(stateBefore, factionId, theirBreach.principle)) {
+      // A line code reads off the acts is crossed when the acts cross it —
+      // `theirLine` below — and a reading of the concessions alone, which never
+      // sees what the other power received, does not overrule it.
+      if (theirBreach && lineReadByCode(stateBefore, factionId, theirBreach.principle)) {
+        theirBreach = null;
+      } else if (theirBreach?.kind === 'compulsion' && breachContradictsState(stateBefore, factionId, theirBreach.principle)) {
         theirBreach = null;
       } else if (theirBreach) {
         const check = await verifyBreachRelevance(theirText, theirBreach.principle, theirBreach.kind);

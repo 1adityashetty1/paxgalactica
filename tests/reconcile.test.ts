@@ -143,3 +143,22 @@ describe('L5: the tense of work that has only begun', () => {
     expect(outcome.narrative).toBe('Work begins on new walls at Brannix.');
   });
 });
+
+describe('a story told ahead of its time (bughunt 2026-10-28)', () => {
+  it('keeps the timing beside the draft when the rewrite fails', async () => {
+    const campaign = Campaign.start('meridian', 'reconcile-timing');
+    queue = {
+      appraisal: [{ admissible: true, reason: '', stat: 'might', difficulty: 2 }],
+      resolution: [
+        {
+          narrative: 'The squadron makes Torrek Anchorage days ahead of any worry.',
+          ops: [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-6', force: { battleship: 2 }, land: false, label: 'to Neth' }],
+        },
+      ],
+      reconcile: [{ narrative: 'It arrives in 9999 turns.' }],
+    };
+    const outcome = await submitAction(campaign, 'Sail two battleships from Sekkar Gate to Neth without landing.');
+    expect(calls.map((c) => c.kind)).toContain('reconcile');
+    expect(outcome.narrative).toMatch(/\n\nNot as told: .*"to Neth" at Neth has only begun; it arrives in 1 turn, not now\./);
+  });
+});

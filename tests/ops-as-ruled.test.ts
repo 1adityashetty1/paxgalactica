@@ -78,3 +78,24 @@ describe('a critical success’s bonus is priced in code', () => {
     expect(view()).toBe(before + 3);
   });
 });
+
+describe('a declaration spends what was put at stake (bughunt 2026-10-28)', () => {
+  const base = { covert: [], groundwork: [], stat: 'industry', outcome: 'critical_success', yields: [], sentOnly: false };
+  const held = [{ id: 'ast-0-0', kind: 'salvage' }, { id: 'ast-1-1', kind: 'ration_stores' }];
+  const spend = (id: string) => ({ op: 'consume_asset', assetId: id, quantity: 120, reason: 'fed into the line' });
+  const work = { op: 'found_fixture', factionId: 'meridian', systemId: 'sek-2', kind: 'factory' };
+
+  it('leaves out a thing the player never named, and keeps one they did', () => {
+    const out = holdToRuling([work, spend('ast-0-0')], { ...base, establishes: undefined, said: 'Found a factory at Corvid.', held });
+    expect(out.ops).toEqual([work]);
+    expect(out.notes.join(' ')).toMatch(/salvage, which you did not offer/);
+    expect(holdToRuling([work, spend('ast-0-0')], { ...base, establishes: undefined, said: 'Found a factory at Corvid with our salvage.', held }).ops).toHaveLength(2);
+    expect(holdToRuling([spend('ast-1-1')], { ...base, establishes: undefined, said: 'Feed the garrison from the ration stores.', held }).ops).toHaveLength(1);
+  });
+
+  it('records no income charter beside work that pays for itself', () => {
+    const charter = { op: 'establish_commitment', kind: 'corvid_salvage_factory', factionIds: ['meridian'], text: 'x', incomePerTurn: 12, systemId: 'sek-2' };
+    const out = holdToRuling([work, charter], { ...base, establishes: { kind: 'corvid_salvage_factory', mechanism: 'income' }, said: 'Found a factory at Corvid.', held });
+    expect(out.ops).toEqual([work]);
+  });
+});

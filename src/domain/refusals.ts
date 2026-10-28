@@ -149,9 +149,11 @@ export function prizesAsRuled(
 export function commitmentsAsRuled(
   ops: readonly unknown[],
   establishes: { kind: string; mechanism?: string } | undefined,
-): { ops: unknown[]; dropped: string[] } {
+): { ops: unknown[]; dropped: string[]; paying: string[] } {
   const kept: unknown[] = [];
   const dropped: string[] = [];
+  /** The dropped ones that would have paid: the only ones worth telling the player about. */
+  const paying: string[] = [];
   // A record binds nobody. Beside an act with a mechanism it was a duplicate —
   // a fortification, a fleet movement and a bounty each minted one, and every
   // later reader took them for promises (playtest 2026-10-19, S1) — and on its
@@ -162,23 +164,30 @@ export function commitmentsAsRuled(
   // it; `development_talks` the same in loop 9, and `neth_accession_secured`
   // stood for a world that never joined in loop 10 (loops 9, 10, 15). Only a
   // ruled income — a charter on a world — is recorded from a declaration.
+  // Founding a factory also minted a 12-a-turn income charter for it
+  // (bughunt 2026-10-28): the work already delivers what it is for.
+  const working = ops.some((op) => SELF_PAYING_WORK.has(String((op as { op?: string } | null)?.op)));
   for (const op of ops) {
-    const o = op as { op?: string; kind?: string } | null;
+    const o = op as { op?: string; kind?: string; incomePerTurn?: number } | null;
     if (o?.op !== 'establish_commitment') {
       kept.push(op);
       continue;
     }
-    if ((establishes?.mechanism ?? 'record') === 'record') {
+    const drop = () => {
       dropped.push(o.kind ?? 'an arrangement');
+      if ((o.incomePerTurn ?? 0) > 0) paying.push(o.kind ?? 'an arrangement');
+    };
+    if ((establishes?.mechanism ?? 'record') === 'record' || working) {
+      drop();
       continue;
     }
     if (!establishes || o.kind !== establishes.kind) {
-      dropped.push(o.kind ?? 'an arrangement');
+      drop();
       continue;
     }
     kept.push({ ...o, mechanism: establishes.mechanism ?? 'record' });
   }
-  return { ops: kept, dropped };
+  return { ops: kept, dropped, paying };
 }
 
 /**
@@ -229,7 +238,44 @@ export interface RulingBounds {
   reaches?: readonly Reach[];
   /** Pending orders that are not the actor's, by id, for `their_orders`. */
   foreignOrders?: readonly string[];
+  /** The player's own words, and the things the actor holds: a thing is spent only when named. */
+  said?: string;
+  held?: readonly { id: string; kind: string }[];
 }
+
+/**
+ * A declaration spends only what the player put at stake. Founding a factory
+ * consumed 120 units of salvage the player never mentioned, and a failed envoy
+ * spent a crate of luxuries (bughunt 2026-10-27, 2026-10-28). A thing counts as
+ * named by its id or by every word of its kind ("ration stores", "salvage").
+ */
+export function spendsAsSaid(
+  ops: readonly unknown[],
+  said: string,
+  held: readonly { id: string; kind: string }[],
+): { ops: unknown[]; dropped: string[] } {
+  const words = ` ${said.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ')} `;
+  const named = (id: string): boolean => {
+    if (words.includes(` ${id.toLowerCase()} `)) return true;
+    const kind = held.find((a) => a.id === id)?.kind;
+    if (!kind) return true; // not the actor's: the reducer's to refuse
+    return kind.split('_').every((w) => new RegExp(`\\b${w}(?:s|es)?\\b`).test(words));
+  };
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; assetId?: string } | null;
+    if (o?.op === 'consume_asset' && o.assetId && !named(o.assetId)) {
+      dropped.push((held.find((a) => a.id === o.assetId)?.kind ?? o.assetId).replace(/_/g, ' '));
+      continue;
+    }
+    kept.push(op);
+  }
+  return { ops: kept, dropped };
+}
+
+/** Work whose payoff is its own: an income charter beside it is a second payment for one act. */
+const SELF_PAYING_WORK = new Set(['found_fixture', 'develop', 'build_ships', 'fortify', 'raise_garrison', 'repair_fixture']);
 
 /**
  * The reach an op makes into another power's business, or null for the
@@ -313,12 +359,19 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
     notes.push('A sway moves another power only on an influence check that worked, once a power: the rest came to nothing.');
   }
   const committed = commitmentsAsRuled(sways.ops, bounds.establishes);
-  if (committed.dropped.length > 0) {
+  // A record binds nobody and is left out without a word: "left out
+  // operative_recruitment" beside every recruitment was noise. An income
+  // nobody ruled is money the player might have expected, so it is said.
+  if (committed.paying.length > 0) {
     notes.push(
-      `A lasting arrangement is recorded only when the arbiter ruled one: left out ${[...new Set(committed.dropped)].join(', ')}.`,
+      `An income is recorded only when the arbiter ruled one: left out ${[...new Set(committed.paying)].map((k) => k.replace(/_/g, ' ')).join(', ')}.`,
     );
   }
-  const prized = prizesAsRuled(committed.ops, bounds.yields);
+  const spent = bounds.said !== undefined ? spendsAsSaid(committed.ops, bounds.said, bounds.held ?? []) : { ops: committed.ops, dropped: [] };
+  if (spent.dropped.length > 0) {
+    notes.push(`Only what you put at stake is spent: left out the ${[...new Set(spent.dropped)].join(', ')}, which you did not offer.`);
+  }
+  const prized = prizesAsRuled(spent.ops, bounds.yields);
   if (prized.dropped.length > 0) {
     notes.push(
       `A prize comes only of what the attempt was ruled able to yield: left out ${[...new Set(prized.dropped)].join(', ')}.`,

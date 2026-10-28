@@ -1203,6 +1203,8 @@ export async function resolveAction(
     sentOnly: !checkOp,
     reaches: priced.appraisal.reaches ?? [],
     foreignOrders: state.pendingOrders.filter((o) => o.factionId !== state.playerFactionId).map((o) => o.id),
+    said: action,
+    held: (state.assets ?? []).filter((a) => a.heldBy === state.playerFactionId).map((a) => ({ id: a.id, kind: a.kind })),
   };
   const withCheck = (o: ResolutionOutput): ResolutionOutput => {
     // Sends, sways, commitments and prizes are the ruling's (intent-ops §3–5),
@@ -1275,7 +1277,7 @@ const OUTCOME_GUIDANCE: Record<CheckResult['outcome'], string> = {
   success:
     'It worked as intended. Emit the ops for exactly what was attempted; no windfall, no complication.',
   partial:
-    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success.',
+    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success. A fixture is the exception: it is one thing or nothing, so a partial raises none — write its `found_fixture` anyway and narrate the ground broken and nothing standing yet.',
   failure:
     'It did not work. Emit the ops for what the attempt COST — spent credits, wasted turns, a rival forewarned — and NOT the ops for the thing the player wanted. Nothing they were reaching for changes hands.',
   critical_failure:

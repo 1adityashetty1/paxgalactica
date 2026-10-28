@@ -274,6 +274,9 @@ describe('D4 — reactions hear what landed', () => {
 describe('C1, C2, C3, C13 — the other power’s charge for signing an accord', () => {
   const NO_GIFTS =
     'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift';
+  // Untagged, so the model's reading of it stands; NO_GIFTS is read off the acts.
+  const PURSUE_DEBTS =
+    'an unpaid debt must be pursued — a client left owing without consequence teaches every other client to try it';
   const NO_CLOSED_LANES =
     'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer';
   const said = [
@@ -327,7 +330,7 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
   it('C1, C13: the charge goes with the accord, and the conversation is told', async () => {
     queue = {
       extraction: [extraction],
-      appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
+      appraisal: [clean, breach(PURSUE_DEBTS, 'compulsion')],
       breach_relevance: [{ relevant: true, why: '' }],
     };
     const campaign = Campaign.start('meridian', 'pt1018-c1');
@@ -346,7 +349,7 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
   it('C1: the charge cannot be withdrawn on its own', async () => {
     queue = {
       extraction: [extraction],
-      appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
+      appraisal: [clean, breach(PURSUE_DEBTS, 'compulsion')],
       breach_relevance: [{ relevant: true, why: '' }],
     };
     const campaign = Campaign.start('meridian', 'pt1018-c1b');
@@ -354,6 +357,17 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
     const at = campaign.stagedBindings().indexOf('attached');
     expect(campaign.discardStagedAt(at)).toBe('attached');
     expect(ojjul(campaign)).toBe(COUNTERPARTY_BREACH_DISSENT.compulsion);
+  });
+
+  it('charges nothing on a line code reads off the acts, whatever a reading of one side says (bughunt 2026-10-28)', async () => {
+    queue = {
+      extraction: [extraction],
+      appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
+      breach_relevance: [{ relevant: true, why: '' }],
+    };
+    const campaign = Campaign.start('meridian', 'pt1018-tagged');
+    await closeChannel(campaign, 'ojjul', said, conceded);
+    expect(ojjul(campaign)).toBe(0);
   });
 });
 

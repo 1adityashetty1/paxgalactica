@@ -589,3 +589,16 @@ describe('bughunt 2026-10-27', () => {
     expect(sys(r.state, 'sek-5').garrison).toBe(3);
   });
 });
+
+describe('a landing with nothing to land with (bughunt 2026-10-28)', () => {
+  it('says so when the fleet sails, and says nothing when it stands guard', async () => {
+    const { createSeedState } = await import('../src/seed/scenario.js');
+    const { applyOps } = await import('../src/domain/reducer.js');
+    const s = createSeedState('meridian');
+    const land = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, label: 'to Ithaal' }], 'model', 'meridian');
+    expect(land.rejections).toEqual([]);
+    expect(land.notes.some((n) => /No lifters sail with to Ithaal: .*nobody lands/.test(n))).toBe(true);
+    const guard = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, land: false, label: 'to Ithaal' }], 'model', 'meridian');
+    expect(guard.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
+  });
+});

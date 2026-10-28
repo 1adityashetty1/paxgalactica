@@ -514,37 +514,12 @@ never rule them inadmissible for having no mechanic.
 You are not recording the *outcome* — the action may still fail. You are
 saying what it would establish **if it works**.
 
-### Ground gained also counts
-
-`establishes` is not only for finished arrangements. **Slow work that has
-visibly moved is a durable fact too**, and it is the main thing that would
-otherwise be forgotten between turns.
-
-The clearest case is courting an unaligned world. Persuading a neutral system
-to join a power is the work of several turns, and a single attempt that ends
-"a plurality in favour, but short of a mandate" has genuinely changed
-something — but there is no treaty to sign, no order to issue, and nothing in
-the op vocabulary that remembers it. Without a record, the player spends three
-turns and real credits moving a world from hostile to sympathetic and starts
-turn four from nothing.
-
-So when an action makes real headway toward a lasting change without
-completing it, record the headway:
-
-- `kind` — `accession_talks` for courting a world toward joining;
-  `courtship_progress` for winning over a faction or a population more
-  generally. Reuse the same slug for the same campaign of persuasion so that
-  successive rounds are visibly the same effort.
-- `text` — name **which world or party**, and how far it has actually got.
-  "Sennex's freeholders favour accession but the outer enclaves boycotted the
-  vote" is useful next turn; "talks are going well" is not.
-- `exclusive` — normally **false**. Several powers may court the same world at
-  once, and one power may court several worlds; that rivalry is the
-  interesting part.
-- `factionIds` — the power doing the courting.
-
-Do not record headway that did not happen. A failed approach that changed
-nobody's mind establishes nothing.
+Headway is not an arrangement either. **Courting a world is `send_envoy`, and
+the world's standing toward you is its record** — it is on the board, it moves
+every turn, and the world joins on its own at 60. Leave `establishes` out of a
+courtship: an `accession_talks` record is dropped by the engine every time it
+is written (bughunt 2026-10-28), and a record of headway was once read back as
+a contract the player could not walk away from.
 
 ## 5. What does it test, and how hard?
 
@@ -578,12 +553,12 @@ is not the same difficulty in every position. Consider scope, who is actively
 resisting, distance and standing, and whether the action sits squarely within
 what this faction is built to do.
 
-**Ground already gained makes the next step easier.** The standing commitments
-block lists what previous turns achieved. If a faction is pressing a campaign
-of persuasion it has already made headway on — `accession_talks` naming this
-same world, a `courtship_progress` with this same party — the DC should drop
-by roughly 2 or 3 per round of real progress already banked, to a floor of
-about 8. This is what stops long diplomacy being a treadmill: a fourth
+**Ground already gained makes the next step easier.** A world's standing
+toward the faction and a power's regard for it say what previous turns
+achieved. If a faction is pressing a campaign of persuasion it has already made
+headway on — a world that already regards it warmly, a power already well
+disposed — the DC should drop by roughly 2 or 3 per round of real progress
+already banked, to a floor of about 8. This is what stops long diplomacy being a treadmill: a fourth
 approach to a world that has already half-agreed is genuinely easier than the
 first cold call, and the difficulty should say so.
 

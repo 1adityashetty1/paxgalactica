@@ -46,3 +46,14 @@ export function lineCrossable(state: WorldState, actor: string, principle: strin
   if (!tag) return true;
   return tag.forbids.some((act) => actReachable(state, actor, act));
 }
+
+/**
+ * Whether code reads this line off what an act does (`Faction.lineActs`). A
+ * tagged line is crossed when its acts are, and only then: a model reading the
+ * Combine's "nothing given away for nothing" into a ransom it paid for its own
+ * governor charged it for a deal with consideration on both sides (bughunt
+ * 2026-10-28).
+ */
+export function lineReadByCode(state: WorldState, actor: string, principle: string): boolean {
+  return state.factions.find((f) => f.id === actor)?.lineActs?.some((t) => t.text === principle) ?? false;
+}
