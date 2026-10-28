@@ -363,6 +363,11 @@ export class Campaign {
     this.actionsDeclared += 1;
   }
 
+  /** Give one back, for a declaration that turned out to cost none. */
+  refundActionPoint(): void {
+    this.actionsDeclared = Math.max(0, this.actionsDeclared - 1);
+  }
+
   /**
    * Take back an attempt that had nothing to stand on: every batch staged from
    * `from` goes, and the action point with it, as for an inadmissible ruling.

@@ -506,6 +506,16 @@ const ORGANISING = new Set(['rename_fleet', 'split_fleet', 'merge_fleets', 'assi
  * from the Fleets tab is free. A declaration whose acts are all organising has
  * any payment beside it left out.
  */
+/**
+ * Whether a declaration did nothing but organise the power's own fleets. The
+ * same change from the Fleets tab spends no action, so neither does this one
+ * (bughunt 2026-10-27: a merge said in words was rolled and charged an action).
+ */
+export function onlyOrganising(ops: readonly unknown[]): boolean {
+  const acts = ops.map((o) => (o as { op?: string }).op ?? '').filter((k) => k !== 'log_narrative');
+  return acts.length > 0 && acts.every((k) => ORGANISING.has(k));
+}
+
 export function organisingIsFree(ops: readonly unknown[]): { ops: unknown[]; dropped: boolean } {
   const kinds = ops.map((o) => (o as { op?: string }).op ?? '');
   const acts = kinds.filter((k) => k !== 'log_narrative');

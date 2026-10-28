@@ -463,7 +463,6 @@ export function useGame() {
         }
         say(`${outcome.speaker} — to the ${outcome.title}`, 'brief');
         say(outcome.counsel, 'faction');
-        if (outcome.recommendation) say(`Recommended: ${outcome.recommendation}`, 'faction');
       }),
     [guard, say, sayWithArt],
   );

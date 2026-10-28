@@ -16,10 +16,13 @@ import { helpPage } from '../../src/ui/help.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
+import { Splitter } from './components/Splitter.js';
+import { NO_SIZES, paneStyle, readPanes, type Pane, type PaneSizes } from '../../src/ui/panes.js';
 import { useGame, useStickToBottom } from './useGame.js';
 
 /** Where the command line's history is kept in this browser. */
 const HISTORY_KEY = 'paxgalactica.history';
+const PANES_KEY = 'paxgalactica.panes';
 
 export function App() {
   const game = useGame();
@@ -48,6 +51,34 @@ export function App() {
     }
   });
   const [recallAt, setRecallAt] = useState<number | null>(null);
+  // The panes' dragged sizes — the side column's width, the map's height and
+  // the briefing's — kept per browser like the history, and the stylesheet's
+  // own until dragged.
+  const [panes, setPanes] = useState<PaneSizes>(() => {
+    try {
+      return readPanes(localStorage.getItem(PANES_KEY));
+    } catch {
+      return { ...NO_SIZES };
+    }
+  });
+  const savePanes = (next: PaneSizes) => {
+    try {
+      localStorage.setItem(PANES_KEY, JSON.stringify(next));
+    } catch {
+      // A private window: the sizes hold for this visit.
+    }
+  };
+  const resize = (pane: Pane) => (px: number) => setPanes((p) => ({ ...p, [pane]: px }));
+  const resetPane = (pane: Pane) => () =>
+    setPanes((p) => {
+      const next = { ...p, [pane]: null };
+      savePanes(next);
+      return next;
+    });
+  const keepPanes = () => setPanes((p) => (savePanes(p), p));
+  const leftRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+  const heightOf = (el: Element | null | undefined): number | null => (el ? el.getBoundingClientRect().height : null);
   // The line being written when the player went up into the history, put back
   // when they come down past the last line or press Escape.
   const writing = useRef('');
@@ -222,7 +253,7 @@ export function App() {
   const activeChannel = view.openChannel ?? draftChannel;
 
   return (
-    <div className="app">
+    <div className="app" style={paneStyle(panes)}>
       <header className="topbar">
         <span className="title">PAX GALACTICA</span>
         <span className="turn">Turn {view.state.turn}</span>
@@ -267,7 +298,7 @@ export function App() {
       </header>
 
       <main className="grid">
-        <div className="left">
+        <div className="left" ref={leftRef}>
           {/* While a channel is open the stage belongs to whoever is on the
               other end of it.
               `activeChannel`, which is the same signal `ChannelPanel` uses, and
@@ -288,6 +319,15 @@ export function App() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               holding={view.effective.holding}
+            />
+          )}
+          {!view.epilogue && (
+            <Splitter
+              pane="stage"
+              measure={() => heightOf(leftRef.current?.firstElementChild)}
+              onResize={resize('stage')}
+              onDone={keepPanes}
+              onReset={resetPane('stage')}
             />
           )}
           <div className="feed" ref={feedRef}>
@@ -413,7 +453,14 @@ export function App() {
           </form>
         </div>
 
-        <div className="right">
+        <Splitter
+          pane="side"
+          measure={() => rightRef.current?.getBoundingClientRect().width ?? null}
+          onResize={resize('side')}
+          onDone={keepPanes}
+          onReset={resetPane('side')}
+        />
+        <div className="right" ref={rightRef}>
           {activeChannel && (
             <ChannelPanel
               view={view}
@@ -432,6 +479,13 @@ export function App() {
             staged={view.staged}
             state={view.state}
             onDiscard={(i) => void game.discard(i)}
+          />
+          <Splitter
+            pane="briefing"
+            measure={() => heightOf(rightRef.current?.querySelector('.briefing'))}
+            onResize={resize('briefing')}
+            onDone={keepPanes}
+            onReset={resetPane('briefing')}
           />
           <SidePanel
             state={view.state}

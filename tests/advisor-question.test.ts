@@ -44,7 +44,8 @@ describe('a question for the advisor', () => {
     const user = calls.find((c) => c.kind === 'advisor')!.user;
     expect(user).toContain('## Your leader asks');
     expect(user).toContain(`> ${question}`);
-    expect(user).toMatch(/do not lay out the steps/);
+    expect(user).toMatch(/Answer the .* question directly/);
+    expect(user).toMatch(/red line/);
     expect(session.view().actionPoints.left).toBe(ACTION_POINTS_PER_TURN - 1);
   });
 
@@ -56,7 +57,7 @@ describe('a question for the advisor', () => {
       expect(res.status).toBe(200);
       const user = calls.find((c) => c.kind === 'advisor')!.user;
       expect(user).not.toContain('Your leader asks');
-      expect(user).toContain('Name what is pressing');
+      expect(user).toContain('Lead with what matters most');
     }
   });
 

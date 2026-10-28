@@ -262,7 +262,7 @@ describe('a ruling made of parts', () => {
       resolution: [{ narrative: 'A watcher goes ashore.', ops: [] }],
     });
     const outcome = await submitAction(campaign, 'Watch the docks, and spirit the prisoner out through Vigil space.');
-    expect(outcome.notes.join(' ')).toMatch(/no mission does it yet: spirit a prisoner/);
+    expect(outcome.notes.join(' ')).toMatch(/Not done in this order: spirit a prisoner/);
     expect(outcome.inadmissible).toBeFalsy();
   });
 });

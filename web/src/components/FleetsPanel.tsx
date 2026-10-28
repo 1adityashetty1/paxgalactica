@@ -350,6 +350,10 @@ function OwnFleet({
   const passenger = courier ? (state.commanders ?? []).find((c) => c.id === fleet.commanderId) : undefined;
   // What it may be folded into: a warfleet standing here.
   const merges = others.filter((o) => o.kind === 'line');
+  // A move from the button never lands: landing is an action of its own, taken
+  // once the fleet holds the orbit of a world its power does not.
+  const lift = (fleet.stack.lifter ?? 0) > 0;
+  const canLand = lift && system.controllerFactionId !== me;
   const candidates = (state.commanders ?? []).filter(
     (c) => c.status === 'active' && c.factionId === me && c.atSystemId === system.id && c.id !== fleet.commanderId,
   );
@@ -376,8 +380,21 @@ function OwnFleet({
             move
           </button>
         ) : (
-          <button className="chip" onClick={() => onDraft(`Move ${name} to `)} title="Write the order on the command line">
+          <button
+            className="chip"
+            onClick={() => onDraft(lift ? `Move ${name}, without landing, to ` : `Move ${name} to `)}
+            title={lift ? 'Write the order on the command line. Its lifters stay aboard; landing is an action of its own.' : 'Write the order on the command line'}
+          >
             move
+          </button>
+        )}
+        {canLand && (
+          <button
+            className="chip"
+            onClick={() => onDraft(`Land ${name}'s troops at ${system.name}.`)}
+            title={`An action of its own: the lifters aboard put their troops down on ${system.name}, against its garrison`}
+          >
+            land
           </button>
         )}
         <button className={mode === 'rename' ? 'chip on' : 'chip'} onClick={() => setMode(mode === 'rename' ? 'idle' : 'rename')}>

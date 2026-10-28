@@ -58,15 +58,13 @@ describe('the staff’s flags', () => {
 });
 
 describe('the counsellor', () => {
-  it('must name one act when asked, and hears what it said last time', async () => {
+  it('hears what it said last time', async () => {
     const session = new GameSession(new MemoryCampaignStore());
     await session.newCampaign('meridian', 'counsel-memory');
-    queue = { advisor: [{ counsel: 'The Vigil masses at Vantic.', recommendation: 'Fortify Torrek Anchorage.' }, { counsel: 'Torrek still matters.', recommendation: 'Hold Torrek.' }] };
+    queue = { advisor: [{ counsel: 'The Vigil masses at Vantic: fortify Torrek Anchorage.' }, { counsel: 'Torrek still matters.' }] };
     await session.advisor('What should we do?');
-    // The asked-for schema refuses a reply with no recommendation.
-    expect(calls[0]!.schema.safeParse({ counsel: 'Only worries.' }).success).toBe(false);
     await session.advisor('And now?');
-    expect(calls[1]!.user).toMatch(/What you told your leader earlier this turn[\s\S]*The Vigil masses at Vantic[\s\S]*Fortify Torrek Anchorage/);
+    expect(calls[1]!.user).toMatch(/What you told your leader earlier this turn[\s\S]*The Vigil masses at Vantic: fortify Torrek Anchorage/);
     expect(session.snapshot()!.lastCounsel).toMatchObject({ counsel: 'Torrek still matters.' });
   });
 });

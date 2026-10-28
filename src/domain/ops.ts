@@ -712,6 +712,8 @@ export const IssueOrderOp = z.object({
    * `acts.ts`, as any attack under a pact is.
    */
   breaks: z.string().min(1).optional(),
+  /** A fleet movement that takes station on arrival and lands nobody — see `MoveOp.land`. */
+  holdLanding: z.literal(true).optional(),
 });
 
 export const CancelOrderOp = z.object({
@@ -1450,6 +1452,14 @@ export const MoveOp = z.object({
   officers: z.array(z.string().min(1)).max(5).default([]),
   /** The power whose pact, truce, accord or contract this knowingly breaks. */
   breaks: z.string().min(1).optional(),
+  /**
+   * False to stand guard rather than take the world: the fleet arrives and
+   * holds the orbit, and any lift aboard stays aboard. Over a world nobody
+   * holds it takes station, a peacekeeping force rather than an invasion; over
+   * a rival's world it is still an attack in orbit, but no troops go down.
+   * Omitted, a fleet carrying lift lands it.
+   */
+  land: z.boolean().optional(),
   label: z.string().default(''),
   interruptible: z.boolean().default(true),
   onInterrupt: OnInterruptSchema.default('cancel'),
@@ -1652,6 +1662,7 @@ export function orderFor(raw: unknown): Record<string, unknown> | null {
         ...(o.force !== undefined ? { force: o.force } : {}),
         officers: o.officers ?? [],
         ...(o.breaks !== undefined ? { breaks: o.breaks } : {}),
+        ...(o.land === false ? { holdLanding: true as const } : {}),
         interruptible: o.interruptible ?? true,
         onInterrupt: o.onInterrupt ?? 'cancel',
         visibility: o.visibility ?? [],
@@ -2590,7 +2601,7 @@ export function oneActPerRuling(value: unknown): unknown {
   let overt = 0;
   const kept = parts.flatMap((p) => {
     if (p.kind === 'overt' && overt++ === 0) return [p];
-    if (p.kind === 'overt') return [{ kind: 'unexpressed', outcome: clip(`Declare it as its own act: ${said(p)}`) }];
+    if (p.kind === 'overt') return [{ kind: 'unexpressed', outcome: clip(`a second act, which needs an order of its own — ${said(p)}`) }];
     if (p.kind === 'negotiation') {
       const who = Array.isArray(p.withFactionIds) ? p.withFactionIds.join(' and ') : 'another power';
       return [{ kind: 'unexpressed', outcome: clip(`Needs ${who} to agree; open a channel: ${said(p)}`) }];

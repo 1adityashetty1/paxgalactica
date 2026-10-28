@@ -20,3 +20,11 @@ describe('End Turn notes', () => {
     expect(campaign.verifyReplay().ok).toBe(true);
   });
 });
+
+describe('a correction said once', () => {
+  it('names each thing left out once, however many batches noted it', async () => {
+    const { draftWithCorrection } = await import('../src/engine/turn.js');
+    const note = 'A lasting arrangement is recorded only when the arbiter ruled one: left out fleet_reorganization.';
+    expect(draftWithCorrection('Story.', [note, note], [])).toBe(`Story.\n\nNot as told: ${note}`);
+  });
+});

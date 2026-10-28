@@ -36,7 +36,7 @@ import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { battleHistory, controlHistory, overrulings } from './journal.js';
 import { holdToRuling, noPaymentBesideAGift,
-  organisingIsFree, type RulingBounds } from '../domain/refusals.js';
+  organisingIsFree, onlyOrganising, type RulingBounds } from '../domain/refusals.js';
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
 import { isMovementType } from '../domain/state.js';
@@ -609,7 +609,9 @@ export function storyDiverged(notes: readonly string[], rejections: readonly unk
  * left out (playtest 2026-10-19, B3).
  */
 export function draftWithCorrection(draft: string, notes: readonly string[], rejections: readonly { message?: string }[]): string {
-  const said = [...notes.filter((n) => DIVERGED.test(n)), ...rejections.map((r) => r.message ?? '').filter(Boolean)];
+  // Once each: a ruling filter that runs on both the first batch and its
+  // correction notes the same thing twice.
+  const said = [...new Set([...notes.filter((n) => DIVERGED.test(n)), ...rejections.map((r) => r.message ?? '').filter(Boolean)])];
   return said.length === 0 ? draft : `${draft}\n\nNot as told: ${said.join(' ')}`;
 }
 
@@ -702,7 +704,13 @@ function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string
 /** A crossing said as the institutions would say it. */
 function lineReason(state: WorldState, hit: LineHit): string {
   const toward = hit.act.with.map((id) => getFaction(state, id)?.name ?? id);
-  return `That would ${ACT_WORDS[hit.act.kind]}${toward.length > 0 ? ` — ${toward.join(' and ')}` : ''}, and this power does not.`;
+  const said = `That would ${ACT_WORDS[hit.act.kind]}${toward.length > 0 ? ` — ${toward.join(' and ')}` : ''}, and this power does not.`;
+  // What a power that will not conquer can do instead. True whether the fleet
+  // was sailing there or already over the world: the first version told a
+  // fleet already standing guard to "take station without landing".
+  return hit.act.kind === 'invasion_launched'
+    ? `${said} A fleet that keeps its lifters aboard stands guard and takes nothing; a world that answers to nobody is won with an envoy.`
+    : said;
 }
 
 /** Apply and journal ops immediately, correcting once. Used at end of turn. */
@@ -945,6 +953,10 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     routed.ops = organising.ops;
     routed.notes.push('Organising your own fleets costs nothing: the charge written beside it is left out.');
   }
+  if (onlyOrganising(routed.ops)) {
+    campaign.refundActionPoint();
+    routed.notes.push('No action spent: organising your own fleets is free, as it is from the Fleets tab.');
+  }
   const inKind = noPaymentBesideAGift(routed.ops, campaign.state.debts);
   if (inKind.dropped) {
     routed.ops = inKind.ops;
@@ -993,12 +1005,15 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   const landed = campaign.opsStagedSince(before).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
   if (nowhere && landed.length === 0 && !staged.refused) {
     campaign.withdrawAttempt(before);
-    const why = `Nothing of yours stands there to build on: ${nowhere.message}`;
+    // A fleet refused another power's orbit had no right to be there, which is
+    // the same: no attempt was made. Works say where they had nothing to stand.
+    const sailing = ['move', 'issue_order'].includes((nowhere.op as { op?: string } | undefined)?.op ?? '');
+    const why = sailing ? nowhere.message : `Nothing of yours stands there to build on: ${nowhere.message}`;
     return {
       narrative: why,
       inadmissible: why,
       staged: 0,
-      notes: ['No action spent: the work had nowhere to stand.'],
+      notes: [sailing ? 'No action spent: the fleet had no right to that orbit.' : 'No action spent: the work had nowhere to stand.'],
       rejections: staged.rejections,
       costUsd: resolution.costUsd + staged.costUsd,
       check: null,

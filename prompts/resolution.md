@@ -65,7 +65,7 @@ leaves a faction with nobody following it.
 
 | op | use |
 |---|---|
-| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole — see Fleets |
+| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds; `fleet` sends a named fleet whole; `land: false` stands guard without landing — see Fleets |
 | `rename_fleet` · `split_fleet` · `merge_fleets` | organise your own fleets — see Fleets |
 | `assign_command` · `relieve_command` | put an officer standing at a fleet's world in command of it, or leave it uncommanded — see Fleets |
 | `move_officer` | an officer travels alone to a world you hold or have ships at — see Fleets |
@@ -74,7 +74,7 @@ leaves a faction with nobody following it.
 | `develop` | develop a world (`magnitude` 1..2); at 7 it becomes a trade hub |
 | `found_fixture` | raise a fixture of a catalogue `kind` on a world you hold |
 | `repair_fixture` | mend sabotage damage on a fixture (`kind`, `magnitude` 1..2) |
-| `send_envoy` | court a world — one you hold, or an independent one you border or orbit |
+| `send_envoy` | court a world — one you hold, or an independent one you border or orbit. The envoy is the whole of it: write no commitment for a courtship, which the world's standing already records |
 | `blockade` | close every lane through a world your fleet sits over |
 | `raid` | raid the shipping through a world, from a fleet on it or a jump out; `dark` runs it unowned |
 | `sweep` | counter-intelligence on a world of your own |
@@ -225,6 +225,17 @@ there is no abstract strength. A `move` commits a stated force drawn from the
 origin: **always set `force`** — a declared move without one is refused. "The
 battle line" is the warships, not the lifters and freighters beside them; if
 the player sends everything, write every hull at the origin.
+
+**A fleet that carries lifters lands them** on a world it does not hold: that
+is an invasion, and over a world nobody holds it storms the militia. When the
+player means to **guard, protect, keep the peace over, take station at or show
+the flag** at a world rather than take it — or says **without landing** — write
+`"land": false` on the `move`: the fleet arrives and holds the orbit, its lift
+stays aboard, and over ground nobody holds it takes station — the protection a
+world wants, not a conquest. **Landing is then an action of its own**: *"land
+the 2nd Pack's troops at Var Hollow"*, for a fleet already in that orbit, is a
+`move` of that fleet to the world it stands over, with no `land` field — the
+assault from an orbit you hold, a turn.
 
 **Ships are organised into named fleets**, listed by name and id under each
 world in the state block ("Operating Group 2", "3rd Pack"). **When the player

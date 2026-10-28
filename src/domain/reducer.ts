@@ -3356,6 +3356,8 @@ export interface LegacyRules {
    */
   cessionFromTarget?: boolean;
   oneJumpOnce?: boolean;
+  /** Standing guard in another power's orbit needs its basing rights or a war (journal version 32). */
+  guardNeedsBasing?: boolean;
   stealNamesARivalsThing?: boolean;
   secretsAreHidden?: boolean;
   fleetsMeetInBattle?: boolean;
@@ -3482,6 +3484,13 @@ export interface BattleRules {
    * fighting them. Journal version 29 (playtest 2026-10-19, S4).
    */
   stationBesidePeers?: boolean;
+  /**
+   * The same over ground nobody holds and nobody stands over: a fleet with no
+   * lift aboard takes station. It was resolved as an assault on the militia
+   * that could land nobody — a battle report with no enemy, and an engagement
+   * on its officer's record. Journal version 32 (bughunt 2026-10-27).
+   */
+  stationAlone?: boolean;
   /** An officer who sails between your own worlds is placed on arrival rather than stranded. */
   officerHomecoming?: boolean;
   /** An attacker's hulls already parked on the target join its attack. */
@@ -3644,6 +3653,7 @@ function applyOpsUnderRules(
     programmeBerths = true,
     cessionFromTarget = true,
     oneJumpOnce = true,
+    guardNeedsBasing = true,
     stealNamesARivalsThing = true,
     fleetsMeetInBattle = true,
     counterpartyTolls = true,
@@ -4070,6 +4080,29 @@ function applyOpsUnderRules(
       }
     }
 
+    // Standing guard is peaceful, and another power's orbit is not ours to keep
+    // the peace in. Sent "to take station" over a friend's world it was fought
+    // as an attack and lost a battleship (bughunt 2026-10-27). Without basing
+    // rights it is refused; at war, holding back the landing is an attack in
+    // orbit and goes ahead.
+    if (guardNeedsBasing && op.op === 'issue_order' && op.holdLanding && isMovementType(op.type)) {
+      const there = getSystem(state, op.targetId);
+      const holder = there?.controllerFactionId ?? null;
+      if (
+        there &&
+        holder !== null &&
+        holder !== op.factionId &&
+        !isGuestOf(state, op.factionId, holder) &&
+        !warsFor(state, op.factionId).includes(holder)
+      ) {
+        reject(
+          raw,
+          'no_presence',
+          `${there.name} is held by ${nameFor(state, holder)}, and you are not at war: ships take station in another power's orbit only with its basing rights. Open talks with ${nameFor(state, holder)} for them; sailing in without is an attack.`,
+        );
+        continue;
+      }
+    }
     // A named fleet sails whole from wherever it stands (`fleets.ts`): its
     // world is the origin and its hulls the force, whatever else was written.
     let sailing: FleetTag | null = null;
@@ -6985,6 +7018,14 @@ function applyOpsUnderRules(
           break;
         }
 
+        // Unlabelled work says what it is and where, so two of a kind under way
+        // are two rows a player can tell apart: two envoys were both "political
+        // maneuver", with nothing in the Orders tab to say where either went.
+        const targetName = getSystem(state, op.targetId)?.name ?? op.targetId;
+        const plainLabel =
+          effect?.kind === 'court'
+            ? `envoy to ${targetName}`
+            : `${filedType.replace(/_/g, ' ')} ${isMovementType(op.type) ? 'to' : 'at'} ${targetName}`;
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -7001,8 +7042,8 @@ function applyOpsUnderRules(
           // the briefing, the log, the map — says which fleet it is.
           // Unless the label already says which fleet it is.
           label: departing && !departing.detached && !(op.label ?? '').toLowerCase().includes(fleetName(op.factionId, departing).toLowerCase())
-            ? `${fleetName(op.factionId, departing)}: ${op.label || filedType.replace(/_/g, ' ')}`
-            : op.label || filedType.replace(/_/g, ' '),
+            ? `${fleetName(op.factionId, departing)}: ${op.label || plainLabel}`
+            : op.label || plainLabel,
           durationRationale: rationale,
           path,
           force,
@@ -7010,6 +7051,7 @@ function applyOpsUnderRules(
           investedCredits: invested,
           ...(op.dark ? { dark: { turns: 0, heat: 0 } } : {}),
           ...(departing ? { fleet: departing } : {}),
+          ...(op.holdLanding && isMovementType(op.type) ? { holdLanding: true as const } : {}),
         };
         state.pendingOrders.push(order);
         {
@@ -7030,7 +7072,8 @@ function applyOpsUnderRules(
             isMovementType(op.type) &&
             holder !== op.factionId &&
             !isGuestOf(state, op.factionId, holder) &&
-            (force.lifter ?? 0) > 0
+            (force.lifter ?? 0) > 0 &&
+            !op.holdLanding
           ) {
             recordAct('invasion_launched', op.factionId, [other]);
           }
@@ -13057,6 +13100,7 @@ function resolveBattle(
     callToArms = true,
     assetsGoWithWorld: worldTakesAssets = true,
     stationBesidePeers = true,
+    stationAlone = true,
   } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -13213,6 +13257,11 @@ function resolveBattle(
   // is aboard and not merely how much.
   const arriving = new Map<string, ShipStack>();
   for (const o of orders) arriving.set(o.factionId, mergeStacks(arriving.get(o.factionId), o.force));
+  // Powers whose every fleet here was sent to stand guard (`MoveOp.land: false`):
+  // they land nobody, whatever lift is aboard.
+  const holding = new Set(
+    [...arriving.keys()].filter((id) => orders.filter((o) => o.factionId === id).every((o) => o.holdLanding === true)),
+  );
 
   // Whose fleets a faction's contingent was made of — each arriving voyage, and
   // any squadron already in the orbit that joins it — so what survives lands
@@ -13243,11 +13292,16 @@ function resolveBattle(
     const fb = state.factions.find((f) => f.id === b);
     return (fa?.disposition[b] ?? 0) > WAR_DISPOSITION_THRESHOLD && (fb?.disposition[a] ?? 0) > WAR_DISPOSITION_THRESHOLD;
   };
+  // A fleet sent to stand guard takes station over ground nobody holds whether
+  // or not anybody else is there, and whatever lift it carries.
   const stations = (id: string): boolean =>
     stationBesidePeers &&
     holder === null &&
-    (arriving.get(id)?.lifter ?? 0) === 0 &&
-    presentAt(target).some(([other, n]) => n > 0 && other !== id) &&
+    (holding.has(id) ||
+      ((arriving.get(id)?.lifter ?? 0) === 0 &&
+        // Alone, only over a militia: a world with nobody in orbit and nobody
+        // on the ground is walked into, as it always was.
+        ((stationAlone && target.garrison > 0) || presentAt(target).some(([other, n]) => n > 0 && other !== id)))) &&
     presentAt(target).every(([other, n]) => n === 0 || other === id || atPeace(id, other)) &&
     [...arriving.keys()].every((other) => other === id || atPeace(id, other));
   const guest = (id: string): boolean =>
@@ -13300,7 +13354,13 @@ function resolveBattle(
       guests.length > 0 && holder !== null
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
         : guests.length > 0
-          ? `${guests.map(([id]) => nameOf(id)).join(' and ')} takes station over ${target.name} beside the ships already there.`
+          ? `${guests.map(([id]) => nameOf(id)).join(' and ')} ${guests.length > 1 ? 'take' : 'takes'} station over ${target.name}${
+              presentAt(target).some(([id, n]) => n > 0 && !guests.some(([g]) => g === id))
+                ? ' beside the ships already there'
+                : guests.some(([, st]) => (st.lifter ?? 0) > 0)
+                  ? ', and lands nobody'
+                  : ''
+            }.`
           : `${who} reinforces ${target.name}.`;
     // **The officers who sailed get off the ship.** This is the third exit found
     // to strand one, after the unopposed walk-in and `cancel_order`, and it is
@@ -13909,7 +13969,7 @@ function resolveBattle(
   // and Vergesse still read **69 of 9** four turns later. The window this
   // paragraph describes is "the transports are about to be irrelevant either
   // way", and with nothing coming ashore there is no window and no decision.
-  const inboundLift = [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
+  const inboundLift = [...attackShare.entries()].reduce((n, [id, st]) => n + (holding.has(id) ? 0 : (st.lifter ?? 0)), 0);
   if (holder !== null && (inboundLift > 0 || !landingNeedsLift)) {
     const held = defenders.find(([id]) => id === holder);
     const committed = held?.[1].lifter ?? 0;
@@ -14197,9 +14257,10 @@ function resolveBattle(
    * actually aboard, which is what gives conquest a dedicated cost and lets an
    * all-gun fleet win the orbitals and take nothing.
    */
+  // A power sent to stand guard keeps its lift aboard.
   const liftersIn = (): number =>
-    [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
-  const troops = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
+    [...attackShare.entries()].reduce((n, [id, st]) => n + (holding.has(id) ? 0 : (st.lifter ?? 0)), 0);
+  const troops = [...attackShare.entries()].reduce((n, [id, st]) => n + (holding.has(id) ? 0 : carryOf(st)), 0);
   // An `assault` officer multiplies what actually gets ashore. Attacker's only:
   // a defender has no lift phase, and the one thing an officer could do for
   // them on the ground is `DEFENSIVE_GARRISON_BONUS`, which is Arkane's whole
@@ -14233,7 +14294,8 @@ function resolveBattle(
   // that is all guns.
   if (troops <= 0) {
     for (const [id, st] of attackShare) land(id, st);
-    const note = `${notes.join(' ')} ${coalition} commands the orbitals of ${target.name} and has no troops aboard to land.`.trim();
+    const held = [...attackShare.entries()].some(([id, st]) => holding.has(id) && (st.lifter ?? 0) > 0);
+    const note = `${notes.join(' ')} ${coalition} commands the orbitals of ${target.name} and ${held ? 'lands nobody, as ordered' : 'has no troops aboard to land'}.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
     ground('no_lift', note);
     return finish(note);

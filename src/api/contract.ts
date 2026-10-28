@@ -805,8 +805,6 @@ export const ExportResultSchema = z.object({
  */
 export const AdvisorOutcomeSchema = z.object({
   counsel: z.string(),
-  /** The one act the counsellor would take, when it names one. */
-  recommendation: z.string().nullable().default(null),
   /** Who is speaking, and to whom — the panel says both. */
   speaker: z.string(),
   title: z.string(),

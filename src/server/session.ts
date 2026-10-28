@@ -98,7 +98,7 @@ export const SessionSnapshotSchema = z.object({
    * Not world state: a counsellor's words change nothing in the Rim.
    */
   lastCounsel: z
-    .object({ turn: z.number().int(), counsel: z.string(), recommendation: z.string().nullable(), followed: z.string().nullable().default(null) })
+    .object({ turn: z.number().int(), counsel: z.string(), followed: z.string().nullable().default(null) })
     .nullable()
     .default(null),
   /**
@@ -232,7 +232,7 @@ export class GameSession {
 
   /** Numbers declared actions within a turn, for the trace. Reset each turn. */
   private actionSeq = 0;
-  private lastCounsel: { turn: number; counsel: string; recommendation: string | null; followed: string | null } | null = null;
+  private lastCounsel: { turn: number; counsel: string; followed: string | null } | null = null;
   private thisTurn: { turn: number; lines: string[] } | null = null;
 
   /** One line on this turn's record, for the counsellor — see `SessionSnapshot.thisTurn`. */
@@ -663,7 +663,6 @@ export class GameSession {
     if (campaign.actionPointsLeft <= 0) {
       return {
         counsel: `There is no more of the day to spend, ${faction?.title ?? 'Commander'}. Let the turn close.`,
-        recommendation: null,
         speaker: faction?.name ?? campaign.state.playerFactionId,
         title: faction?.title ?? 'Commander',
         outOfActions: { perTurn: ACTION_POINTS_PER_TURN },
@@ -681,12 +680,11 @@ export class GameSession {
         }),
       ),
     );
-    this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, recommendation: result.recommendation, followed: null };
+    this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, followed: null };
     campaign.spendActionPoint();
     this.pushState();
     return {
       counsel: result.counsel,
-      recommendation: result.recommendation,
       speaker: faction?.name ?? campaign.state.playerFactionId,
       title: faction?.title ?? 'Commander',
       outOfActions: null,

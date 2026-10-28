@@ -1023,7 +1023,11 @@ function SailButton({
         <button
           className="chip"
           title="Writes the start of a move of the fleet they command; add where it goes."
-          onClick={() => onDraft(`Move ${fleetName(officer.factionId, commands)}, under ${callName}, to `)}
+          onClick={() =>
+            onDraft(
+              `Move ${fleetName(officer.factionId, commands)}, under ${callName},${(commands.stack.lifter ?? 0) > 0 ? ' without landing,' : ''} to `,
+            )
+          }
         >
           move their fleet
         </button>
@@ -1031,7 +1035,7 @@ function SailButton({
         <button
           className="chip"
           title="Writes the start of a fleet movement with this officer aboard; add where it goes."
-          onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, to `)}
+          onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, without landing, to `)}
         >
           sail with a fleet
         </button>
@@ -1046,6 +1050,8 @@ function SailButton({
     </>
   );
 }
+
+const nameOfSystem = (state: WorldState, id: string): string => state.systems.find((x) => x.id === id)?.name ?? id;
 
 function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | null }) {
   const remembered = briefing?.remembered ?? [];
@@ -1091,7 +1097,9 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
             </div>
             <div className="meta">
               {o.factionId === state.playerFactionId ? 'yours' : owner?.name} ·{' '}
-              {o.type.replace(/_/g, ' ')} · {o.interruptible ? 'raidable' : 'locked'}
+              {o.type.replace(/_/g, ' ')} ·{' '}
+              {o.originId !== o.targetId ? `${nameOfSystem(state, o.originId)} → ` : '→ '}
+              {nameOfSystem(state, o.targetId)} · {o.interruptible ? 'raidable' : 'locked'}
             </div>
             {/*
               What the work will actually deliver, and what has been sunk into
@@ -1288,6 +1296,9 @@ function WorldPeople({
     .map((f) => ({ id: f.id, name: f.name, r: regardFor(sys, f.id) }))
     .sort((a, b) => b.r - a.r || a.id.localeCompare(b.id));
   const envoy = envoyRefusal(state, sys, me) === null;
+  // Envoys under way to this world — yours, and any rival's the fog shows you —
+  // each with when it arrives, so two in flight read as two.
+  const envoys = state.pendingOrders.filter((o) => o.targetId === sys.id && o.onComplete?.kind === 'court');
   const be = (n: number) => n.toFixed(1);
   return (
     <>
@@ -1325,6 +1336,19 @@ function WorldPeople({
           </li>
         ))}
       </ul>
+      {envoys.length > 0 && (
+        <ul className="ship-list">
+          {envoys.map((o) => {
+            const left = o.durationTurns - o.progress;
+            return (
+              <li key={o.id} className="agent-row" style={{ color: colourOf(state, o.factionId) }}>
+                {o.factionId === me ? 'Your envoy' : `An envoy of ${getFaction(state, o.factionId)?.name ?? o.factionId}`} arrives{' '}
+                {left <= 1 ? 'next turn' : `in ${left} turns`}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {envoy && (
         <p className="envoy-line">
           <button

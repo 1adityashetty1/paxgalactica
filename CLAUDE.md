@@ -6119,6 +6119,25 @@ with hulls. So an officer standing on a world contests no income, blocks no
 landing and anchors no suborning, which is decision 3 falling out of the storage
 choice rather than being guarded.
 
+**A fleet can stand guard without landing.** `move` takes `land: false`
+(`PendingOrder.holdLanding`): the fleet holds the orbit and its lift stays
+aboard, so over a world nobody holds it takes station — a world's protection
+want, not a conquest — and records no `invasion_launched`. It was missing, and
+the Combine's line against a war of conquest correctly refused a "peacekeeping"
+fleet that carried lifters: sent as it was, it would have stormed Var Hollow,
+which then rose against it at −80. The refusal now says how to stand guard
+instead, and the arbiter, resolution and counsellor prompts know the
+difference. **Standing guard is peaceful, so another power's orbit needs its basing rights**
+(journal version 32, `guardNeedsBasing`): sent without landing over a world a
+power holds that you are not at war with, a fleet is refused, and the order
+spends no action; at war it is an attack in orbit that lands nobody. And a
+fleet with no lift arriving over a militia nobody else orbits takes station
+rather than being reported as a battle (`stationAlone`). **Landing is an action of its own**: the Fleets tab's
+and Command tab's move buttons draft a move *without landing* for a fleet
+carrying lift, and a fleet over a world its power does not hold gets a
+**land** button — a move of it onto the world it stands over, the assault from
+an orbit you hold.
+
 **Every hull is in a fleet, as in Stellaris, and a lone officer's is a
 courier** (`fleets.ts`). A fleet has a `kind` — `line`, `listener`,
 `freighter` or `courier` — fixed when it is numbered, and each kind is numbered
@@ -8419,6 +8438,11 @@ component is logic nothing checks.
     Escape clears (`src/ui/history.ts`, kept in localStorage).
   - **End turn with actions unspent asks once**: the button says how many, and
     a second press within four seconds ends the turn.
+  - **The panes are the player's size.** A handle between the map and the
+    feed, between the two columns and under the briefing drags each pane, and a
+    double-click puts it back (`Splitter`, `src/ui/panes.ts`, kept in
+    localStorage). Each pane reads a custom property set only once dragged, so
+    the stylesheet's own layout is untouched until then.
   - **Main menu** sits beside Save and puts the title screen up without
     unloading the campaign; the title screen offers a way back to it until
     another is started or loaded.
@@ -8476,21 +8500,30 @@ with what bears on it — what holds the place, what it costs, who would answer 
 never the order of march, and `looksLikeAPlan` still refuses an enumeration.
 The words are quoted as the leader's question, never read as instructions.
 
-### It must not become a solver, and that is enforced structurally
+### It answers directly, and is held to its power's sheet
 
-Advice that names the optimal line turns a campaign into a queue of
-instructions, and a leader who follows one has stopped playing. The prompt says
-so at length; a prompt can be argued out of its own rules, so `looksLikeAPlan`
-says it in code.
+It was built not to become a solver: told to name pressures rather than moves,
+never to lay out steps, and to speak in its power's voice, which for the
+Combine meant circling a point before arriving at it. Played, that read as
+obtuse — asked *how do I win Var Hollow*, it hinted. From 2026-10-27 it is
+asked to **help directly**: the answer in its first sentence, what it would do,
+how, and what it costs, with a sequence said in prose when the question is
+*how*. The voice colours the words and never delays the answer.
 
-A solver **announces itself structurally: it enumerates.** Two or more lines
-opening with a bullet, a number or a `First … Second … Third`, or the same
-enumeration run together in prose, is a plan. Deliberately shape-based rather
-than semantic — asking a second model whether the first was too prescriptive
-gets back the answer it already gave, which is the confirmation bias
-`verifyBreachRelevance` is shaped to avoid. Counting list markers is a lookup,
-and code does lookups. One marker is not enough to fire, because a single dash
-mid-sentence is ordinary speech and rejecting it would cost a retry every time.
+**What stays enforced in code** is the shape. `looksLikeAList` refuses counsel
+laid out as a list (two or more lines opening with a bullet, a number or a
+heading word) — it is spoken, not a memo — while a sequence in a sentence
+passes. The one recommended act keeps `looksLikeAPlan` and its no-"then" rule,
+since it is what the player declares, one act at a time. Shape rather than
+meaning, for the reason `verifyBreachRelevance` is a separate call: asking a
+model whether the first was too prescriptive gets back the answer it gave.
+
+**It checks every act against the power's sheet before it says it.** A red
+line is never recommended; asked for one, it says which line forbids it and
+offers the nearest act that does not — a fleet sent to stand guard *without
+landing* rather than a conquest, a hired proxy rather than its own hulls. A
+compulsion's defiance is recommended only when worth the dissent, with the
+cost said. Counsel runs to 900 characters, three to five sentences.
 
 **It is told what it can do and what has been done.** Two computed blocks sit
 beside `paperOf`. **This turn so far** lists each declaration and talk this
@@ -8504,13 +8537,12 @@ lift stand, and the unaligned worlds in reach. Its commonest bad
 recommendation in the playtest loops was an act with no means behind it, and
 each of these is arithmetic the engine already does.
 
-`AdvisorReplySchema` had **one field and no second one**, and that was the other
-half. It now carries an optional `recommendation`: one sentence naming a single
-act, held to the same guards and refused as a sequence ("then", a list). The
-counsel alone named problems and left the move implicit on three turns in ten
-(playtest 2026-10-19, loop 2). A `pressures: []` beside the prose would render as a checklist however it
-was worded, and a checklist is a queue of instructions wearing a different
-label.
+`AdvisorReplySchema` is **one field, the counsel**. A one-line
+`recommendation` sat under it from loop 2 of the 2026-10-19 playtest, when the
+counsel named problems and left the move implicit; once the counsel was asked
+to say what to do directly it only repeated itself, and it was dropped
+(2026-10-27) with its guards (`RecommendationSchema`, `firstActOnly`,
+`talksAndAnOrder`).
 
 ### `Faction.title`
 

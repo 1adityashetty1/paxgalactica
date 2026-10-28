@@ -497,3 +497,95 @@ describe('an officer with nothing to command', () => {
     indexHolds(landed);
   });
 });
+
+describe('standing guard over a world', () => {
+  // The Combine's 3rd House Fleet at Riqel carries a lifter; Var Hollow, a jump
+  // away, answers to nobody.
+  const send = (land?: boolean) =>
+    applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', fleet: '3rd', targetId: 'sek-5', ...(land === undefined ? {} : { land }) }],
+      'model',
+      'ojjul',
+      true,
+      {},
+      'declared',
+    );
+
+  it('lands the lift, and is an invasion, by default', () => {
+    const out = send();
+    expect(out.acts.some((a) => a.kind === 'invasion_launched')).toBe(true);
+  });
+
+  it('takes station with the lift aboard when sent without landing, and is no invasion', () => {
+    const out = send(false);
+    expect(out.rejections).toEqual([]);
+    expect(out.acts.some((a) => a.kind === 'invasion_launched')).toBe(false);
+    expect(out.state.pendingOrders.at(-1)!.holdLanding).toBe(true);
+    let s = out.state;
+    let report: ReturnType<typeof tickTurn>['report'] | null = null;
+    for (let i = 0; i < 3 && s.pendingOrders.some((o) => o.holdLanding); i++) {
+      const r = tickTurn(s, calm);
+      s = r.state;
+      report = r.report;
+    }
+    const vh = sys(s, 'sek-5');
+    expect(vh.controllerFactionId).toBeNull();
+    expect(vh.garrison).toBe(3);
+    expect(stackAt(vh, 'ojjul').lifter).toBe(1);
+    expect(report!.battles.some((b) => b.systemId === 'sek-5')).toBe(false);
+    expect(s.eventLog.some((e) => /takes station over Var Hollow, and lands nobody/.test(e.text))).toBe(true);
+  });
+
+  it('is not refused by the Combine as a war of conquest', async () => {
+    const { linesCrossed } = await import('../src/domain/acts.js');
+    const s = createSeedState('ojjul');
+    expect(linesCrossed(s.factions, send(false).acts, ['ojjul'])).toEqual([]);
+    expect(linesCrossed(s.factions, send().acts, ['ojjul']).length).toBeGreaterThan(0);
+  });
+});
+
+describe('landing as an action of its own', () => {
+  it('puts a stationed fleet\'s troops down from the orbit it holds', () => {
+    let s = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', fleet: '3rd', targetId: 'sek-5', land: false }],
+      'model', 'ojjul', true, {}, 'declared',
+    ).state;
+    s = until(s, (x) => !x.pendingOrders.some((o) => o.holdLanding));
+    expect(sys(s, 'sek-5').controllerFactionId).toBeNull();
+    const land = applyOps(s, [{ op: 'move', factionId: 'ojjul', fleet: '3rd', targetId: 'sek-5' }], 'model', 'ojjul', true, {}, 'declared');
+    expect(land.rejections).toEqual([]);
+    expect(land.acts.some((a) => a.kind === 'invasion_launched')).toBe(true);
+    const order = land.state.pendingOrders.at(-1)!;
+    expect(order).toMatchObject({ originId: 'sek-5', targetId: 'sek-5', durationTurns: 1 });
+    expect(order.holdLanding).toBeUndefined();
+    const r = tickTurn(land.state, calm);
+    expect(r.notes.some((n) => /storms Var Hollow/.test(n))).toBe(true);
+  });
+});
+
+describe('bughunt 2026-10-27', () => {
+  it('refuses standing guard in a friendly power\'s orbit without basing rights, rather than fighting there', () => {
+    // Hollow Star is the Confederacy's, and the Combine is on good terms with it.
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', originId: 'ilv-1', targetId: 'ilv-7', force: { battleship: 2 }, land: false }],
+      'model', 'ojjul', true, {}, 'declared',
+    );
+    expect(out.rejections[0]?.message).toMatch(/basing rights/);
+    expect(out.state.pendingOrders.some((o) => o.targetId === 'ilv-7' && o.factionId === 'ojjul')).toBe(false);
+  });
+
+  it('takes station over a militia with no lift aboard, rather than reporting a battle', () => {
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'move', factionId: 'ojjul', originId: 'ilv-3', targetId: 'sek-5', force: { battleship: 2, escort: 2 } }],
+      'model', 'ojjul', true, {}, 'declared',
+    );
+    const r = tickTurn(out.state, calm);
+    expect(r.report.battles.some((b) => b.systemId === 'sek-5')).toBe(false);
+    expect(r.notes.some((n) => /takes station over Var Hollow\.$/.test(n))).toBe(true);
+    expect(sys(r.state, 'sek-5').garrison).toBe(3);
+  });
+});
