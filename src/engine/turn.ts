@@ -1718,6 +1718,10 @@ export function transfersFromRecord(
     const to = otherOf(c.by);
     for (const id of c.obligations) {
       const owed = (state.obligations ?? []).find((o) => o.id === id);
+      // A debt written where a favour goes is extraction's to sell or forgive
+      // (`assign_debt`, `forgive_debt`), not a missing favour: the note told
+      // the player a sale that landed had failed (bughunt 2026-10-28).
+      if (!owed && (state.debts ?? []).some((d) => d.id === id)) continue;
       if (!owed) {
         notes.push(`No favour "${id}" to give up; ${c.text}`);
         continue;

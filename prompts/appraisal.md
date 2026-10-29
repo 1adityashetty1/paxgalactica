@@ -590,7 +590,8 @@ promissory note the acting power holds is `trivial` and is not a
 negotiation**: the issuer consented when it wrote the note.
 
 **Calling in a favour owed to the acting power** (`call_obligation`) is
-`trivial` for the same reason, and so is **giving way to an ultimatum** made of
+`trivial` for the same reason — and it reaches into the debtor's paper, so its
+overt part names `reaches: ["their_paper"]`, or the call is left out, and so is **giving way to an ultimatum** made of
 it. **Issuing an ultimatum** is the acting power's own act and never a
 negotiation — price the nerve it takes (`influence`, or `might` where the threat
 is the fleet), not whether the target agrees, which the deadline decides.

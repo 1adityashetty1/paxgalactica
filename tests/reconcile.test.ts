@@ -180,3 +180,29 @@ describe('an operative sent on the road (bughunt 2026-10-28)', () => {
     expect(lines.some((l) => /on the road to Threx and is at work from turn \d+, not now/.test(l))).toBe(true);
   });
 });
+
+describe('calling in a favour (bughunt 2026-10-28)', () => {
+  it('is put back once when ruled a negotiation with the debtor', async () => {
+    const campaign = Campaign.start('ojjul', 'call-in');
+    campaign.commit(
+      [{ op: 'establish_obligation', debtorFactionId: 'drajk', holderFactionId: 'ojjul', text: 'we owe you one' }],
+      'extraction',
+      'ojjul',
+      'accord',
+    );
+    const id = campaign.state.obligations.at(-1)!.id;
+    queue = {
+      appraisal: [
+        { admissible: true, reason: '', negotiation: { withFactionIds: ['drajk'], what: 'back us', supported: true } },
+        { admissible: true, reason: '', stat: 'influence', difficulty: 5, rationale: 'a favour owed' },
+      ],
+      resolution: [{ narrative: 'Drajk is reminded what it owes.', ops: [{ op: 'call_obligation', obligationId: id, call: 'sign', treatyType: 'trade_accord' }] }],
+    };
+    const outcome = await submitAction(campaign, 'Call in the hook we hold over Drajk for a trade accord.');
+    expect(calls.filter((c) => c.kind === 'appraisal')).toHaveLength(2);
+    expect(calls.find((c, i) => c.kind === 'appraisal' && i > 0)?.user).toMatch(/Calling in a favour is not a negotiation/);
+    expect(outcome.negotiation ?? null).toBeNull();
+    // And the call itself is not left out for an unnamed reach.
+    expect((outcome.ops as { op: string }[]).some((o) => o.op === 'call_obligation')).toBe(true);
+  });
+});

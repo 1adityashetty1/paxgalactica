@@ -144,7 +144,7 @@ describe('organising', () => {
     const far = applyOps(s, [{ op: 'merge_fleets', factionId: 'meridian', into: '1', from: ['2'] }], 'model', 'meridian', true, {}, 'organise');
     expect(far.rejections[0]!.message).toMatch(/Operating Group 2 is at Torrek Anchorage, not Sekkar Gate/);
     const theirs = applyOps(s, [{ op: 'rename_fleet', factionId: 'vigil', fleet: '1', name: 'Mine now' }], 'model', 'meridian', true, {}, 'organise');
-    expect(theirs.rejections[0]!.message).toMatch(/cannot organise the fleets of vigil/);
+    expect(theirs.rejections[0]!.message).toMatch(/cannot organise the fleets of Iron Vigil Remnant/);
   });
 });
 

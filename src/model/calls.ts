@@ -689,6 +689,37 @@ export async function resolveAction(
     }
   }
 
+  // Calling in a favour needs nobody's agreement: the debtor gave it when the
+  // favour was made. "Call in the hook we hold over Drajk" was sent to a
+  // channel with Drajk (bughunt 2026-10-28). Put back once, naming the favour.
+  const owedToMe = (state.obligations ?? []).filter(
+    (o) =>
+      o.holderFactionId === state.playerFactionId &&
+      o.status === 'open' &&
+      (o.restsUntil === null || o.restsUntil === undefined || o.restsUntil <= state.turn),
+  );
+  const callingIn = owedToMe.length > 0 && /\b(?:hook|favou?rs?|owes?|owed|call(?:s|ing)? (?:in|on))\b/i.test(action);
+  if (priced.appraisal.negotiation && callingIn) {
+    const callable = owedToMe.filter((o) => priced.appraisal.negotiation!.withFactionIds.includes(o.debtorFactionId));
+    if (callable.length > 0) {
+      const again = await appraiseAction(state, action, undefined, {
+        note: [
+          '## Calling in a favour is not a negotiation',
+          '',
+          `The acting power holds ${callable.map((o) => `\`${o.id}\` (owed by ${getFaction(state, o.debtorFactionId)?.name ?? o.debtorFactionId})`).join(', ')}.`,
+          'The debtor consented when the favour was made: calling it in is `trivial`, and resolution writes `call_obligation`. Rule it as an act whose overt part `reaches` `their_paper`.',
+        ].join('\n'),
+      });
+      priced = { appraisal: again.appraisal, attempts: priced.attempts + again.attempts, costUsd: priced.costUsd + again.costUsd };
+    }
+  }
+  // And it reaches the debtor's paper, which the ruling then forgot to name,
+  // so the call itself was left out (the same playtest). Code knows it is a
+  // call-in; code names the reach.
+  if (callingIn && (priced.appraisal.overt || priced.appraisal.stat) && !priced.appraisal.negotiation && !(priced.appraisal.reaches ?? []).includes('their_paper')) {
+    priced = { ...priced, appraisal: { ...priced.appraisal, reaches: [...(priced.appraisal.reaches ?? []), 'their_paper'] } };
+  }
+
   // An act that names one of the actor's own operatives, ruled with no covert
   // or groundwork part, has almost certainly lost the part that sends them —
   // and with sends now the ruling's alone, a lost part is an operative who

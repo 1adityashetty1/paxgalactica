@@ -241,7 +241,8 @@ Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
 standing one, `hulls` for ships out of your own fleet, `assets` for things off
 your own shelf, `obligations` for favours owed to you that you are letting go
 of — forgiven to the power that owes them, or sold to the power across the
-table. Use the ids from **Favours owed**. `lifts` names the powers you stop
+table. Use the ids from **Favours owed** — a debt is not a favour: a debt
+sold or forgiven goes in your `text`, and nowhere else. `lifts` names the powers you stop
 charging for passage through your space — usually the one across the table —
 and `liftTurns` how long for, when a term was named. `ends` names the treaties
 of yours you agree to end — a letter of marque revoked, a pact with a third

@@ -3100,7 +3100,9 @@ act without its action. No journal pin: no old journal can hold either op.
 
 **Calling one in is a declared action, never an accord** — `call_obligation`
 is not in `EXTRACTION_ALLOWED`, and the arbiter prices it `trivial`, consent
-having been given when the favour was made. The Treaties tab lists your favours
+having been given when the favour was made. Code holds it to that: a call-in
+ruled a negotiation with its debtor is put back once, and its ruling is stamped
+`reaches: their_paper` so the call is not left out (bughunt 2026-10-28). The Treaties tab lists your favours
 both ways, with a **call in** button per term (and *back our ultimatum* while
 you have one open) that writes the declaration on the command line; a blackmail
 hook shows the secret it rests on, since it lapses the turn that stops being

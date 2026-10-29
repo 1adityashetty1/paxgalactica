@@ -388,6 +388,18 @@ import {
 } from './state.js';
 import { possessive } from './words.js';
 
+/** A message with every bare faction id put as that power's name; a quoted id is left as written. */
+function namedPowers(state: WorldState, text: string): string {
+  let out = text;
+  for (const f of state.factions) {
+    const esc = f.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out
+      .replace(new RegExp(`(?<![\\w"'-])${esc}'s(?![\\w"-])`, 'g'), possessive(f.name))
+      .replace(new RegExp(`(?<![\\w"'-])${esc}(?![\\w"'-])`, 'g'), f.name);
+  }
+  return out;
+}
+
 /** "2 crates", "1 crate", "3 people": a count of a thing in its own unit. */
 function countOf(n: number, unit: string): string {
   if (n === 1) return `1 ${unit}`;
@@ -3703,7 +3715,10 @@ function applyOpsUnderRules(
   // back — it is dropped with the state it describes, exactly as its note is.
   const rejectionEvents: EventLogEntry[] = [];
 
-  const reject = (op: unknown, code: OpRejection['code'], message: string): void => {
+  const reject = (op: unknown, code: OpRejection['code'], raw: string): void => {
+    // Powers by name: dozens of these were written with bare ids ("meridian
+    // has no ships at …"), and the player reads every one (bughunt 2026-10-28).
+    const message = namedPowers(state, raw);
     rejections.push({ op, code, message });
     // Attributed to the actor, which is what lets it be scoped: a rejection
     // names the op that was refused, and a refused `deploy_agent` names the
@@ -9885,10 +9900,14 @@ function applyOpsUnderRules(
           break;
         }
         debt.creditorFactionId = op.toCreditorFactionId;
+        // Named, and said: raw ids in the log and no note at all, so a debt
+        // sold across the table landed in silence (bughunt 2026-10-28).
+        const sold = `${nameFor(state, from)} assigns the ${debt.balance} ${nameFor(state, debt.debtorFactionId)} owes it to ${nameFor(state, op.toCreditorFactionId)}.`;
+        notes.push(sold);
         logEvent(
           state,
           'diplomacy',
-          `${from} assigns the ${debt.balance} owed by ${debt.debtorFactionId} to ${op.toCreditorFactionId}. ${op.reason}`.trim(),
+          `${sold} ${op.reason}`.trim(),
           op.toCreditorFactionId,
           [from, op.toCreditorFactionId, debt.debtorFactionId],
         );
