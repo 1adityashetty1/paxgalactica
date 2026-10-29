@@ -5,6 +5,7 @@ import { effectiveStats, getFaction, ledgerFor, orbitalWeightAt, stackAt, system
 import { driftingCompulsions } from './compulsions.js';
 import { JOIN_LEAD, JOIN_REGARD } from './regard.js';
 import { NOTE_TITLE, isNote } from './diplomacy.js';
+import { possessive } from './words.js';
 
 /**
  * What presses on a power, computed rather than read (playtest 2026-10-19, S6).
@@ -59,7 +60,7 @@ export function pressuresOn(state: WorldState, me: string): string[] {
         const where = [...r.staged].map(([at, n]) => (at === world.name ? `${n} in its orbit` : `${n} at ${at}, a jump away`)).join(' and ');
         const ownLift = (stackAt(world, me).lifter ?? 0) * LIFTER_CARRY;
         out.push(
-          `${name(f)} has lift for ${r.troops} troops within reach of ${world.name} (${where}); none of it has sailed, and nothing says when it will. On ${world.name}'s side: your garrison of ${world.garrison}, your own lift for ${ownLift} troops, and ${mine.toFixed(1)} battleships' weight in its orbit.`,
+          `${name(f)} has lift for ${r.troops} troops within reach of ${world.name} (${where}); none of it has sailed, and nothing says when it will. On ${possessive(world.name)} side: your garrison of ${world.garrison}, your own lift for ${ownLift} troops, and ${mine.toFixed(1)} battleships' weight in its orbit.`,
         );
       } else if (r.line > Math.max(mine, 0.5) * 1.5 && r.over === 0) {
         out.push(`${name(f)} has ${r.line.toFixed(1)} battleships' weight within a jump of ${world.name}, against your ${mine.toFixed(1)} there.`);
@@ -138,7 +139,7 @@ export function paperOf(state: WorldState, me: string): string[] {
   out.push(iOwe.length > 0 ? `Favours you owe: ${iOwe.map((o) => `to ${name(o.holderFactionId)} — ${o.text}`).join('; ')}.` : 'Favours you owe: none.');
   out.push(
     notes.length > 0
-      ? `Promissory notes in your hands: ${notes.map((a) => (isNote(a) && a.issuedBy === me ? `your own ${NOTE_TITLE[a.note]} note — yours to give to another power, not to call in` : isNote(a) ? `${name(a.issuedBy)}'s ${NOTE_TITLE[a.note]} note — yours to call in` : a.kind)).join('; ')}.`
+      ? `Promissory notes in your hands: ${notes.map((a) => (isNote(a) && a.issuedBy === me ? `your own ${NOTE_TITLE[a.note]} note — yours to give to another power, not to call in` : isNote(a) ? `${possessive(name(a.issuedBy))} ${NOTE_TITLE[a.note]} note — yours to call in` : a.kind)).join('; ')}.`
       : 'Promissory notes in your hands: none.',
   );
   out.push(

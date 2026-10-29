@@ -11,6 +11,7 @@ import {
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
 import { envoyRefusal, holdAt, regardFor, regardRecorded } from '../domain/regard.js';
 import { courtLines } from '../ui/court.js';
+import { possessive } from '../domain/words.js';
 
 /**
  * What a world did, or is about to do, that the player should know: one of
@@ -289,7 +290,7 @@ export function ultimatumLines(state: WorldState, me: string): { text: string; t
       });
     } else {
       lines.push({
-        text: `You back ${name(side === 'from' ? d.fromFactionId : d.toFactionId)} in ${name(d.fromFactionId)}'s ultimatum to ${name(d.toFactionId)}, due ${due}.`,
+        text: `You back ${name(side === 'from' ? d.fromFactionId : d.toFactionId)} in ${possessive(name(d.fromFactionId))} ultimatum to ${name(d.toFactionId)}, due ${due}.`,
         tone: 'info',
       });
     }

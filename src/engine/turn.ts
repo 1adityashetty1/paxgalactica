@@ -716,7 +716,24 @@ function holdersOf(campaign: Campaign, draft: string): string[] {
 }
 
 /** When each order the act began will land, said plainly for the reconcile pass. */
-function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
+export function agentKey(a: { id: string; systemId: string; mission: string | null }): string {
+  return `agent:${a.id}:${a.systemId}:${a.mission ?? ''}`;
+}
+
+export function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
+  // An operative sent this act "slips through Threx" while seven jumps out, at
+  // work from turn 5 (bughunt 2026-10-28).
+  const me0 = campaign.state.playerFactionId;
+  const travelling = (campaign.state.agents ?? [])
+    .filter((a) => a.ownerFactionId === me0 && !ordersBefore.has(agentKey(a)) && (a.inPlaceFrom ?? 0) > campaign.state.turn)
+    .map((a) => {
+      const where = campaign.state.systems.find((x) => x.id === a.systemId)?.name ?? a.systemId;
+      return `- TIMING: ${a.name || 'the operative'} is on the road to ${where} and is at work from turn ${a.inPlaceFrom}, not now.`;
+    });
+  return [...travelling, ...timingOfOrders(campaign, ordersBefore)];
+}
+
+function timingOfOrders(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
   const me = campaign.state.playerFactionId;
   return campaign.state.pendingOrders
     .filter((o) => o.factionId === me && !ordersBefore.has(o.id))
@@ -1021,7 +1038,12 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     routed.ops.some(isCovertOp);
 
   const creditsBefore = getFaction(campaign.state, campaign.state.playerFactionId)?.credits ?? 0;
-  const ordersBefore = new Set(campaign.state.pendingOrders.map((o) => o.id));
+  // Operatives too, keyed by where they were and what they were doing, so the
+  // timing check can tell which the act sent on the road.
+  const ordersBefore = new Set([
+    ...campaign.state.pendingOrders.map((o) => o.id),
+    ...(campaign.state.agents ?? []).map(agentKey),
+  ]);
   const staged = await stageWithCorrection(
     campaign,
     routed.ops,

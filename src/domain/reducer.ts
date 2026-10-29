@@ -386,6 +386,7 @@ import {
   type StarSystem,
   type WorldState,
 } from './state.js';
+import { possessive } from './words.js';
 
 /** "2 crates", "1 crate", "3 people": a count of a thing in its own unit. */
 function countOf(n: number, unit: string): string {
@@ -1491,7 +1492,7 @@ function concedeDemand(
   }
   demand.status = 'conceded';
   moveRegard(state, to, from, -ULTIMATUM_RESENTMENT);
-  const note = `${nameFor(state, to)} gives way to ${nameFor(state, from)}'s ultimatum: ${demand.text}`;
+  const note = `${nameFor(state, to)} gives way to ${possessive(nameFor(state, from))} ultimatum: ${demand.text}`;
   notes.push(note);
   logEvent(state, 'diplomacy', note, to);
   return notes;
@@ -1558,7 +1559,7 @@ function wed(state: WorldState, treaty: Treaty): string[] {
   const of = (n: typeof a) => estateById(state, n.estateId)?.estate.name;
   const where = state.systems.find((w) => w.id === seated.systemId)?.name ?? 'their seat';
   const notes = [
-    `${ward.name}${of(ward) ? ` of ${of(ward)}` : ''} marries ${seated.name}${of(seated) ? ` of ${of(seated)}` : ''}, and goes to live at ${where}, a ward of ${nameFor(state, keeper)}'s court.`,
+    `${ward.name}${of(ward) ? ` of ${of(ward)}` : ''} marries ${seated.name}${of(seated) ? ` of ${of(seated)}` : ''}, and goes to live at ${where}, a ward of ${possessive(nameFor(state, keeper))} court.`,
   ];
   for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]);
   return notes;
@@ -1729,7 +1730,7 @@ function settleOfficerLists(state: WorldState, notes: string[]): void {
     them.status = 'listed';
     them.atSystemId = null;
     them.commissioned = true;
-    const back = `${them.name} is home, and back on ${nameFor(state, them.factionId)}'s Lists — ${them.battles} engagement${them.battles === 1 ? '' : 's'} behind them.`;
+    const back = `${them.name} is home, and back on ${possessive(nameFor(state, them.factionId))} Lists — ${them.battles} engagement${them.battles === 1 ? '' : 's'} behind them.`;
     notes.push(back);
     logEvent(state, 'narrative', back, them.factionId, [them.factionId]);
   }
@@ -1924,7 +1925,7 @@ function settleAgentLists(state: WorldState, notes: string[]): void {
     if (!spy || spy.ownerFactionId !== held.heldBy) continue;
     state.assets = state.assets.filter((a) => a.id !== held.id);
     listAgent(state, spy);
-    const back = `${spy.name || 'A returned operative'} is home, and back on ${nameFor(state, spy.ownerFactionId)}'s Lists — ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+    const back = `${spy.name || 'A returned operative'} is home, and back on ${possessive(nameFor(state, spy.ownerFactionId))} Lists — ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
     notes.push(back);
     logEvent(state, 'order', back, spy.ownerFactionId, [spy.ownerFactionId]);
   }
@@ -1981,7 +1982,7 @@ function operativesComeHome(state: WorldState): string[] {
     spy.deployedTurn = state.turn;
     spy.inPlaceFrom = state.turn;
     state.assets = state.assets.filter((a) => a.id !== held.id);
-    const back = `${spy.name || 'A returned operative'} is back on ${nameFor(state, owner)}'s books at ${site.name}, awaiting orders — ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+    const back = `${spy.name || 'A returned operative'} is back on ${possessive(nameFor(state, owner))} books at ${site.name}, awaiting orders — ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
     notes.push(back);
     logEvent(state, 'order', back, owner, [owner]);
   }
@@ -2330,7 +2331,7 @@ function applyCheat(
       if (f.id === t.id) return refuse('illegal_value', 'A power has no disposition toward itself.');
       const before = f.disposition[t.id] ?? 0;
       f.disposition[t.id] = Math.max(-100, Math.min(100, before + cheat.delta));
-      return log(`${f.name}'s regard for ${t.name}: ${before} → ${f.disposition[t.id]}.`, f.id);
+      return log(`${possessive(f.name)} regard for ${t.name}: ${before} → ${f.disposition[t.id]}.`, f.id);
     }
     case 'asset': {
       const sys = getSystem(state, cheat.systemId);
@@ -2576,7 +2577,7 @@ function takeOperative(
     // so the third power resents the forger too.
     if (agent.effect?.kind === 'discord' && outrage > 0) {
       moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
-      const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
+      const scandal = `${target.name} exposes ${possessive(owner.name)} hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
       logEvent(state, 'diplomacy', scandal, target.id);
     }
   }
@@ -2812,11 +2813,11 @@ function settleRider(state: WorldState, before: Agent, live: Agent | undefined, 
       .sort((a, b) => a.id.localeCompare(b.id));
     if (standing[0]) {
       standing[0].damage = (standing[0].damage ?? 0) + 1;
-      done = `and ${nameFor(state, holder)}'s ${standing[0].kind.replace(/_/g, ' ')} there is damaged`;
+      done = `and ${possessive(nameFor(state, holder))} ${standing[0].kind.replace(/_/g, ' ')} there is damaged`;
     } else {
       const was = hullsAt(host, holder);
       setShipsAt(host, holder, Math.max(0, was - RIDER_SABOTAGE_HULLS));
-      done = `and ${was - hullsAt(host, holder)} of ${nameFor(state, holder)}'s hulls there are put out of action`;
+      done = `and ${was - hullsAt(host, holder)} of ${possessive(nameFor(state, holder))} hulls there are put out of action`;
     }
   } else if (rider.mission === 'larceny' && holder) {
     done = `and ${steal(state, live ?? before, { kind: 'steal', assetId: rider.target ?? null, copy: false }, host, holder)}`;
@@ -3010,7 +3011,7 @@ function secede(state: WorldState, system: StarSystem, why: string): string {
     if (hullsIn(leaving) > 0) {
       setShipsAt(system, holder, 0);
       addStackAt(refuge, holder, leaving);
-      where = ` ${nameFor(state, holder)}'s ships there withdraw to ${refuge.name}.`;
+      where = ` ${possessive(nameFor(state, holder))} ships there withdraw to ${refuge.name}.`;
     }
     for (const officer of state.commanders ?? []) {
       if (officer.factionId === holder && officer.status === 'active' && officer.atSystemId === system.id) {
@@ -3686,6 +3687,8 @@ function applyOpsUnderRules(
   const officeBefore = seatLossCostsFavour && courtRecorded(input) ? inOffice(input) : null;
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
+  /** Moves in this batch that mean to land, for the lift check at its end. */
+  const landings: { factionId: string; targetId: string; label: string; lift: number }[] = [];
 
   // A rejection has to outlive an atomic rollback. `reject()` writes its entry
   // into the working state, and the rollback returns `cloneState(input)` — so the
@@ -4071,7 +4074,7 @@ function applyOpsUnderRules(
         const levy = op as { systemId: string; factionId: string };
         const where = state.systems.find((x) => x.id === levy.systemId);
         if (where && where.garrison >= where.garrisonMax) {
-          const note = `${where.name}'s barracks are already full (${where.garrison}/${where.garrisonMax}): no levy is raised and nothing is spent. Fortify it to raise the ceiling.`;
+          const note = `${possessive(where.name)} barracks are already full (${where.garrison}/${where.garrisonMax}): no levy is raised and nothing is spent. Fortify it to raise the ceiling.`;
           notes.push(note);
           logEvent(state, 'clamp', note, actor ?? levy.factionId);
           continue;
@@ -4411,7 +4414,7 @@ function applyOpsUnderRules(
         // relationship outright.
         if (narratedDisposition && actor !== undefined && Math.abs(delta) > MAX_NARRATIVE_DISPOSITION) {
           delta = Math.sign(delta) * MAX_NARRATIVE_DISPOSITION;
-          const trimmed = `Trimmed a ${op.delta} swing in ${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} to ${delta}; no single act moves an opinion further.`;
+          const trimmed = `Trimmed a ${op.delta} swing in ${possessive(nameFor(state, op.factionId))} regard for ${nameFor(state, op.towardFactionId)} to ${delta}; no single act moves an opinion further.`;
           notes.push(trimmed);
           logEvent(state, 'clamp', trimmed, op.factionId);
         }
@@ -4432,7 +4435,7 @@ function applyOpsUnderRules(
           const room = Math.sign(delta) * MAX_NARRATIVE_DISPOSITION - moved;
           const allowed = delta > 0 ? Math.max(0, Math.min(delta, room)) : Math.min(0, Math.max(delta, room));
           if (allowed !== delta) {
-            const note = `${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} has moved as far as one act moves it; ${delta - allowed} of this is not added.`;
+            const note = `${possessive(nameFor(state, op.factionId))} regard for ${nameFor(state, op.towardFactionId)} has moved as far as one act moves it; ${delta - allowed} of this is not added.`;
             notes.push(note);
             logEvent(state, 'clamp', note, op.factionId);
             delta = allowed;
@@ -4636,7 +4639,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'illegal_value',
-            `${nameFor(state, victimId)}'s crews will not be turned by ${nameFor(state, turner)} — their resolve is beyond its guile.`,
+            `${possessive(nameFor(state, victimId))} crews will not be turned by ${nameFor(state, turner)} — their resolve is beyond its guile.`,
           );
           break;
         }
@@ -4759,7 +4762,7 @@ function applyOpsUnderRules(
           // Priced, not narrated (§8). Each left-out case is said, never
           // rejected: the accord's terms are what it is for, and a warmth
           // written twice should not sink them.
-          const who = `${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.toward)}`;
+          const who = `${possessive(nameFor(state, op.factionId))} regard for ${nameFor(state, op.toward)}`;
           let left: string | null = null;
           if (op.because === 'aid') left = `${who} is not moved by "aid" in an accord: aid is what a gift or a payment buys.`;
           else if (delta > 0 && !agreedBesidesWarmth) left = `${who} is not warmed: the conversation agreed nothing.`;
@@ -5404,7 +5407,9 @@ function applyOpsUnderRules(
             logEvent(state, 'narrative', note, holder, [holder, theirs]);
           } else {
             state.assets = state.assets.filter((a) => a.id !== asset.id);
-            const note = `${nameFor(state, holder)} lets ${asset.text} go.`;
+            // Named by count and kind, its own sentence beside it: "lets Crews
+            // off hulls … held under guard at Arkane Prime. go." (bughunt 2026-10-28).
+            const note = `${nameFor(state, holder)} lets ${countOf(asset.quantity, asset.unit)} of ${asset.kind.replace(/_/g, ' ')} go (${asset.text.replace(/[.\s]+$/, '')}).`;
             notes.push(note);
             logEvent(state, 'narrative', note, holder, [holder]);
           }
@@ -5447,7 +5452,7 @@ function applyOpsUnderRules(
         }
         const fromId = asset.atSystemId;
         if (!fromId || !heldPathBetween(state, holder, fromId, to.id)) {
-          reject(raw, 'unreachable_target', `There is no road from where ${who} is held to ${to.name} through ${nameFor(state, holder)}'s own space.`);
+          reject(raw, 'unreachable_target', `There is no road from where ${who} is held to ${to.name} through ${possessive(nameFor(state, holder))} own space.`);
           break;
         }
         asset.atSystemId = to.id;
@@ -5537,7 +5542,7 @@ function applyOpsUnderRules(
         const holder = asset.heldBy;
         const issuer = asset.issuedBy;
         if (actor !== undefined && holder !== actor) {
-          reject(raw, 'illegal_value', `${asset.text} is ${nameFor(state, holder)}'s to play, not ${actor}'s.`);
+          reject(raw, 'illegal_value', `${asset.text} is ${possessive(nameFor(state, holder))} to play, not ${actor}'s.`);
           break;
         }
         if (holder === issuer) {
@@ -5610,7 +5615,7 @@ function applyOpsUnderRules(
             effectiveTurn: null,
             status: 'active',
             exclusive: false,
-            summary: `${title}: ${nameFor(state, issuer)}'s note, called in by ${nameFor(state, holder)}`,
+            summary: `${title}: ${possessive(nameFor(state, issuer))} note, called in by ${nameFor(state, holder)}`,
           });
           state.treaties.push(treaty);
           what = `a ${type.replace(/_/g, ' ')} in force until turn ${treaty.expiresTurn}`;
@@ -5642,7 +5647,7 @@ function applyOpsUnderRules(
             status: 'current',
             missedPayments: 0,
             establishedTurn: state.turn,
-            text: `${lender.name}'s line of credit, called in by ${borrower.name}.`,
+            text: `${possessive(lender.name)} line of credit, called in by ${borrower.name}.`,
           };
           state.loans.push(loan);
           what = `an advance of ${amount} credits at ${NOTE_CREDIT_RENT} a turn, due back on turn ${loan.dueTurn}`;
@@ -5650,7 +5655,7 @@ function applyOpsUnderRules(
         // **It comes home.** The favour is spent and the issuer may grant it
         // again — which is a choice it makes every time it hands it over.
         asset.heldBy = issuer;
-        const note = `${nameFor(state, holder)} calls in ${nameFor(state, issuer)}'s note of ${title.toLowerCase()}: ${what}. The note returns to ${nameFor(state, issuer)}. ${op.reason}`.trim();
+        const note = `${nameFor(state, holder)} calls in ${possessive(nameFor(state, issuer))} note of ${title.toLowerCase()}: ${what}. The note returns to ${nameFor(state, issuer)}. ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, holder, [holder, issuer]);
         break;
@@ -5754,7 +5759,7 @@ function applyOpsUnderRules(
             break;
           }
           if (demand.fromFactionId !== holder) {
-            reject(raw, 'illegal_value', `A favour buys support for ${nameFor(state, holder)}'s own ultimatum, not somebody else's.`);
+            reject(raw, 'illegal_value', `A favour buys support for ${possessive(nameFor(state, holder))} own ultimatum, not somebody else's.`);
             break;
           }
           if (debtor === demand.toFactionId) {
@@ -5870,7 +5875,7 @@ function applyOpsUnderRules(
         // The sale is between the two powers in the room, so one of them is the
         // seller and the other the buyer.
         if (actor !== undefined && from !== actor && op.toHolderFactionId !== actor) {
-          reject(raw, 'illegal_value', `That favour is ${nameFor(state, from)}'s to sell, and this conversation was not with them.`);
+          reject(raw, 'illegal_value', `That favour is ${possessive(nameFor(state, from))} to sell, and this conversation was not with them.`);
           break;
         }
         if (owed.status !== 'open') {
@@ -5914,7 +5919,7 @@ function applyOpsUnderRules(
           break;
         }
         if (actor !== undefined && asset.heldBy !== actor) {
-          reject(raw, 'illegal_value', `${asset.text} is ${nameFor(state, asset.heldBy)}'s to use.`);
+          reject(raw, 'illegal_value', `${asset.text} is ${possessive(nameFor(state, asset.heldBy))} to use.`);
           break;
         }
         const secret = asset.secret;
@@ -6072,7 +6077,7 @@ function applyOpsUnderRules(
           break;
         }
         demand.backers = [...demand.backers.filter((b) => b.factionId !== who), { factionId: who, side: op.side }];
-        const note = `${nameFor(state, who)} declares for ${nameFor(state, op.side === 'from' ? demand.fromFactionId : demand.toFactionId)} in ${nameFor(state, demand.fromFactionId)}'s ultimatum to ${nameFor(state, demand.toFactionId)}.`;
+        const note = `${nameFor(state, who)} declares for ${nameFor(state, op.side === 'from' ? demand.fromFactionId : demand.toFactionId)} in ${possessive(nameFor(state, demand.fromFactionId))} ultimatum to ${nameFor(state, demand.toFactionId)}.`;
         notes.push(note);
         logEvent(state, 'diplomacy', note, who);
         break;
@@ -6318,7 +6323,7 @@ function applyOpsUnderRules(
           break;
         }
         if (world.controllerFactionId !== f.id) {
-          reject(raw, 'illegal_value', `${world.name} is not ${f.name}'s to seat.`);
+          reject(raw, 'illegal_value', `${world.name} is not ${possessive(f.name)} to seat.`);
           break;
         }
         // Who goes: a notable named off the Lists, or an estate's first listed.
@@ -6340,7 +6345,7 @@ function applyOpsUnderRules(
             raw,
             'illegal_value',
             op.notable
-              ? `Nobody on ${f.name}'s Lists answers to "${op.notable}"${estate ? ` for ${estate.name}` : ''}; a seat is filled from the Lists.`
+              ? `Nobody on ${possessive(f.name)} Lists answers to "${op.notable}"${estate ? ` for ${estate.name}` : ''}; a seat is filled from the Lists.`
               : 'An appointment names a notable on the Lists, or an estate to send its first.',
           );
           break;
@@ -6388,7 +6393,7 @@ function applyOpsUnderRules(
         }
         const office = seatOffice(fresh);
         const note = displaced
-          ? `${f.name} gives ${world.name}'s ${office.toLowerCase()}ship to ${freshEstate.name}: ${fresh.name} takes it from ${displaced.name} of ${estateById(state, displaced.estateId)?.estate.name ?? 'nobody'}, who goes back on the Lists.`
+          ? `${f.name} gives ${possessive(world.name)} ${office.toLowerCase()}ship to ${freshEstate.name}: ${fresh.name} takes it from ${displaced.name} of ${estateById(state, displaced.estateId)?.estate.name ?? 'nobody'}, who goes back on the Lists.`
           : `${f.name} appoints ${fresh.name} of ${freshEstate.name} ${office} of ${world.name}.`;
         notes.push(note);
         logEvent(state, 'system', note, f.id);
@@ -6424,7 +6429,7 @@ function applyOpsUnderRules(
           (n) => notablesPower(n) === f.id && whereabouts(state, n) === 'listed' && n.spouseId === null,
         );
         if (!mine) {
-          reject(raw, 'illegal_value', `Nobody unwed on ${f.name}'s Lists answers to "${op.notable}"; a match abroad is made from the Lists.`);
+          reject(raw, 'illegal_value', `Nobody unwed on ${possessive(f.name)} Lists answers to "${op.notable}"; a match abroad is made from the Lists.`);
           break;
         }
         const theirs = seatedAt(state, world.id).find((n) => n.estateId === null && n.spouseId === null);
@@ -6865,11 +6870,11 @@ function applyOpsUnderRules(
           const left = yardCapacityFor(state, op.factionId) - (programmeTons.get(op.factionId) ?? 0);
           const fits = Math.max(0, Math.floor(left / perHull));
           if (fits === 0) {
-            reject(raw, 'illegal_value', `${nameFor(state, op.factionId)}'s yards have no berths left this turn for a ${HULL_SPEC[op.onComplete.hull].label} programme.`);
+            reject(raw, 'illegal_value', `${possessive(nameFor(state, op.factionId))} yards have no berths left this turn for a ${HULL_SPEC[op.onComplete.hull].label} programme.`);
             break;
           }
           if (op.onComplete.magnitude > fits) {
-            const note = `${nameFor(state, op.factionId)}'s yards have berths for ${fits} ${HULL_SPEC[op.onComplete.hull].label}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
+            const note = `${possessive(nameFor(state, op.factionId))} yards have berths for ${fits} ${HULL_SPEC[op.onComplete.hull].label}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
             notes.push(note);
             logEvent(state, 'clamp', note, op.factionId);
             op.onComplete = { ...op.onComplete, magnitude: fits };
@@ -7099,17 +7104,16 @@ function applyOpsUnderRules(
           // A landing with nothing to land with. "Land troops on Ithaal" from
           // a squadron of battleships was rolled, narrated as shuttles going in,
           // and took station — with nothing saying why (bughunt 2026-10-28).
+          // Said at the end of the batch, when every move in it is known: a
+          // battle line and its lifter are often sent as two moves.
           if (
             isMovementType(op.type) &&
             holder !== op.factionId &&
             !isGuestOf(state, op.factionId, holder) &&
-            (force.lifter ?? 0) === 0 &&
             !op.holdLanding &&
             (getSystem(state, op.targetId)?.garrison ?? 0) > 0
           ) {
-            notes.push(
-              `No lifters sail with ${order.label}: it can win the orbit over ${getSystem(state, op.targetId)?.name ?? op.targetId}, but nobody lands.`,
-            );
+            landings.push({ factionId: op.factionId, targetId: op.targetId, label: order.label, lift: force.lifter ?? 0 });
           }
           if (op.type === 'blockade') recordAct('blockade_ordered', op.factionId, [other]);
           if (op.type === 'commerce_raiding') recordAct('raid_ordered', op.factionId, [other]);
@@ -7119,7 +7123,7 @@ function applyOpsUnderRules(
           // 2026-10-28). Only other powers' cargo through the world is taken.
           if (op.type === 'commerce_raiding' && other && !raidLandsOn(state.treaties, state.turn, op.factionId, other)) {
             notes.push(
-              `${nameFor(state, other)}'s own shipping is not ${nameFor(state, op.factionId)}'s to take — a letter of marque, protection or a trade accord stands between them — so the raid at ${getSystem(state, op.targetId)?.name ?? op.targetId} takes only other powers' cargo through it.`,
+              `${possessive(nameFor(state, other))} own shipping is not ${possessive(nameFor(state, op.factionId))} to take — a letter of marque, protection or a trade accord stands between them — so the raid at ${getSystem(state, op.targetId)?.name ?? op.targetId} takes only other powers' cargo through it.`,
             );
           }
         }
@@ -7221,7 +7225,7 @@ function applyOpsUnderRules(
               raw,
               'illegal_value',
               op.officer || op.school
-                ? `Nobody on ${faction.name}'s Lists answers to ${op.officer ? `"${op.officer}"` : `the ${op.school} school`}. Listed: ${listed.map((c) => c.name).join(', ') || 'nobody'}.`
+                ? `Nobody on ${possessive(faction.name)} Lists answers to ${op.officer ? `"${op.officer}"` : `the ${op.school} school`}. Listed: ${listed.map((c) => c.name).join(', ') || 'nobody'}.`
                 : 'An appointment names an officer off the Lists, or a school — lineofbattle, gunnery, convoy or assault — to send its first.',
             );
             break;
@@ -7360,7 +7364,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'illegal_value',
-            `${nameFor(state, order.factionId)}'s fleet under way is not stood down by an order; it is met where it arrives.`,
+            `${possessive(nameFor(state, order.factionId))} fleet under way is not stood down by an order; it is met where it arrives.`,
           );
           break;
         }
@@ -7981,7 +7985,7 @@ function applyOpsUnderRules(
         // Who breaks it: the actor, or — from an accord — the other party,
         // ending a treaty of its own it agreed to end across the table.
         if (op.factionId !== undefined && actor !== undefined && op.factionId !== actor && source !== 'extraction') {
-          reject(raw, 'illegal_value', `${nameFor(state, actor)} cannot break a treaty on ${nameFor(state, op.factionId)}'s behalf.`);
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} cannot break a treaty on ${possessive(nameFor(state, op.factionId))} behalf.`);
           break;
         }
         const breaker = op.factionId ?? actor;
@@ -7994,7 +7998,7 @@ function applyOpsUnderRules(
             reject(
               raw,
               'illegal_value',
-              `${nameFor(state, breaker)} is not bound by "${treaty.summary}", so it is not ${nameFor(state, breaker)}'s to break. Setting two other powers against each other is an operative's work — a discord mission.`,
+              `${nameFor(state, breaker)} is not bound by "${treaty.summary}", so it is not ${possessive(nameFor(state, breaker))} to break. Setting two other powers against each other is an operative's work — a discord mission.`,
             );
             break;
           }
@@ -8191,7 +8195,7 @@ function applyOpsUnderRules(
             reject(
               raw,
               'illegal_value',
-              `${target.name}'s crews will not be suborned by ${owner.name} — their resolve is beyond its guile, so a defection network there could never turn a single hull. Choose another effect.`,
+              `${possessive(target.name)} crews will not be suborned by ${owner.name} — their resolve is beyond its guile, so a defection network there could never turn a single hull. Choose another effect.`,
             );
             break;
           }
@@ -8516,7 +8520,7 @@ function applyOpsUnderRules(
             classFit(spy.agentClass, op.mission),
           );
           state.assets = (state.assets ?? []).filter((a) => a.id !== held.id);
-          const back = `${spy.name || 'A returned operative'} goes back out on ${host.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and a face ${nameFor(state, held.heldBy === ownerId ? ownerId : held.heldBy)}'s rivals have seen ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+          const back = `${spy.name || 'A returned operative'} goes back out on ${host.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and a face ${possessive(nameFor(state, held.heldBy === ownerId ? ownerId : held.heldBy))} rivals have seen ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
           notes.push(back);
           logEvent(state, 'narrative', back, ownerId);
           break;
@@ -8646,8 +8650,8 @@ function applyOpsUnderRules(
               raw,
               'illegal_value',
               op.agent
-                ? `Nobody called "${op.agent}" is waiting on ${nameFor(state, ownerId)}'s Lists. Waiting: ${waiting.map((a) => a.name).join(', ') || 'nobody'}.`
-                : `Nobody is waiting on ${nameFor(state, ownerId)}'s Lists.`,
+                ? `Nobody called "${op.agent}" is waiting on ${possessive(nameFor(state, ownerId))} Lists. Waiting: ${waiting.map((a) => a.name).join(', ') || 'nobody'}.`
+                : `Nobody is waiting on ${possessive(nameFor(state, ownerId))} Lists.`,
             );
             break;
           }
@@ -8677,7 +8681,7 @@ function applyOpsUnderRules(
           const record = chosen.served
             ? `, ${chosen.operations} operation${chosen.operations === 1 ? '' : 's'} behind them and caught ${chosen.timesCaught} time${chosen.timesCaught === 1 ? '' : 's'}`
             : '';
-          const signed = `${chosen.name} comes off ${nameFor(state, ownerId)}'s Lists at ${site.name}${record}, awaiting orders.`;
+          const signed = `${chosen.name} comes off ${possessive(nameFor(state, ownerId))} Lists at ${site.name}${record}, awaiting orders.`;
           notes.push(signed);
           logEvent(state, 'order', signed, ownerId, [ownerId]);
           break;
@@ -8703,7 +8707,7 @@ function applyOpsUnderRules(
           spy.deployedTurn = state.turn;
           spy.inPlaceFrom = state.turn;
           state.assets = state.assets.filter((a) => a.id !== held.id);
-          const back = `${spy.name || 'A returned operative'} is back on ${nameFor(state, ownerId)}'s books at ${site.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+          const back = `${spy.name || 'A returned operative'} is back on ${possessive(nameFor(state, ownerId))} books at ${site.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
           notes.push(back);
           logEvent(state, 'order', back, ownerId, [ownerId]);
           break;
@@ -8754,7 +8758,7 @@ function applyOpsUnderRules(
           break;
         }
         if (host.controllerFactionId === ownerId) {
-          reject(raw, 'illegal_value', `${host.name} is ${nameFor(state, ownerId)}'s own; there is nobody there to get into position against.`);
+          reject(raw, 'illegal_value', `${host.name} is ${possessive(nameFor(state, ownerId))} own; there is nobody there to get into position against.`);
           break;
         }
         const spy = chooseOperative(state, ownerId, op.agent, op.systemId);
@@ -8829,7 +8833,7 @@ function applyOpsUnderRules(
           }
           const from = state.systems.find((w) => w.id === spy.systemId)?.name ?? spy.systemId;
           listAgent(state, spy);
-          const back = `${spy.name || 'An operative'} is withdrawn from ${from} and back on ${nameFor(state, spy.ownerFactionId)}'s Lists. ${op.reason}`.trim();
+          const back = `${spy.name || 'An operative'} is withdrawn from ${from} and back on ${possessive(nameFor(state, spy.ownerFactionId))} Lists. ${op.reason}`.trim();
           notes.push(back);
           logEvent(state, 'order', back, spy.ownerFactionId, [spy.ownerFactionId]);
           break;
@@ -9165,7 +9169,7 @@ function applyOpsUnderRules(
               break;
             }
             charteredOn = richest.id;
-            notes.push(`${op.kind.replace(/_/g, ' ')} is chartered on ${richest.name}, ${nameFor(state, holder)}'s richest world.`);
+            notes.push(`${op.kind.replace(/_/g, ' ')} is chartered on ${richest.name}, ${possessive(nameFor(state, holder))} richest world.`);
           }
         }
         // The arbitrator rules that a marriage is exclusive; THIS is what
@@ -9249,7 +9253,7 @@ function applyOpsUnderRules(
           }
           const pct = Math.min(share.percent, MAX_COMMITMENT_SHARE);
           if (pct !== share.percent) {
-            const note = `Trimmed the ${op.kind} share from ${share.percent}% to ${pct}% of ${nameFor(state, share.from)}'s ${share.of} (ceiling ${MAX_COMMITMENT_SHARE}%).`;
+            const note = `Trimmed the ${op.kind} share from ${share.percent}% to ${pct}% of ${possessive(nameFor(state, share.from))} ${share.of} (ceiling ${MAX_COMMITMENT_SHARE}%).`;
             notes.push(note);
             logEvent(state, 'clamp', note, share.to);
           }
@@ -10106,6 +10110,15 @@ function applyOpsUnderRules(
   // Before the yards bill, so a settlement received this batch can pay for
   // what the same accord commissioned.
   notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
+  // A landing with nothing to land with, in the whole batch. "Land troops on
+  // Ithaal" from a squadron of battleships was rolled, narrated as shuttles
+  // going in, and took station with nothing saying why (bughunt 2026-10-28).
+  for (const l of landings) {
+    // The player's moves only: an NPC's reaction landing nobody is its own affair.
+    if (l.factionId !== state.playerFactionId) continue;
+    if (l.lift > 0 || landings.some((m) => m !== l && m.factionId === l.factionId && m.targetId === l.targetId && m.lift > 0)) continue;
+    notes.push(`No lifters sail with ${l.label}: it can win the orbit over ${getSystem(state, l.targetId)?.name ?? l.targetId}, but nobody lands.`);
+  }
   notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
   const pricedByYards = new Set<string>();
   billConstruction(
@@ -10310,7 +10323,7 @@ function takeHostage(
   (state.assets ??= []).push({
     id: mintId(state, 'ast'),
     kind: 'hostage',
-    text: `A figure of consequence from ${nameFor(state, from)}'s house on ${where.name}, ${how}`,
+    text: `A figure of consequence from ${possessive(nameFor(state, from))} house on ${where.name}, ${how}`,
     heldBy: captor,
     quantity: 1,
     unit: 'person',
@@ -10432,7 +10445,7 @@ function billConstruction(
     const overYard = Math.max(0, laidDown - berths);
     const deliverable = gained - overYard;
     if (overYard > 0) {
-      const note = `${faction.name}'s yards can lay down ${berths} tons at a time (industry ${effectiveStats(state, faction.id).industry}); ${overYard} of ${laidDown} tons ordered were not begun.`;
+      const note = `${possessive(faction.name)} yards can lay down ${berths} tons at a time (industry ${effectiveStats(state, faction.id).industry}); ${overYard} of ${laidDown} tons ordered were not begun.`;
       notes.push(note);
       logEvent(state, 'clamp', note, faction.id);
     }
@@ -11238,7 +11251,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const earned = asset.quantity * (asset.valuePerUnit[buyer.id] ?? COMMODITY_VALUE);
     buyer.credits += earned;
     state.assets = state.assets.filter((a) => a.id !== asset.id);
-    const note = `${buyer.name} sells ${countOf(asset.quantity, asset.unit)} of ${nameFor(state, asset.issuedBy!)}'s ${asset.kind.replace(/_/g, ' ')} at market for ${earned} credits.`;
+    const note = `${buyer.name} sells ${countOf(asset.quantity, asset.unit)} of ${possessive(nameFor(state, asset.issuedBy!))} ${asset.kind.replace(/_/g, ' ')} at market for ${earned} credits.`;
     if (buyer.id === state.playerFactionId || asset.issuedBy === state.playerFactionId) notes.push(note);
     logEvent(state, 'system', note, buyer.id, [buyer.id, asset.issuedBy!]);
   }
@@ -11492,7 +11505,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const joined = peaceHolds
       ? [...fromSide.slice(1), ...toSide.slice(1)].filter((id) => atWar.has(id))
       : [...fromSide.slice(1), ...toSide.slice(1)];
-    const note = `${nameFor(state, demand.toFactionId)} lets ${nameFor(state, demand.fromFactionId)}'s ultimatum run out. It is war${
+    const note = `${nameFor(state, demand.toFactionId)} lets ${possessive(nameFor(state, demand.fromFactionId))} ultimatum run out. It is war${
       joined.length > 0 ? `, and ${joined.map((id) => nameFor(state, id)).join(' and ')} ${peaceHolds && joined.length === 1 ? 'is' : 'are'} in it` : ''
     }.`;
     notes.push(note);
@@ -11799,7 +11812,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       // officer's: relations collapse even when the operative gets out.
       if (profile.oneShot && owner) {
         target.disposition[owner.id] = Math.max(-100, (target.disposition[owner.id] ?? 0) - 35);
-        logEvent(state, 'diplomacy', `${target.name} lays the killing at ${owner.name}'s door.`, target.id);
+        logEvent(state, 'diplomacy', `${target.name} lays the killing at ${possessive(owner.name)} door.`, target.id);
       }
       continue;
     }
@@ -11923,7 +11936,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
 
         watchNotes.set(
           agent.id,
-          `turned ${describeStack(crews)} of ${target.name}'s at ${host.name}, bought at ${price} credits.`,
+          `turned ${describeStack(crews)} of ${possessive(target.name)} at ${host.name}, bought at ${price} credits.`,
         );
         logEvent(
           state,
@@ -11939,12 +11952,12 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       } else if (limit <= 0) {
         watchNotes.set(
           agent.id,
-          `finds no takers among ${target.name}'s crews on ${host.name}; they will not be bought.`,
+          `finds no takers among ${possessive(target.name)} crews on ${host.name}; they will not be bought.`,
         );
         logEvent(
           state,
           'system',
-          `${owner?.name ?? agent.ownerFactionId}'s approaches to ${target.name}'s crews on ${host.name} find no takers.`,
+          `${owner?.name ?? agent.ownerFactionId}'s approaches to ${possessive(target.name)} crews on ${host.name} find no takers.`,
           agent.ownerFactionId,
         );
       } else {
@@ -11968,7 +11981,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       takeHostage(state, agent.ownerFactionId, target.id, host, 'lifted out by an operative');
       watchNotes.set(
         agent.id,
-        `has somebody of consequence out of ${target.name}'s house on ${host.name}, and holds them.`,
+        `has somebody of consequence out of ${possessive(target.name)} house on ${host.name}, and holds them.`,
       );
     }
 
@@ -11981,8 +11994,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       watchNotes.set(
         agent.id,
         gained > 0
-          ? `is turning ${target.name}'s own people against it (+${gained} dissent, now ${target.dissent}).`
-          : `finds ${target.name}'s institutions already past listening to anyone.`,
+          ? `is turning ${possessive(target.name)} own people against it (+${gained} dissent, now ${target.dissent}).`
+          : `finds ${possessive(target.name)} institutions already past listening to anyone.`,
       );
       if (gained > 0) {
         logEvent(
@@ -12008,8 +12021,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       watchNotes.set(
         agent.id,
         lost > 0
-          ? `destroyed ${lost} of ${target.name}'s hull(s) at ${host.name}.`
-          : `found nothing of ${target.name}'s left at ${host.name} to strike.`,
+          ? `destroyed ${lost} of ${possessive(target.name)} hull(s) at ${host.name}.`
+          : `found nothing of ${possessive(target.name)} left at ${host.name} to strike.`,
       );
       if (lost > 0) {
         logEvent(
@@ -12036,21 +12049,21 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         );
       const struck = standing[0];
       if (!struck) {
-        watchNotes.set(agent.id, `found nothing of ${target.name}'s standing on ${host.name} worth wrecking.`);
+        watchNotes.set(agent.id, `found nothing of ${possessive(target.name)} standing on ${host.name} worth wrecking.`);
       } else {
         const whole = fixtureIntegrity(struck);
         struck.damage = Math.min(whole, (struck.damage ?? 0) + hits);
         const label = struck.kind.replace(/_/g, ' ');
         watchNotes.set(
           agent.id,
-          `wrecked part of ${target.name}'s ${label} on ${host.name} (now ${whole - struck.damage} of ${whole}).`,
+          `wrecked part of ${possessive(target.name)} ${label} on ${host.name} (now ${whole - struck.damage} of ${whole}).`,
         );
         // Public, as a burning foundry is: the building stands on a surface
         // everybody can see, and its damage is drawn on the System panel.
         logEvent(
           state,
           'system',
-          `Sabotage on ${host.name}: ${target.name}'s ${label} is damaged (${whole - struck.damage} of ${whole} working).`,
+          `Sabotage on ${host.name}: ${possessive(target.name)} ${label} is damaged (${whole - struck.damage} of ${whole} working).`,
           target.id,
         );
       }
@@ -12063,7 +12076,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       logEvent(
         state,
         'diplomacy',
-        `${target.name} lays the killing at ${owner.name}'s door.`,
+        `${target.name} lays the killing at ${possessive(owner.name)} door.`,
         target.id,
       );
     }
@@ -12075,7 +12088,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (agent.effect.kind === 'income_penalty') {
       watchNotes.set(
         agent.id,
-        `is skimming ${agent.effect.perTurn} a turn out of ${target.name}'s accounts at ${host.name}.`,
+        `is skimming ${agent.effect.perTurn} a turn out of ${possessive(target.name)} accounts at ${host.name}.`,
       );
     } else if (agent.effect.kind === 'stat_debuff') {
       watchNotes.set(
@@ -12356,7 +12369,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   for (const owed of state.obligations ?? []) {
     if (owed.status !== 'open' || !owed.secret || secretLive(state, owed.secret)) continue;
     owed.status = 'lapsed';
-    const note = `${nameFor(state, owed.holderFactionId)}'s hold over ${nameFor(state, owed.debtorFactionId)} lapses: what it knew is no longer worth knowing.`;
+    const note = `${possessive(nameFor(state, owed.holderFactionId))} hold over ${nameFor(state, owed.debtorFactionId)} lapses: what it knew is no longer worth knowing.`;
     notes.push(note);
     logEvent(state, 'diplomacy', note, owed.holderFactionId, [owed.holderFactionId, owed.debtorFactionId]);
   }
@@ -12384,7 +12397,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         const before = regardFor(target, order.factionId);
         const after = Math.min(100, before + envoyRegard(state, order.factionId, order.onComplete!.magnitude));
         target.regard = { ...target.regard, [order.factionId]: after };
-        note = `${nameFor(state, order.factionId)}'s envoy is heard at ${target.name}: its standing there ${before} -> ${after}.`;
+        note = `${possessive(nameFor(state, order.factionId))} envoy is heard at ${target.name}: its standing there ${before} -> ${after}.`;
       }
       logEvent(state, 'order', note, order.factionId, [order.factionId]);
       notes.push(note);
@@ -14346,7 +14359,7 @@ function resolveBattle(
     holderEthic === 'defensive' ? Math.round(garrison * DEFENSIVE_GARRISON_BONUS) : garrison;
   if (dugIn !== garrison) {
     doctrinesFired.push(
-      `defensive: ${nameOf(holder!)}'s garrison of ${garrison} fought as ${dugIn}`,
+      `defensive: ${possessive(nameOf(holder!))} garrison of ${garrison} fought as ${dugIn}`,
     );
   }
   /**

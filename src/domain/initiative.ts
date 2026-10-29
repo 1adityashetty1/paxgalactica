@@ -102,6 +102,7 @@ import {
 import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
 import { ACT_WORDS, linesCrossed, type Act } from './acts.js';
+import { possessive } from './words.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -2200,7 +2201,7 @@ function workNotables(ctx: Ctx): Ops {
       mission: atWar ? 'subversion' : 'seduction',
       effect: atWar ? { kind: 'turn_notable' } : { kind: 'seduce' },
       targetNotable: target.n!.id,
-      cover: `a guest of ${target.n!.name}'s house on ${target.x.name}`,
+      cover: `a guest of ${possessive(target.n!.name)} house on ${target.x.name}`,
     },
   ];
 }

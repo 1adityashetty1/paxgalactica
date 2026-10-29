@@ -26,6 +26,7 @@ import {
 import { CONTENT_REGARD, regardFor, regardRecorded } from './regard.js';
 import { HUB_THRESHOLD } from './trade.js';
 import { WORLD_TYPE_STAT, systemIncome, type Faction, type StarSystem, type WorldState } from './state.js';
+import { possessive } from './words.js';
 
 /**
  * Seats, notables and estates read off the whole world.
@@ -473,7 +474,7 @@ export function onWorldChangesHands(
       const estate = viaMarriage ? estateById(state, viaMarriage)?.estate : defaultEstate(state, after, world);
       n.systemId = world.id;
       n.estateId = estate?.id ?? null;
-      if (estate) parts.push(`${n.name} takes ${world.name}'s seat for ${estate.name}.`);
+      if (estate) parts.push(`${n.name} takes ${possessive(world.name)} seat for ${estate.name}.`);
     }
     // Whoever married in comes home; `settleCourt` finishes the match if it
     // was with another power's people.
@@ -528,7 +529,7 @@ export function onWorldChangesHands(
     if (turnedOut.length > 0) parts.unshift(`${names(turnedOut)} ${turnedOut.length > 1 ? 'are' : 'is'} turned out of ${world.name}.`);
     if (taken.length > 0 && after) parts.push(`${names(taken)} ${taken.length > 1 ? 'are' : 'is'} held at ${world.name} by ${nameOf(state, after)}.`);
     if (sentHome.length > 0) parts.push(`${names(sentHome)} ${sentHome.length > 1 ? 'go' : 'goes'} home.`);
-    if (after && seated.length > 0) parts.push(`${world.name}'s seats stand empty for ${nameOf(state, after)} to fill.`);
+    if (after && seated.length > 0) parts.push(`${possessive(world.name)} seats stand empty for ${nameOf(state, after)} to fill.`);
     return parts.length > 0 ? parts.join(' ') : null;
   }
   return null;
@@ -672,7 +673,7 @@ export function holdNotable(
     kind: 'notable',
     text:
       as === 'ward'
-        ? `${notable.name}${estate ? ` of ${estate}` : ''}, wed to ${spouse?.name ?? 'a notable'} and living at ${nameOf(state, heldBy)}'s court as a ward`
+        ? `${notable.name}${estate ? ` of ${estate}` : ''}, wed to ${spouse?.name ?? 'a notable'} and living at ${possessive(nameOf(state, heldBy))} court as a ward`
         : `${notable.name}${estate ? ` of ${estate}` : ''}, taken at ${where ?? 'their seat'} and held`,
     heldBy,
     quantity: 1,

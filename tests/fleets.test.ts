@@ -600,5 +600,17 @@ describe('a landing with nothing to land with (bughunt 2026-10-28)', () => {
     expect(land.notes.some((n) => /No lifters sail with to Ithaal: .*nobody lands/.test(n))).toBe(true);
     const guard = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, land: false, label: 'to Ithaal' }], 'model', 'meridian');
     expect(guard.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
+    // A battle line and its lifter sent as two moves are one landing.
+    const pair = applyOps(
+      s,
+      [
+        { op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, label: 'line' },
+        { op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { lifter: 1 }, label: 'lift' },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(pair.rejections).toEqual([]);
+    expect(pair.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
   });
 });

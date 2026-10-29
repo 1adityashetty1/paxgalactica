@@ -581,7 +581,11 @@ power's own ships between worlds it holds** is `trivial`, and so is laying down
 hulls it can pay for or striking off its own: nobody resists a shuffle inside
 your own territory, and what a fleet meets on arrival is settled by the battle,
 never by this roll. A move onto ground somebody else holds is a different act
-and is priced as the strike it is. **Calling in a
+and is priced as the strike it is. **Taking someone off the acting power's own
+Lists** — recruiting an operative, appointing an officer, seating a notable on
+a world it holds — is `trivial` too: they are its own people, waiting to be
+asked. An agitator recruited at DC 10 failed and spent the action on nothing
+(bughunt 2026-10-28). **Calling in a
 promissory note the acting power holds is `trivial` and is not a
 negotiation**: the issuer consented when it wrote the note.
 

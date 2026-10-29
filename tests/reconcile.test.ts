@@ -162,3 +162,21 @@ describe('a story told ahead of its time (bughunt 2026-10-28)', () => {
     expect(outcome.narrative).toMatch(/\n\nNot as told: .*"to Neth" at Neth has only begun; it arrives in 1 turn, not now\./);
   });
 });
+
+describe('an operative sent on the road (bughunt 2026-10-28)', () => {
+  it('is timed: at work from the turn they arrive, not now', async () => {
+    const { timingOf, agentKey } = await import('../src/engine/turn.js');
+    const campaign = Campaign.start('freeworlds', 'timing-agent');
+    campaign.stage([{ op: 'recruit_agent', systemId: 'ark-3', agentClass: 'agitator' }], 'recruit', '', 'model', 'freeworlds');
+    const before = new Set([...campaign.state.pendingOrders.map((o) => o.id), ...campaign.state.agents.map(agentKey)]);
+    campaign.stage(
+      [{ op: 'deploy_agent', systemId: 'tor-6', mission: 'incitement', effect: { kind: 'incite', perTurn: 3 } }],
+      'send',
+      '',
+      'model',
+      'freeworlds',
+    );
+    const lines = timingOf(campaign, before);
+    expect(lines.some((l) => /on the road to Threx and is at work from turn \d+, not now/.test(l))).toBe(true);
+  });
+});
