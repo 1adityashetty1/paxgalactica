@@ -6,3 +6,20 @@
 export function possessive(name: string): string {
   return /s$/.test(name) ? `${name}'` : `${name}'s`;
 }
+
+/**
+ * A reason appended to a note, as a sentence of its own: "… are paid for. a
+ * price on an enemy" ran a model's lower-case clause on after a full stop
+ * (bughunt 2026-10-28). Empty stays empty.
+ */
+export function asSentence(text: string | undefined | null): string {
+  const t = (text ?? '').trim();
+  if (!t) return '';
+  const head = t[0]!.toUpperCase() + t.slice(1);
+  return /[.!?…)"']$/.test(head) ? head : `${head}.`;
+}
+
+/** "1 hull", "3 hulls". */
+export function count(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}

@@ -47,7 +47,15 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm trace <campaign> [other]` | where a played campaign's MODEL time went — per call kind and phase, from `saves/<name>.trace.jsonl`; two names compare runs; `--perfetto` draws a waterfall |
 | `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
+| `node scripts/bughunt-scan.mjs <campaign>` | the mechanical half of a bug hunt: replays a played campaign and lists raw ids, bad plurals, spliced sentences, rejections by code, double payments, drift charged on an act, failed model calls — each with its turn and evidence |
+| `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
+
+**The bug-hunt loop** is the `bughunt` skill (`.claude/skills/bughunt/SKILL.md`):
+play a short campaign through `scripts/pt.mjs --digest`, scan it, validate each
+candidate with a failing test, fix, gate, push to the branch's open PR — and
+stop on a round that finds nothing serious or minor, after five rounds or $20
+of model spend, or at the first question only the user can answer.
 
 > An earlier phase shipped an Ink terminal UI. It was retired: it could not run
 > headless, so it could never be tested or driven by an agent. Everything below

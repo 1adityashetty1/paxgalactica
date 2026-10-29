@@ -386,7 +386,7 @@ import {
   type StarSystem,
   type WorldState,
 } from './state.js';
-import { possessive } from './words.js';
+import { asSentence, possessive } from './words.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -1828,9 +1828,10 @@ function steal(
     .sort((a, b) => a.d - b.d || a.w.id.localeCompare(b.w.id))[0]?.w;
   mark.heldBy = thief;
   mark.atSystemId = home?.id ?? null;
-  logEvent(state, 'narrative', `${mark.text} is gone from ${host.name}, and nobody can say who took it.`, from, [from]);
-  logEvent(state, 'narrative', `${mark.text} is taken from ${host.name}${home ? ` and carried to ${home.name}` : ''}.`, thief, [thief]);
-  return `took ${mark.text} from ${host.name}${home ? ` and carried it to ${home.name}` : ''}.`;
+  const what = `${mark.kind.replace(/_/g, ' ')} (${mark.text.replace(/[.\s]+$/, '')})`;
+  logEvent(state, 'narrative', `Your ${what} is gone from ${host.name}, and nobody can say who took it.`, from, [from]);
+  logEvent(state, 'narrative', `The ${what} is taken from ${host.name}${home ? ` and carried to ${home.name}` : ''}.`, thief, [thief]);
+  return `took ${mark.kind.replace(/_/g, ' ')} from ${host.name}${home ? ` and carried it to ${home.name}` : ''} (${mark.text.replace(/[.\s]+$/, '')}).`;
 }
 
 /** The world `faction` holds nearest `from`, where what it takes is carried. */
@@ -2058,7 +2059,7 @@ function supersedePriorTreaties(
     if (clash.length === 0) continue;
 
     prior.status = 'superseded';
-    const note = `Superseded ${prior.id}: the ${prior.type.replace(/_/g, ' ')} between ${prior.parties.join(' and ')} is now set by the new accord, not added to it (${clash.join(', ')}).`;
+    const note = `Superseded ${prior.id}: the ${prior.type.replace(/_/g, ' ')} between ${prior.parties.map((p) => nameFor(state, p)).join(' and ')} is now set by the new accord, not added to it (${clash.join(', ')}).`;
     notes.push(note);
     logEvent(state, 'diplomacy', note, incoming.parties[0]);
   }
@@ -2579,7 +2580,7 @@ function takeOperative(
   logEvent(
     state,
     'system',
-    `${target.name} exposes ${owner?.name ?? agent.ownerFactionId}'s ${agent.mission ?? 'covert'} operative on ${host.name}.`,
+    `${target.name} exposes ${possessive(owner?.name ?? agent.ownerFactionId)} ${agent.mission ?? 'covert'} operative on ${host.name}.`,
     target.id,
   );
   if (owner) {
@@ -4699,7 +4700,7 @@ function applyOpsUnderRules(
           if (witness.id === turner || witness.id === victimId) continue;
           witness.disposition[turner] = Math.max(-100, (witness.disposition[turner] ?? 0) - SUBORN_REPUTATION_COST);
         }
-        const note = `${nameFor(state, turner)} turns ${taken} ${nameFor(state, victimId)} hull(s) at ${host.name} without a shot fired.`;
+        const note = `${nameFor(state, turner)} turns ${taken} ${nameFor(state, victimId)} hull${taken === 1 ? '' : 's'} at ${host.name} without a shot fired.`;
         notes.push(note);
         logEvent(state, 'diplomacy', note, turner);
         break;
@@ -4871,7 +4872,7 @@ function applyOpsUnderRules(
           logEvent(
             state,
             'system',
-            `${f.name}: dissent ${wasDissent} -> ${f.dissent}/100 (${op.delta >= 0 ? '+' : ''}${op.delta}). ${op.reason}`.trim(),
+            `${f.name}: dissent ${wasDissent} -> ${f.dissent}/100 (${op.delta >= 0 ? '+' : ''}${op.delta}). ${asSentence(op.reason)}`.trim(),
             f.id,
             privateDissent ? [f.id] : null,
           );
@@ -5803,7 +5804,7 @@ function applyOpsUnderRules(
         // A weak favour is spent; a strong hook rests and stays.
         if (owed.strength === 'weak') owed.status = 'called';
         else owed.restsUntil = state.turn + OBLIGATION_REST_TURNS;
-        const note = `${nameFor(state, holder)} calls in what ${nameFor(state, debtor)} owes it: ${what}. ${op.reason}`.trim();
+        const note = `${nameFor(state, holder)} calls in what ${nameFor(state, debtor)} owes it: ${what}. ${asSentence(op.reason)}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, holder);
         break;
@@ -6176,7 +6177,7 @@ function applyOpsUnderRules(
           note = `${poster.name} puts a price of ${credits} on ${nameFor(state, target)}: prizes taken from it and hulls of its destroyed are paid for.`;
         }
         if (credits < op.credits) note += ` (${op.credits} was asked; the treasury held ${credits}.)`;
-        if (op.reason) note += ` ${op.reason}`;
+        if (op.reason) note += ` ${asSentence(op.reason)}`;
         notes.push(note);
         // Public: a price nobody hears of is a price nobody earns.
         logEvent(state, 'diplomacy', note, poster.id);
@@ -7846,7 +7847,7 @@ function applyOpsUnderRules(
             | 'superseded'
             | 'pending',
           exclusive: op.exclusive,
-          summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
+          summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.map((p) => nameFor(state, p)).join(' and ')}`,
         });
         state.treaties.push(treaty);
         // What each party did by signing it, for the lines that forbid it.
@@ -9088,7 +9089,7 @@ function applyOpsUnderRules(
               (witness.disposition[actor] ?? 0) - SUBORN_REPUTATION_COST,
             );
           }
-          const note = `${nameFor(state, actor)} turns ${taken} ${nameFor(state, op.factionId)} hull(s) at ${host.name} without a shot fired.`;
+          const note = `${nameFor(state, actor)} turns ${taken} ${nameFor(state, op.factionId)} hull${taken === 1 ? '' : 's'} at ${host.name} without a shot fired.`;
           notes.push(note);
           logEvent(state, 'diplomacy', note, actor);
         }
@@ -11960,7 +11961,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         logEvent(
           state,
           'system',
-          `${turned} ${target.name} hull(s) at ${host.name} change sides to ${owner?.name ?? agent.ownerFactionId}.`,
+          `${turned} ${target.name} hull${turned === 1 ? '' : 's'} at ${host.name} change${turned === 1 ? 's' : ''} sides to ${owner?.name ?? agent.ownerFactionId}.`,
           target.id,
         );
         // Losing crews to a rival is a humiliation, not merely a loss.
@@ -12040,7 +12041,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       watchNotes.set(
         agent.id,
         lost > 0
-          ? `destroyed ${lost} of ${possessive(target.name)} hull(s) at ${host.name}.`
+          ? `destroyed ${lost} of ${possessive(target.name)} hull${lost === 1 ? '' : 's'} at ${host.name}.`
           : `found nothing of ${possessive(target.name)} left at ${host.name} to strike.`,
       );
       if (lost > 0) {
