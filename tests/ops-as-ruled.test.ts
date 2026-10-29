@@ -93,6 +93,14 @@ describe('a declaration spends what was put at stake (bughunt 2026-10-28)', () =
     expect(holdToRuling([spend('ast-1-1')], { ...base, establishes: undefined, said: 'Feed the garrison from the ration stores.', held }).ops).toHaveLength(1);
   });
 
+  it('scuttles nothing the player did not order struck off', () => {
+    const scuttle = { op: 'scuttle_ships', factionId: 'drajk', systemId: 'ilv-6', count: 1, hull: 'freighter', reason: 'the fire spread' };
+    const out = holdToRuling([scuttle], { ...base, outcome: 'critical_failure', establishes: undefined, said: 'Lay down 4 torpedo boats at Vergesse.', held });
+    expect(out.ops).toEqual([]);
+    expect(out.notes.join(' ')).toMatch(/1 freighter struck off/);
+    expect(holdToRuling([scuttle], { ...base, establishes: undefined, said: 'Scuttle the freighter at Vergesse.', held }).ops).toHaveLength(1);
+  });
+
   it('records no income charter beside work that pays for itself', () => {
     const charter = { op: 'establish_commitment', kind: 'corvid_salvage_factory', factionIds: ['meridian'], text: 'x', incomePerTurn: 12, systemId: 'sek-2' };
     const out = holdToRuling([work, charter], { ...base, establishes: { kind: 'corvid_salvage_factory', mechanism: 'income' }, said: 'Found a factory at Corvid.', held });

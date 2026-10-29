@@ -248,6 +248,12 @@ of yours you agree to end — a letter of marque revoked, a pact with a third
 power left — by the ids your treaty list shows. All of them are **what you
 give**, never what you receive.
 
+**A letter of marque is paid by the power that commissions it.** The
+paymaster pays the raider a stipend each turn and a share of what it takes
+from the named powers; the raider spares the paymaster's shipping. A raider
+never pays its paymaster for the privilege, so do not ask for, or offer, a
+stipend the other way.
+
 **The record is the deal.** When the channel closes, every payment, thing,
 favour, world, toll lift and treaty ended moves exactly as it is written here,
 and only as it is written here — on both sides. A price the other power agreed to pay that you

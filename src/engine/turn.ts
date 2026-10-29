@@ -28,7 +28,7 @@ import {
   type ChatMessage,
 } from '../model/calls.js';
 import {
-  breachContradictsState, classifyPrinciples } from '../domain/compulsions.js';
+  breachContradictsState, classifyPrinciples, enforcedByDrift } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
@@ -684,6 +684,18 @@ async function reconcileStory(
  * sentences that name a world beside a word of taking it.
  */
 const TAKEN = /\b(?:colou?rs? (?:go|goes|went) up|banners? (?:come|comes|came) down|falls?|fell|taken|takes|took|captured?|seized?|storm(?:s|ed)?|lands home|is ours|ours now|in (?:our|meridian) hands)\b/i;
+function takenNear(sentence: string, name: string): boolean {
+  for (const clause of sentence.split(/[,;:—–]|\band\b/)) {
+    const at = clause.indexOf(name);
+    if (at < 0) continue;
+    const words = (t: string) => t.split(/\s+/).filter(Boolean);
+    const before = words(clause.slice(0, at)).slice(-4).join(' ');
+    const after = words(clause.slice(at + name.length)).slice(0, 4).join(' ');
+    if (TAKEN.test(before) || TAKEN.test(after)) return true;
+  }
+  return false;
+}
+
 function holdersOf(campaign: Campaign, draft: string): string[] {
   const me = campaign.state.playerFactionId;
   const out: string[] = [];
@@ -691,6 +703,10 @@ function holdersOf(campaign: Campaign, draft: string): string[] {
     if (!TAKEN.test(sentence)) continue;
     for (const world of campaign.state.systems) {
       if (world.controllerFactionId === me || !sentence.includes(world.name)) continue;
+      // The taking has to be about this world: within a few words of its name,
+      // in its clause. "paid down its Shalka refit debt … every prize it takes"
+      // read as Shalka taken (bughunt 2026-10-28).
+      if (!takenNear(sentence, world.name)) continue;
       const holder = world.controllerFactionId ? (getFaction(campaign.state, world.controllerFactionId)?.name ?? world.controllerFactionId) : 'nobody';
       const line = `- HOLDER: ${world.name} is held by ${holder}, not by you; nothing in this act took it.`;
       if (!out.includes(line)) out.push(line);
@@ -1877,6 +1893,25 @@ export async function closeChannel(
   // A treaty the record ends is ended once: extraction's own break of it would
   // be refused as already void, and sink the accord. And only the record names
   // another power as the breaker: extraction may not break on its behalf.
+  // A payment against a debt is one payment. Extraction writes the
+  // `settle_debt` that applies it, the record builds the `pay` that moves it,
+  // and the reducer charged both: a 120 paydown cost the Confederacy 240
+  // (bughunt 2026-10-28). What a settlement moves comes off the record's pay.
+  for (const raw of stripped.ops) {
+    const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+    if (o?.op !== 'settle_debt') continue;
+    const debt = (campaign.state.debts ?? []).find((d) => d.id === o.debtId);
+    if (!debt) continue;
+    let left = Number(o.amount ?? 0);
+    for (const pay of built.ops) {
+      if (left <= 0) break;
+      if (pay.op !== 'pay' || pay.factionId !== debt.debtorFactionId || pay.to !== debt.creditorFactionId) continue;
+      const take = Math.min(left, Number(pay.amount ?? 0));
+      pay.amount = Number(pay.amount) - take;
+      left -= take;
+    }
+  }
+  built.ops = built.ops.filter((o) => !(o.op === 'pay' && Number(o.amount) <= 0));
   const recordEnds = new Set(built.ops.filter((o) => o.op === 'break_treaty').map((o) => String(o.treatyId)));
   stripped.ops = stripped.ops.filter((raw) => {
     const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
@@ -1947,9 +1982,16 @@ export async function closeChannel(
   // dissent charged for "no raid under way" while a raid was staged and a fleet
   // was in transit. Checked before the paid call, so a contradiction costs
   // nothing to catch.
-  if (
+  // A line code reads off the acts is crossed when the accord's acts cross it
+  // (`staged.crossed`, read below), never on a reading of the narrative: the
+  // Confederacy's "a truce or a letter of marque … is the most it signs" refused
+  // the letter of marque it names as allowed (bughunt 2026-10-28).
+  if (firstPass && lineReadByCode(campaign.state, campaign.state.playerFactionId, firstPass.principle)) {
+    breach = null;
+  } else if (
     firstPass?.kind === 'compulsion' &&
-    breachContradictsState(campaign.state, campaign.state.playerFactionId, firstPass.principle)
+    (breachContradictsState(campaign.state, campaign.state.playerFactionId, firstPass.principle) ||
+      enforcedByDrift(campaign.state, campaign.state.playerFactionId, firstPass.principle))
   ) {
     breach = null;
   } else if (firstPass) {
@@ -2161,7 +2203,10 @@ export async function closeChannel(
       // sees what the other power received, does not overrule it.
       if (theirBreach && lineReadByCode(stateBefore, factionId, theirBreach.principle)) {
         theirBreach = null;
-      } else if (theirBreach?.kind === 'compulsion' && breachContradictsState(stateBefore, factionId, theirBreach.principle)) {
+      } else if (
+        theirBreach?.kind === 'compulsion' &&
+        (breachContradictsState(stateBefore, factionId, theirBreach.principle) || enforcedByDrift(stateBefore, factionId, theirBreach.principle))
+      ) {
         theirBreach = null;
       } else if (theirBreach) {
         const check = await verifyBreachRelevance(theirText, theirBreach.principle, theirBreach.kind);

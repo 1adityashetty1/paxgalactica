@@ -261,12 +261,20 @@ export function spendsAsSaid(
     if (!kind) return true; // not the actor's: the reducer's to refuse
     return kind.split('_').every((w) => new RegExp(`\\b${w}(?:s|es)?\\b`).test(words));
   };
+  // Striking off your own hulls is an intent the player states. A natural 1 on
+  // laying down torpedo boats scuttled a freighter moored beside the yard
+  // (bughunt 2026-10-28): a loss nobody fought, written as an order.
+  const scuttling = /\b(?:scuttle|scuttles|scuttling|scrap|scrapping|decommission|decommissioning|strike off|sink our own|break up)\b/.test(words);
   const kept: unknown[] = [];
   const dropped: string[] = [];
   for (const op of ops) {
-    const o = op as { op?: string; assetId?: string } | null;
+    const o = op as { op?: string; assetId?: string; count?: number; hull?: string } | null;
+    if (o?.op === 'scuttle_ships' && !scuttling) {
+      dropped.push(`${o.count ?? 'some'} ${String(o.hull ?? 'hull').replace(/_/g, ' ')}${o.count === 1 ? '' : 's'} struck off`);
+      continue;
+    }
     if (o?.op === 'consume_asset' && o.assetId && !named(o.assetId)) {
-      dropped.push((held.find((a) => a.id === o.assetId)?.kind ?? o.assetId).replace(/_/g, ' '));
+      dropped.push(`the ${(held.find((a) => a.id === o.assetId)?.kind ?? o.assetId).replace(/_/g, ' ')}`);
       continue;
     }
     kept.push(op);
@@ -369,7 +377,7 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
   }
   const spent = bounds.said !== undefined ? spendsAsSaid(committed.ops, bounds.said, bounds.held ?? []) : { ops: committed.ops, dropped: [] };
   if (spent.dropped.length > 0) {
-    notes.push(`Only what you put at stake is spent: left out the ${[...new Set(spent.dropped)].join(', ')}, which you did not offer.`);
+    notes.push(`Only what you put at stake is spent: left out ${[...new Set(spent.dropped)].join(', ')}, which you did not offer.`);
   }
   const prized = prizesAsRuled(spent.ops, bounds.yields);
   if (prized.dropped.length > 0) {

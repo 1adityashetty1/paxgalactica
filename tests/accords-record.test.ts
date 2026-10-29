@@ -229,3 +229,62 @@ describe('a treaty ended across the table (bughunt 2026-10-28)', () => {
     expect(out.rejections[0]?.code).toBe('illegal_value');
   });
 });
+
+describe('a line code reads off the acts (bughunt 2026-10-28)', () => {
+  it('does not refuse the letter of marque the line itself allows', async () => {
+    const s = createSeedState('drajk');
+    const line = s.factions.find((f) => f.id === 'drajk')!.lineActs!.find((t) => t.forbids.includes('alliance_signed'))!.text;
+    queue = {
+      extraction: [
+        {
+          narrative: 'The Combine commissions the Pack against the Vigil.',
+          accepted: ['ojjul:letter_of_marque'],
+          ops: [
+            {
+              op: 'form_treaty',
+              parties: ['ojjul', 'drajk'],
+              treatyType: 'contract',
+              terms: { incomePerTurn: { ojjul: -15, drajk: 15 }, commission: { raider: 'drajk', against: ['vigil'], share: 50 } },
+              durationTurns: 10,
+              summary: 'a letter of marque against the Vigil',
+            },
+          ],
+        },
+      ],
+      appraisal: [
+        { ...clean, breach: { kind: 'red_line', principles: [line], how: 'it binds', by: 'the captains', reason: 'An alliance by another name.' } },
+        clean,
+      ],
+      breach_relevance: [{ relevant: true, why: '' }],
+    };
+    const campaign = Campaign.start('drajk', 'marque-allowed');
+    const out = await closeChannel(campaign, 'ojjul', said, [c('ojjul', 'letter_of_marque', { perTurn: 15 })]);
+    expect(out.refusal ?? null).toBeNull();
+    expect(out.rejections).toEqual([]);
+    expect(campaign.state.treaties.some((t) => t.type === 'contract' && t.terms.commission?.raider === 'drajk')).toBe(true);
+  });
+});
+
+describe('a debt paid down across the table (bughunt 2026-10-28)', () => {
+  it('is paid once, though extraction settles it and the record pays it', async () => {
+    const s = createSeedState('drajk');
+    const debt = s.debts.find((d) => d.debtorFactionId === 'drajk')!;
+    queue = {
+      extraction: [
+        {
+          narrative: 'Drajk pays down 100 of its debt.',
+          accepted: ['drajk:debt_paydown', 'ojjul:goodwill'],
+          ops: [{ op: 'settle_debt', debtId: debt.id, amount: 100, reason: 'paid down' }],
+        },
+      ],
+      appraisal: [clean, clean],
+    };
+    const campaign = Campaign.start('drajk', 'debt-once');
+    const before = campaign.state.factions.find((f) => f.id === 'drajk')!.credits;
+    const owed = campaign.state.debts.find((d) => d.id === debt.id)!.balance;
+    const out = await closeChannel(campaign, 'ojjul', said, [c('drajk', 'debt_paydown', { credits: 100 }), c('ojjul', 'goodwill')]);
+    expect(out.rejections).toEqual([]);
+    expect(before - campaign.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(Math.min(100, owed));
+    expect(campaign.state.debts.find((d) => d.id === debt.id)!.balance).toBe(Math.max(0, owed - 100));
+  });
+});

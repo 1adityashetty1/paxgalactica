@@ -3365,6 +3365,8 @@ export interface LegacyRules {
   oneJumpOnce?: boolean;
   /** Standing guard in another power's orbit needs its basing rights or a war (journal version 32). */
   guardNeedsBasing?: boolean;
+  /** A letter of marque's stipend runs from the paymaster to the raider (journal version 34). */
+  marqueStipendToRaider?: boolean;
   /**
    * An ultimatum running out puts nobody at war with a power it is bound to
    * peace with — a backer that signed a ceasefire with the issuer after
@@ -3667,6 +3669,7 @@ function applyOpsUnderRules(
     cessionFromTarget = true,
     oneJumpOnce = true,
     guardNeedsBasing = true,
+    marqueStipendToRaider = true,
     stealNamesARivalsThing = true,
     fleetsMeetInBattle = true,
     counterpartyTolls = true,
@@ -7110,6 +7113,15 @@ function applyOpsUnderRules(
           }
           if (op.type === 'blockade') recordAct('blockade_ordered', op.factionId, [other]);
           if (op.type === 'commerce_raiding') recordAct('raid_ordered', op.factionId, [other]);
+          // A raid takes nothing from a power it cannot land on, and the
+          // order was accepted without a word: a raider sent at its own
+          // paymaster's world spent the action learning nothing (bughunt
+          // 2026-10-28). Only other powers' cargo through the world is taken.
+          if (op.type === 'commerce_raiding' && other && !raidLandsOn(state.treaties, state.turn, op.factionId, other)) {
+            notes.push(
+              `${nameFor(state, other)}'s own shipping is not ${nameFor(state, op.factionId)}'s to take — a letter of marque, protection or a trade accord stands between them — so the raid at ${getSystem(state, op.targetId)?.name ?? op.targetId} takes only other powers' cargo through it.`,
+            );
+          }
         }
         const delivers = effect
           ? `, to deliver ${describeOrderEffect(effect)} for ${invested} credits`
@@ -7608,6 +7620,18 @@ function applyOpsUnderRules(
           const bad = commission.against.find((id) => !factionExists(id) || op.parties.includes(id));
           if (bad) {
             reject(raw, 'illegal_value', `A letter of marque names powers outside the contract to raid; "${bad}" is not one.`);
+            break;
+          }
+          // The paymaster pays the raider. A marque written with the raider
+          // paying its paymaster a stipend landed from a persona that had the
+          // direction backwards (bughunt 2026-10-28). Journal version 34.
+          const paymaster = op.parties.find((p) => p !== commission.raider);
+          if (marqueStipendToRaider && (op.terms.incomePerTurn?.[commission.raider] ?? 0) < 0 && paymaster) {
+            reject(
+              raw,
+              'illegal_value',
+              `In a letter of marque ${nameFor(state, paymaster)} pays ${nameFor(state, commission.raider)}: the stipend runs to the raider, never from it.`,
+            );
             break;
           }
         }

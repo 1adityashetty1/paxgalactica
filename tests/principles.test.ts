@@ -684,6 +684,10 @@ describe('an accord cannot launder a red line', () => {
       }),
     };
     const campaign = Campaign.start('ojjul', 'test-accord-compulsion');
+    // The plumbing of a charge the model rules on: this line is read off the
+    // acts now, and a promise of grace has none, so its tag is cleared to
+    // reach it (bughunt 2026-10-28).
+    for (const f of campaign.state.factions) f.lineActs = [];
 
     const outcome = await closeChannel(campaign, 'freeworlds', said);
 

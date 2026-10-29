@@ -409,8 +409,13 @@ export class Campaign {
     // how it went is not yet true. The Vigil answered "Torrek Anchorage lost in
     // a single disciplined pass" to a story; the battle went the other way
     // (playtest 2026-10-19, S3). Such a batch is told as what was sent.
+    // An accord is the business of the two powers who made it: treaties are
+    // scoped to their parties everywhere else, and the one summary handed to
+    // every responder told the Vigil of a private letter of marque against it
+    // (bughunt 2026-10-28). The counterparty heard it in the room.
+    const hidden = (b: StagedBatch) => b.secret || b.accordWith !== undefined;
     const summary = acts
-      .filter((b) => !b.secret)
+      .filter((b) => !hidden(b))
       .map((b, i) => {
         const sent = sentAgainst(this.state, b.applied ?? b.ops);
         const told = sent.length > 0 ? `${sent.join('; ')} (the outcome is decided when they arrive)` : b.narrative;
@@ -421,7 +426,7 @@ export class Campaign {
     // reaches nobody (playtest 2026-10-18, D4).
     const ops = acts.flatMap((b) => {
       const landed = b.applied ?? b.ops;
-      return b.secret ? landed.filter(isPublicAct) : landed;
+      return hidden(b) ? landed.filter(isPublicAct) : landed;
     });
     return { summary, ops };
   }

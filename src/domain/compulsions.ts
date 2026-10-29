@@ -375,3 +375,17 @@ export function breachContradictsState(
 
   return evaluate(state, factionId, line.trigger) === null;
 }
+
+/**
+ * Whether a line is a compulsion enforced by drift — one carrying a trigger.
+ *
+ * Its trigger charges `COMPULSION_DRIFT_DISSENT` every turn the board shows the
+ * neglect, and an act can only answer it, never breach it: a declared raid was
+ * charged 15 dissent for breaching "the captains require plunder", the line
+ * that demands raids (bughunt 2026-10-28). `breachContradictsState` caught that
+ * only once the raid was on the board, and a declaration is ruled before it is.
+ */
+export function enforcedByDrift(state: WorldState, factionId: string, principle: string): boolean {
+  const faction = state.factions.find((f) => f.id === factionId);
+  return !!faction?.compulsions.find((c) => matches(principle, c.text))?.trigger;
+}

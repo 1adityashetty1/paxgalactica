@@ -3271,7 +3271,10 @@ not raid or blockade. **A letter of marque** (`terms.commission`, from
 *Starsector*) commissions one party against named non-parties: the paymaster
 pays the stipend in `incomePerTurn` and `share` percent (trimmed to
 `MAX_COMMISSION_SHARE`, 50) of what the raider takes from them each turn, as a
-transfer trimmed to its treasury. The raider then cannot raid its paymaster
+transfer trimmed to its treasury. The stipend runs to the raider, never from
+it: a marque with the raider paying is refused (journal version 34,
+`marqueStipendToRaider`). The raider then cannot raid its paymaster — a raid
+ordered at its paymaster's world is told it takes only other powers' cargo
 (`raidLandsOn`), and its raids on the named powers are **licensed**: no heat,
 and no piracy reputation charged by the paymaster. Extraction-only, like every
 treaty, and grounded: either term binds the other party, so it needs that party
@@ -3644,7 +3647,11 @@ at all. It is deliberately well below `REFUSAL_DISSENT` (8) — ordering your
 faction to betray itself is worse than merely failing to be it.
 
 A compulsion with no trigger is **not** inert; it is still enforced the original
-way, by refusal. `CompulsionSchema` accepts a bare string and normalises it, so
+way, by refusal. **And one with a trigger is drift's alone** (`enforcedByDrift`):
+no declaration, accord or counterparty ruling charges it, because an act can
+only answer it — a declared raid was charged 15 dissent for breaching *"the
+captains require plunder"*, ruled before the raid was on the board (bughunt
+2026-10-28). `CompulsionSchema` accepts a bare string and normalises it, so
 every save and journal written before triggers existed still loads.
 
 > The one thing TypeScript will not catch here: `faction.compulsions` is now
@@ -4231,7 +4238,11 @@ a reaction's offending ops are held back; a bot's are dropped (`honourLines`,
 beside `honourTreaties`); an accord reads `paid_for_peace` and
 `given_for_nothing` off the whole batch and the concession record
 (`accordActs`). The arbiter still rules on every line before the roll — a
-tagged line simply cannot be missed afterwards. **Drajk's second red line was
+tagged line simply cannot be missed afterwards. **On an accord, a tagged line
+is the acts' alone** (`lineReadByCode`), for either party: the model's reading
+of the narrative refused Drajk's letter of marque under the line that names a
+marque as allowed, and charged the Combine "nothing for nothing" for a ransom
+it paid (bughunt 2026-10-28). **Drajk's second red line was
 reworded** to *"will not be bound in public to another power — no alliance, no
 coalition, no foreign fleet based in its space"*, forbidding `alliance_signed`
 and `basing_granted`, so its letters of marque and ceasefires stand: no bot
@@ -4245,7 +4256,9 @@ commitment, a debt, a loan, a favour owed. `transfersFromRecord` builds every
 payment, thing handed over, favour released or sold, cession and toll lift from
 the ids each power wrote as it spoke (`Concession` gained `lifts` and
 `liftTurns`), and `withoutRecordTransfers` drops any extraction wrote itself, so
-a sale is paid once. A treaty a power agreed to end — a letter of marque
+a sale is paid once. A debt paid down is paid once too: a `settle_debt`
+extraction writes comes off the record's payment from that debtor to that
+creditor, which were both charged before (bughunt 2026-10-28). A treaty a power agreed to end — a letter of marque
 revoked, a pact with a third power left — is `Concession.ends`, built as a
 `break_treaty` naming that power as `factionId`, which only an accord may
 (bughunt 2026-10-28: the price for revoking a marque landed and the revocation
@@ -4776,7 +4789,10 @@ ops toward responder selection only where they are **public by the fog's own
 rule** — a fleet under way is seen by everyone, so an attack riding in the same
 declaration still wakes the power it lands on, and a test pins the battle
 end to end. A turn in which everything was secret is described as nothing
-visible, rather than as "acted this turn:" over an empty list.
+visible, rather than as "acted this turn:" over an empty list. **An accord is
+kept out the same way**: treaties are scoped to their parties, and the one
+summary every responder reads told the Vigil of a private letter of marque
+against it (bughunt 2026-10-28).
 
 A secret batch's notes carry `private: true` on the op, which the reducer scopes
 to the actor. On the op rather than decided in the reducer because the reducer
@@ -6576,7 +6592,9 @@ word of its kind — is left out, said. And **work that pays for itself carries 
 income charter**: a fixture, a development, a build or a levy beside an
 `establish_commitment` drops the commitment, since founding a factory once also
 minted a 12-a-turn charter for it (bughunt 2026-10-28). Only a dropped income is
-told to the player; a dropped record goes without a word.
+told to the player; a dropped record goes without a word. A `scuttle_ships` is
+the same: struck off only when the player's words say scuttle, scrap or strike
+off — a critical failure on laying down boats scuttled a freighter.
 
 **Sends are the ruling's.** A resolution call may fill in a send the arbiter
 ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any

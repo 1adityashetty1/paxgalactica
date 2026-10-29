@@ -41,7 +41,7 @@ import {
   type WorldState,
   hullsAt,
 } from '../domain/state.js';
-import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
+import { classifyPrinciple, classifyPrinciples, enforcedByDrift } from '../domain/compulsions.js';
 import { checkGround, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
@@ -740,7 +740,9 @@ export async function resolveAction(
   let relevanceCost = 0;
   let classified = firstPass;
   let relevant: boolean | null = null;
-  if (firstPass) {
+  if (firstPass?.kind === 'compulsion' && actor && enforcedByDrift(state, actor.id, firstPass.principle)) {
+    classified = null;
+  } else if (firstPass) {
     const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind, actor);
     relevanceCost = check.costUsd;
     relevant = check.relevant;
@@ -1214,7 +1216,10 @@ export async function resolveAction(
     let ops = held.ops as ResolutionOutput['ops'];
     // A windfall is one more of a prize the ruling named, and only on a
     // critical (§4). The other bonuses are applied by the engine once staged.
-    if (check?.outcome === 'critical_success' && o.bonus === 'windfall') {
+    // Not beside a raid: its prize is the lanes' to pay, and is dropped before
+    // staging, so the windfall was announced on nothing (bughunt 2026-10-28).
+    const raiding = ops.some((x) => x.op === 'raid');
+    if (check?.outcome === 'critical_success' && o.bonus === 'windfall' && !raiding) {
       const at = ops.findIndex((x) => x.op === 'create_asset' && (bounds.yields as readonly string[]).includes(x.kind));
       if (at >= 0) {
         const prize = ops[at] as Extract<ResolutionOutput['ops'][number], { op: 'create_asset' }>;
@@ -1281,7 +1286,7 @@ const OUTCOME_GUIDANCE: Record<CheckResult['outcome'], string> = {
   failure:
     'It did not work. Emit the ops for what the attempt COST — spent credits, wasted turns, a rival forewarned — and NOT the ops for the thing the player wanted. Nothing they were reaching for changes hands.',
   critical_failure:
-    'It failed badly and made things worse. Emit ops for the cost and for a real consequence beyond it: an exposed agent, a broken relationship, a loss that was not on the table when the order was given.',
+    'It failed badly and made things worse. Emit ops for the cost and for a real consequence beyond it: an exposed agent, a broken relationship, credits lost, a rival forewarned. Never strike off the player\'s own ships or spend a thing they did not put at stake — those are left out by the engine.',
 };
 
 /* ------------------------------------------------------------------ */
