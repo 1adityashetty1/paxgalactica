@@ -159,7 +159,7 @@ describe('a story told ahead of its time (bughunt 2026-10-28)', () => {
     };
     const outcome = await submitAction(campaign, 'Sail two battleships from Sekkar Gate to Neth without landing.');
     expect(calls.map((c) => c.kind)).toContain('reconcile');
-    expect(outcome.narrative).toMatch(/\n\nNot as told: .*"to Neth" at Neth has only begun; it arrives in 1 turn, not now\./);
+    expect(outcome.narrative).toMatch(/\n\nNot as told: .*"Operating Group \d+: to Neth" at Neth has only begun; it arrives in 1 turn, not now\./);
   });
 });
 

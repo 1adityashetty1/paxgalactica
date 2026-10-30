@@ -1,4 +1,4 @@
-import { adoptIndex, fleetIdFor, fleetMode, fleetName, fleetsAt, lowestFree, numbersInUse, resolveFleet, settleCouriers, settleFleets, withFleet, type Fleet, type FleetTag } from './fleets.js';
+import { adoptIndex, fleetIdFor, fleetMode, fleetName, fleetsAt, lowestFree, numbersInUse, reindex, resolveFleet, settleCouriers, settleFleets, withFleet, type Fleet, type FleetTag } from './fleets.js';
 import {
   FIB_BUCKETS,
   MAX_DURATION,
@@ -3382,6 +3382,12 @@ export interface LegacyRules {
   /** A letter of marque's stipend runs from the paymaster to the raider (journal version 34). */
   marqueStipendToRaider?: boolean;
   /**
+   * A force that is not one whole fleet sails as a fleet of its own, formed
+   * from the fleets it draws on, and keeps its identity where it lands
+   * (journal version 35). The bots' massing still rejoins the senior fleet.
+   */
+  adhocForcesAreFleets?: boolean;
+  /**
    * An ultimatum running out puts nobody at war with a power it is bound to
    * peace with — a backer that signed a ceasefire with the issuer after
    * declaring for the target stays out (journal version 33).
@@ -3684,6 +3690,7 @@ function applyOpsUnderRules(
     oneJumpOnce = true,
     guardNeedsBasing = true,
     marqueStipendToRaider = true,
+    adhocForcesAreFleets = true,
     stealNamesARivalsThing = true,
     fleetsMeetInBattle = true,
     counterpartyTolls = true,
@@ -3696,6 +3703,8 @@ function applyOpsUnderRules(
   // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
   // of one of them sails, so one-jump moves cannot be chained (`oneJumpOnce`).
   const landedAtOnce = new Set<string>();
+  // The batch's path, under a name the movement branch's hyperlane `path` does not shadow.
+  const batchPath = path;
   // Who holds office before the batch, so a seat emptied by it is charged.
   const officeBefore = seatLossCostsFavour && courtRecorded(input) ? inOffice(input) : null;
   const rejections: OpRejection[] = [];
@@ -4177,13 +4186,33 @@ function applyOpsUnderRules(
         op = { op: 'move_officer', factionId: op.factionId, officer: found.fleet.commanderId, targetId: op.targetId };
       }
     }
+    // The fleets a force is drawn from, each taken whole first, when it is not
+    // one fleet sailing whole (`adhocForcesAreFleets`).
+    let drawnFrom: Fleet[] | null = null;
     if (op.op === 'issue_order' && op.fleet !== undefined) {
       const found = findFleet(state, op.factionId, op.fleet);
       if (typeof found === 'string') continue;
       const whole = Object.fromEntries(HULL_CLASSES.map((h) => [h, found.fleet.stack[h] ?? 0])) as Required<ShipStack>;
-      op = { ...op, originId: found.system.id, force: whole };
-      sailing = { id: found.fleet.id, kind: found.fleet.kind, number: found.fleet.number, name: found.fleet.name, detached: false, commanderId: found.fleet.commanderId };
-      sailingWholePort = hullsIn(found.fleet.stack) === hullsAt(found.system, op.factionId);
+      const written = op.force;
+      const part =
+        adhocForcesAreFleets && path !== undefined && path !== 'bot' && written !== undefined && found.fleet.kind === 'line'
+          ? typeof written === 'number'
+            ? drawProportional(found.fleet.stack, written)
+            : normaliseStack(Object.fromEntries(HULL_CLASSES.map((h) => [h, Math.min(written[h] ?? 0, whole[h])])) as ShipStack)
+          : null;
+      if (part && hullsIn(part) > 0 && hullsIn(part) < hullsIn(found.fleet.stack)) {
+        // A force written smaller than the fleet it names is split off it and
+        // sails as a fleet of its own; the rest stays. Drajk's reaction wrote
+        // the 1st Pack with four and four, and six and six sailed, leaving
+        // Vergesse empty (bughunt 2026-10-29).
+        op = { ...op, originId: found.system.id, force: part };
+        drawnFrom = [found.fleet];
+        notes.push(`${describeStack(part)} split from ${fleetName(op.factionId, found.fleet)} at ${found.system.name} to sail as a fleet of its own.`);
+      } else {
+        op = { ...op, originId: found.system.id, force: whole };
+        sailing = { id: found.fleet.id, kind: found.fleet.kind, number: found.fleet.number, name: found.fleet.name, detached: false, commanderId: found.fleet.commanderId };
+        sailingWholePort = hullsIn(found.fleet.stack) === hullsAt(found.system, op.factionId);
+      }
     }
 
     switch (op.op) {
@@ -6835,19 +6864,72 @@ function applyOpsUnderRules(
             notes.push(note);
             logEvent(state, 'system', note, op.factionId);
           }
-          withFleet(op.factionId, sailing, () =>
-            setStackAt(
-              origin,
-              op.factionId,
-              Object.fromEntries(
-                HULL_CLASSES.map((h) => [h, (inPort[h] ?? 0) - (force[h] ?? 0)]),
-              ) as ShipStack,
-            ),
-          );
+          // Everything is a fleet (`adhocForcesAreFleets`): a force that is not
+          // one fleet whole is formed from the fleets it draws on — each wholly
+          // inside it taken whole, the rest split off — and sails as one. The
+          // senior fleet it takes whole lends it its name; otherwise it is a
+          // new fleet. Free: organising is not an act. The bots' massing still
+          // goes as a detachment and rejoins where it lands.
+          const forming =
+            adhocForcesAreFleets && fleetMode(origin) && batchPath !== undefined && batchPath !== 'bot' && sailing === null;
+          if (forming) {
+            const here = fleetsAt(origin, op.factionId).filter((f) => f.kind !== 'courier');
+            const inside = (f: Fleet) => HULL_CLASSES.every((h) => (f.stack[h] ?? 0) <= (force[h] ?? 0));
+            const whole = drawnFrom ? [] : here.filter((f) => f.kind === 'line' && hullsIn(f.stack) > 0 && inside(f));
+            const pool = drawnFrom ?? here;
+            // Take each whole fleet, then what is left of the force off the
+            // fleets it was drawn from, in proportion.
+            let left: ShipStack = force;
+            for (const f of [...whole].sort((a, b) => a.number - b.number)) {
+              if (!HULL_CLASSES.every((h) => (f.stack[h] ?? 0) <= (left[h] ?? 0))) continue;
+              left = subtractStack(left, f.stack);
+              f.stack = {};
+            }
+            for (const h of HULL_CLASSES) {
+              let want = left[h] ?? 0;
+              if (want <= 0) continue;
+              const holders = pool.filter((f) => (f.stack[h] ?? 0) > 0);
+              const total = holders.reduce((n, f) => n + (f.stack[h] ?? 0), 0);
+              const take = (f: Fleet, n: number) => {
+                f.stack = normaliseStack({ ...f.stack, [h]: (f.stack[h] ?? 0) - n });
+                want -= n;
+              };
+              // In proportion, rounded down; then what rounding left, senior first.
+              for (const f of holders) take(f, Math.min(want, Math.floor(((f.stack[h] ?? 0) * (left[h] ?? 0)) / total)));
+              for (const f of holders) if (want > 0) take(f, Math.min(want, f.stack[h] ?? 0));
+            }
+            origin.fleets = origin.fleets!.filter((f) => hullsIn(f.stack) > 0 || f.kind === 'courier');
+            reindex(origin, op.factionId);
+            const lead = [...whole].sort((a, b) => a.number - b.number)[0];
+            const number = lead?.number || lowestFree(numbersInUse(state, op.factionId));
+            departing = {
+              id: lead?.id ?? fleetIdFor(op.factionId, number),
+              kind: 'line',
+              number,
+              name: lead?.name ?? null,
+              detached: false,
+              commanderId: lead?.commanderId ?? null,
+            };
+            sailing = departing;
+            const merged = whole.filter((f) => f !== lead);
+            if (merged.length > 0) {
+              notes.push(`${merged.map((f) => fleetName(op.factionId, f)).join(' and ')} merged into ${fleetName(op.factionId, departing)} to sail.`);
+            }
+          } else {
+            withFleet(op.factionId, sailing, () =>
+              setStackAt(
+                origin,
+                op.factionId,
+                Object.fromEntries(
+                  HULL_CLASSES.map((h) => [h, (inPort[h] ?? 0) - (force[h] ?? 0)]),
+                ) as ShipStack,
+              ),
+            );
+          }
           // A named fleet keeps its name under way; ships sent without one go
           // as a numbered detachment, which rejoins the senior fleet where it
           // arrives (`fleets.ts`).
-          if (fleetMode(origin)) {
+          if (fleetMode(origin) && !forming) {
             departing = sailing ?? (() => {
               const number = lowestFree(numbersInUse(state, op.factionId));
               return { id: fleetIdFor(op.factionId, number), kind: 'line' as const, number, name: null, detached: true, commanderId: null };

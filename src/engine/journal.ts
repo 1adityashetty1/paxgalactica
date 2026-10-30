@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 34;
+export const JOURNAL_VERSION = 35;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -123,6 +123,7 @@ export const JournalVersionSchema = z.union([
   z.literal(32),
   z.literal(33),
   z.literal(34),
+  z.literal(35),
 ]);
 
 export const JournalSchema = z.object({
@@ -431,6 +432,9 @@ export function replay(
     guardNeedsBasing: parsed.version >= 32,
     // A letter of marque could have its raider pay the paymaster a stipend.
     marqueStipendToRaider: parsed.version >= 34,
+    // A force written smaller than a fleet sailed the whole fleet, and one
+    // drawn from several sailed as a detachment that rejoined on arrival.
+    adhocForcesAreFleets: parsed.version >= 35,
     // A backer at peace with the other side went to war at the deadline anyway.
     peaceHoldsAtDeadline: parsed.version >= 33,
     stealNamesARivalsThing: parsed.version >= 26,

@@ -6194,6 +6194,17 @@ away, and anywhere else they fall with it. Measured: the harness board is
 unchanged at 5/5/6/5/4, and over 40 bot turns no hull stands outside a fleet
 and no listener or freighter rides in a warfleet.
 
+**Everything that sails is a fleet** (journal version 35,
+`LegacyRules.adhocForcesAreFleets`). A move written as a `force` rather than a
+fleet is formed into one, at no cost: every fleet wholly inside the force is
+merged into the senior of them, which lends its name, and the rest is split off
+the fleets it draws on. It keeps its identity where it lands. A `force` beside
+a named fleet, and smaller than it, is split off that fleet — it was ignored,
+and a reaction that wrote four and four of the 1st Pack sailed six and six,
+leaving Vergesse empty (bughunt 2026-10-29). The bots' massing alone still goes
+as a detachment that rejoins the senior fleet, or their constant moves would
+multiply fleets without end.
+
 **Being present is what risks you; commanding is what helps.** Every officer on
 the field falls if their contingent does, while only the senior officer of the
 largest contingent applies their effects. Where they end up is tracked per

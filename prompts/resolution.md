@@ -243,8 +243,11 @@ assault from an orbit you hold, a turn.
 world in the state block ("Operating Group 2", "3rd Pack"). **When the player
 names a fleet, move it by name**: `"fleet": "Operating Group 2"` on the
 `move`, and no `force` — a named fleet sails whole from wherever it stands, and
-keeps its name. A move that names no fleet sends what `force` says as a
-detachment, which rejoins the senior fleet where it arrives. **Every hull is in
+keeps its name. **Everything that sails is a fleet**: a `force` smaller than
+the fleet named is split off it and sails as a fleet of its own, and a move
+that names no fleet forms its `force` into one — whole fleets inside it merged
+into the senior, the rest split off — which keeps its identity where it lands.
+When the player names ships rather than a fleet, write `force`, not `fleet`. **Every hull is in
 a fleet, and a single-vessel job is a fleet of its own**: each listener and
 each freighter stands as a one-ship fleet ("Ear of the Family 2", "Spice Hauler 3"), built
 and landed that way, and rides in a warfleet only once its power merges it in.
