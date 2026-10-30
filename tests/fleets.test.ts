@@ -614,3 +614,23 @@ describe('a landing with nothing to land with (bughunt 2026-10-28)', () => {
     expect(pair.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
   });
 });
+
+describe('a courier written into a fleet’s force (bughunt 2026-10-29)', () => {
+  it('is not counted as a ship that could not sail', () => {
+    // The courier is the officer's passage, never in the `ships` index: the
+    // officer named sails with the fleet whatever. Counting it told the player
+    // "Requested 23 ships but only 22 could sail" of a fleet that sailed whole.
+    const s = createSeedState('vigil');
+    const out = applyOps(
+      s,
+      [{ op: 'move', factionId: 'vigil', originId: 'tor-3', targetId: 'tor-4', force: { battleship: 7, courier: 1 }, officers: ['Galba'] }],
+      'model',
+      'vigil',
+      true,
+      {},
+      'declared',
+    );
+    expect(out.rejections).toEqual([]);
+    expect(out.notes.join(' ')).not.toMatch(/Requested/);
+  });
+});

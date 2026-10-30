@@ -386,7 +386,7 @@ import {
   type StarSystem,
   type WorldState,
 } from './state.js';
-import { asSentence, possessive } from './words.js';
+import { asSentence, count, possessive } from './words.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -6805,7 +6805,10 @@ function applyOpsUnderRules(
             op.force === undefined || typeof op.force === 'number'
               ? inPort
               : normaliseStack(op.force);
-          const asked = typeof op.force === 'number' ? op.force : hullsIn(wantStack);
+          // A courier written into the force is the officer's passage, which
+          // is never in port: they sail with the fleet anyway, so it is not a
+          // ship that could not sail (bughunt 2026-10-29).
+          const asked = typeof op.force === 'number' ? op.force : hullsIn(wantStack) - (wantStack.courier ?? 0);
           force =
             op.force === undefined
               ? normaliseStack(inPort)
@@ -12049,8 +12052,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           state,
           'system',
           profile.oneShot
-            ? `${owner?.name ?? agent.ownerFactionId} decapitates the command on ${host.name}: ${target.name} loses ${lost} fleet strength.`
-            : `Sabotage on ${host.name}: ${target.name} loses ${lost} fleet strength.`,
+            ? `${owner?.name ?? agent.ownerFactionId} decapitates the command on ${host.name}: ${target.name} loses ${count(lost, 'hull')}.`
+            : `Sabotage on ${host.name}: ${target.name} loses ${count(lost, 'hull')}.`,
           target.id,
         );
       }

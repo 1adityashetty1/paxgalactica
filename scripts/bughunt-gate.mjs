@@ -43,7 +43,7 @@ if (!record) {
 execSync('pnpm -s build', { cwd: root, stdio: 'ignore' });
 
 const saves = existsSync(resolve(root, 'saves'))
-  ? readdirSync(resolve(root, 'saves')).filter((f) => /^bughunt.*\.json$/.test(f)).map((f) => f.replace(/\.json$/, ''))
+  ? readdirSync(resolve(root, 'saves')).filter((f) => /^bughunt.*\.json$/.test(f) && !f.endsWith('-session.json')).map((f) => f.replace(/\.json$/, ''))
   : [];
 const counts = {};
 for (const name of saves) {

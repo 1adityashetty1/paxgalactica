@@ -7715,6 +7715,9 @@ whole negotiation was lost after both sides had said yes. A blocker goes through
 the relevance check first, and goes when the concession it stands on is
 retracted (playtest 2026-10-18: a payment made *for* open lanes was blocked by
 "will not close a lane", and a retracted handover still refused the accord).
+A line code reads off the accord's acts (`lineReadByCode`) raises no blocker:
+the Vigil paying rent for hired hulls was ruled "being bought", and the whole
+accord refused (bughunt 2026-10-29).
 
 What this does **not** establish: a persona that records a concession
 contradicting its own prose is still possible. But that is a contradiction
