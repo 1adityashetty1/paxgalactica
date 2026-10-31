@@ -6203,7 +6203,7 @@ function applyOpsUnderRules(
           );
           // Once, on posting: a price on your head is an insult whatever the figure.
           moveRegard(state, target, poster.id, -BOUNTY_RESENTMENT);
-          note = `${poster.name} puts a price of ${credits} on ${nameFor(state, target)}: prizes taken from it and hulls of its destroyed are paid for.`;
+          note = `${poster.name} puts a price of ${credits} on ${nameFor(state, target)}: whoever takes its prizes or destroys its hulls is paid.`;
         }
         if (credits < op.credits) note += ` (${op.credits} was asked; the treasury held ${credits}.)`;
         if (op.reason) note += ` ${asSentence(op.reason)}`;

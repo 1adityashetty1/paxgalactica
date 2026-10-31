@@ -542,15 +542,16 @@ export function boundPayloadsToOutcome(
       workBounded.push(op);
       continue;
     }
-    const what = String(o.label || String(o.op).replace(/_/g, ' '));
+    // A label is a name the writer gave the work, quoted; the op is a kind of it.
+    const what = o.label ? `"${String(o.label)}"` : `the ${String(o.op).replace(/_/g, ' ')}`;
     if (failed) {
-      notes.push(`The attempt failed, so the ${what} was never started and nothing was paid for it.`);
+      notes.push(`The attempt failed, so ${what} was never started and nothing was paid for it.`);
       continue;
     }
     const field = programme ? 'count' : 'magnitude';
     const had = Number(o[field] ?? 1);
     const reduced = Math.max(1, Math.floor(had / PARTIAL_PAYLOAD_DIVISOR));
-    if (reduced !== had) notes.push(`A partial result: the ${what} delivers ${reduced} rather than ${had}.`);
+    if (reduced !== had) notes.push(`A partial result: ${what} delivers ${reduced} rather than ${had}.`);
     workBounded.push(reduced === had ? op : { ...o, [field]: reduced });
   }
 

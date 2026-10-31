@@ -239,7 +239,9 @@ world — where a ceasefire holds, which world a promise is about — names it i
 
 Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
 standing one, `hulls` for ships out of your own fleet, `assets` for things off
-your own shelf, `obligations` for favours owed to you that you are letting go
+your own shelf — never a notable, officer or operative of yours, whose id is a
+person's and not a thing's: a spouse given in a marriage goes by the treaty, and
+is named in your `text` — `obligations` for favours owed to you that you are letting go
 of — forgiven to the power that owes them, or sold to the power across the
 table. Use the ids from **Favours owed** — a debt is not a favour: a debt
 sold or forgiven goes in your `text`, and nowhere else. `lifts` names the powers you stop

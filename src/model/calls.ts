@@ -719,6 +719,13 @@ export async function resolveAction(
   if (callingIn && (priced.appraisal.overt || priced.appraisal.stat) && !priced.appraisal.negotiation && !(priced.appraisal.reaches ?? []).includes('their_paper')) {
     priced = { ...priced, appraisal: { ...priced.appraisal, reaches: [...(priced.appraisal.reaches ?? []), 'their_paper'] } };
   }
+  // The same for coercion: an ultimatum declared on its own was ruled, rolled
+  // a critical success, and left out for want of the reach the ruling forgot
+  // (bughunt 2026-10-29). The words say it is a demand; code names the reach.
+  const coercing = /\b(?:ultimatums?|demands?|blackmail\w*|publish\w*)\b/i.test(action);
+  if (coercing && (priced.appraisal.overt || priced.appraisal.stat) && !priced.appraisal.negotiation && !(priced.appraisal.reaches ?? []).includes('coercion')) {
+    priced = { ...priced, appraisal: { ...priced.appraisal, reaches: [...(priced.appraisal.reaches ?? []), 'coercion'] } };
+  }
 
   // An act that names one of the actor's own operatives, ruled with no covert
   // or groundwork part, has almost certainly lost the part that sends them —

@@ -1681,7 +1681,18 @@ export function transfersFromRecord(
   const sum = (by: string, f: (c: Concession) => number) =>
     agreed.filter((c) => c.by === by).reduce((n, c) => n + f(c), 0);
   const credits = new Map([player, other].map((p) => [p, sum(p, (c) => c.credits)] as [string, number]));
-  const assetsOf = (by: string) => [...new Set(agreed.filter((c) => c.by === by).flatMap((c) => c.assets))];
+  // A person on a roster written where a thing goes is not handed over by
+  // `transfer_asset`: a notable goes to a court by the marriage's terms, and an
+  // officer or operative of one's own is not held. The persona put Joran
+  // Dustborn's id there, the transfer was refused, and the whole marriage
+  // failed (bughunt 2026-10-29).
+  const people = new Set([
+    ...(state.notables ?? []).map((n) => n.id),
+    ...(state.commanders ?? []).map((c) => c.id),
+    ...state.agents.map((a) => a.id),
+  ]);
+  const assetsOf = (by: string) =>
+    [...new Set(agreed.filter((c) => c.by === by).flatMap((c) => c.assets))].filter((id) => !people.has(id));
   const assetsGiven = new Map([player, other].map((p) => [p, assetsOf(p)] as [string, string[]]));
 
   for (const ceder of [player, other]) {
@@ -1873,7 +1884,16 @@ export function accordActs(
  */
 function isCovertOp(raw: unknown): boolean {
   const op = raw as { op?: unknown; dark?: unknown } | null;
-  return op?.op === 'deploy_agent' || op?.op === 'lay_groundwork' || (orderFor(op) as { dark?: unknown } | null)?.dark === true;
+  // Signing an operative on, or calling one home, is as much the power's own
+  // business as sending one: the Vigil's reaction was told a Meridian ghost
+  // had come off the Lists at Torrek Anchorage (bughunt 2026-10-29).
+  return (
+    op?.op === 'deploy_agent' ||
+    op?.op === 'lay_groundwork' ||
+    op?.op === 'recruit_agent' ||
+    op?.op === 'recall_agent' ||
+    (orderFor(op) as { dark?: unknown } | null)?.dark === true
+  );
 }
 
 export async function closeChannel(

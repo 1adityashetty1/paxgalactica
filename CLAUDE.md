@@ -3110,7 +3110,7 @@ act without its action. No journal pin: no old journal can hold either op.
 is not in `EXTRACTION_ALLOWED`, and the arbiter prices it `trivial`, consent
 having been given when the favour was made. Code holds it to that: a call-in
 ruled a negotiation with its debtor is put back once, and its ruling is stamped
-`reaches: their_paper` so the call is not left out (bughunt 2026-10-28). The Treaties tab lists your favours
+`reaches: their_paper` so the call is not left out (bughunt 2026-10-28); a declared demand, ultimatum, blackmail or publication is stamped `coercion` the same way (bughunt 2026-10-29). The Treaties tab lists your favours
 both ways, with a **call in** button per term (and *back our ultimatum* while
 you have one open) that writes the declaration on the command line; a blackmail
 hook shows the secret it rests on, since it lapses the turn that stops being
@@ -4789,8 +4789,9 @@ above never covered:
   theft operative into Vigil-held Vantic"*.
 
 `StagedBatch.secret` marks a batch that is the actor's business alone: the
-arbiter ruled it covert, or it places an operative, or its own institutions
-refused it. **The ruling is the load-bearing half** — a covert attempt that
+arbiter ruled it covert, or it places, recruits or recalls an operative (a
+recruitment told the Vigil a Meridian ghost had come off the Lists, bughunt
+2026-10-29), or its own institutions refused it. **The ruling is the load-bearing half** — a covert attempt that
 *failed* places nobody, so it carries no `deploy_agent` to recognise it by, and
 its narrative is exactly what gave the game away.
 

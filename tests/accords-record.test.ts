@@ -288,3 +288,20 @@ describe('a debt paid down across the table (bughunt 2026-10-28)', () => {
     expect(campaign.state.debts.find((d) => d.id === debt.id)!.balance).toBe(Math.max(0, owed - 100));
   });
 });
+
+describe('a person written where a thing goes (bughunt 2026-10-29)', () => {
+  it('is not handed over as an asset, so the marriage around it stands', () => {
+    // Arkane's persona put the groom's notable id in `assets`; the transfer
+    // built from it was refused and the whole marriage failed.
+    const s = createSeedState('meridian');
+    const groom = s.notables!.find((n) => (n.estateId ?? '').startsWith('freeworlds:') && n.systemId === null)!;
+    const built = transfersFromRecord(
+      s,
+      [c('freeworlds', 'marriage_binding', { assets: [groom.id] }), c('meridian', 'dowry', { assets: ['ast-0-9'] })],
+      'meridian',
+      'freeworlds',
+    );
+    const handed = built.ops.filter((o) => o.op === 'transfer_asset').map((o) => o.assetId);
+    expect(handed).toEqual(['ast-0-9']);
+  });
+});
