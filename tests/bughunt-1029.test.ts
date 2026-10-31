@@ -61,3 +61,23 @@ describe('an ultimatum declared on its own', () => {
     expect((campaign.state.demands ?? []).some((d) => d.toFactionId === 'drajk')).toBe(true);
   });
 });
+
+describe('a fixture named in the words', () => {
+  it('is rolled on its own primary attribute, whatever stat the arbiter wrote', async () => {
+    // "Raise a hospital at Vashka" was ruled industry, rolled, and the
+    // hospital refused for not being a resolve undertaking.
+    const campaign = Campaign.start('freeworlds', 'fixture-stat');
+    queue = {
+      appraisal: [{ kind: 'act', parts: [{ kind: 'overt', what: 'raise a hospital', stat: 'industry', difficulty: 2 }] }],
+      resolution: [
+        {
+          narrative: 'Ground is broken for a hospital at Vashka.',
+          ops: [{ op: 'found_fixture', factionId: 'freeworlds', systemId: 'ark-4', kind: 'hospital' }],
+        },
+      ],
+    };
+    const out = await submitAction(campaign, 'Raise a hospital at Vashka.');
+    expect(out.check?.stat).toBe('resolve');
+    expect(out.notes.join(' ')).not.toMatch(/was not begun/);
+  });
+});

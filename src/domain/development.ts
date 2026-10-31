@@ -1,6 +1,7 @@
 import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMission, type Asset, type Method, type MethodAxis } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
+import { doneAt } from './words.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
 import {
   addShipsAt,
@@ -356,7 +357,7 @@ function fixtureBuilt(kind: string, stat: string | undefined): string | null {
   if (stat === wants) return null;
   return stat === undefined
     ? `A ${shape.kind} is built, not come by: it takes a ${wants} undertaking, and nothing here tested ${wants}.`
-    : `A ${shape.kind} takes ${wants}, and this was a ${stat} undertaking; the fixture was not begun.`;
+    : `A ${shape.kind.replace(/_/g, ' ')} takes ${wants}, and this was ${/^[aeiou]/.test(stat) ? 'an' : 'a'} ${stat} undertaking; the fixture was not begun.`;
 }
 
 /** Work declared as its own op whose whole point is a payload (intent-ops §1). */
@@ -713,7 +714,7 @@ export function applyOrderEffect(
       const gained = system.strategicValue - before;
       if (gained <= 0) {
         return {
-          note: `${label} completed at ${system.name}, but the world is already developed as far as it can be (strategic value ${before}).`,
+          note: `${doneAt(label, system.name)}, but the world is already developed as far as it can be (strategic value ${before}).`,
           delivered: false,
         };
       }
@@ -723,7 +724,7 @@ export function applyOrderEffect(
           ? ` The works now serve ${holder}, who holds the world.`
           : ' The world answers to nobody now, and the works serve whoever comes for it.';
       return {
-        note: `${label} completed at ${system.name}: strategic value ${before} -> ${system.strategicValue}.${whose}`,
+        note: `${doneAt(label, system.name)}: strategic value ${before} -> ${system.strategicValue}.${whose}`,
         delivered: true,
       };
     }
@@ -735,7 +736,7 @@ export function applyOrderEffect(
         ? ''
         : ` The works stand, and they defend ${holder ?? 'whoever takes the world next'}.`;
       return {
-        note: `${label} completed at ${system.name}: garrison capacity ${before} -> ${system.garrisonMax}.${whose}`,
+        note: `${doneAt(label, system.name)}: garrison capacity ${before} -> ${system.garrisonMax}.${whose}`,
         delivered: true,
       };
     }
@@ -743,7 +744,7 @@ export function applyOrderEffect(
     case 'raise_garrison': {
       if (!stillOurs) {
         return {
-          note: `${label} completed at ${system.name}, but the world is no longer ${factionId}'s and the levy dispersed.`,
+          note: `${doneAt(label, system.name)}, but the world has changed hands and the levy dispersed.`,
           delivered: false,
         };
       }
@@ -752,12 +753,12 @@ export function applyOrderEffect(
       const gained = system.garrison - before;
       if (gained <= 0) {
         return {
-          note: `${label} completed at ${system.name}, but its barracks are already full (${before}/${system.garrisonMax}).`,
+          note: `${doneAt(label, system.name)}, but its barracks are already full (${before}/${system.garrisonMax}).`,
           delivered: false,
         };
       }
       return {
-        note: `${label} completed at ${system.name}: garrison ${before} -> ${system.garrison}.`,
+        note: `${doneAt(label, system.name)}: garrison ${before} -> ${system.garrison}.`,
         delivered: true,
       };
     }
@@ -765,13 +766,13 @@ export function applyOrderEffect(
     case 'commission_ships': {
       if (!stillOurs) {
         return {
-          note: `${label} completed at ${system.name}, but the yards were lost with the world and the hulls with them.`,
+          note: `${doneAt(label, system.name)}, but the yards were lost with the world and the hulls with them.`,
           delivered: false,
         };
       }
       addShipsAt(system, factionId, effect.magnitude, effect.hull);
       return {
-        note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} commissioned.`,
+        note: `${doneAt(label, system.name)}: ${describeOrderEffect(effect)} commissioned.`,
         delivered: true,
       };
     }
@@ -782,7 +783,7 @@ export function applyOrderEffect(
       const mend = fixtureToRepair(standing, effect.fixtureKind);
       if (!mend) {
         return {
-          note: `${label} completed at ${system.name}, but there was nothing left there to repair.`,
+          note: `${doneAt(label, system.name)}, but there was nothing left there to repair.`,
           delivered: false,
         };
       }
@@ -792,7 +793,7 @@ export function applyOrderEffect(
       else mend.damage = after;
       const whole = fixtureIntegrity(mend);
       return {
-        note: `${label} completed at ${system.name}: the ${mend.kind.replace(/_/g, ' ')} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
+        note: `${doneAt(label, system.name)}: the ${mend.kind.replace(/_/g, ' ')} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
         delivered: true,
       };
     }
@@ -808,13 +809,13 @@ export function applyOrderEffect(
       const yielded = shape ? fixtureYieldFor(shape) : null;
       if (!shape || !yielded) {
         return {
-          note: `${label} completed at ${system.name}, but nothing called a ${effect.fixtureKind} could be raised there.`,
+          note: `${doneAt(label, system.name)}, but nothing called a ${effect.fixtureKind} could be raised there.`,
           delivered: false,
         };
       }
       if (holder === null) {
         return {
-          note: `${label} completed at ${system.name}, but the world has fallen out of anyone's hands and the ${shape.kind.replace(/_/g, ' ')} stands empty.`,
+          note: `${doneAt(label, system.name)}, but the world has fallen out of anyone's hands and the ${shape.kind.replace(/_/g, ' ')} stands empty.`,
           delivered: false,
         };
       }
@@ -822,7 +823,7 @@ export function applyOrderEffect(
         ? ''
         : ' It serves the power that holds the world now.';
       return {
-        note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} stands.${whose}`,
+        note: `${doneAt(label, system.name)}: ${describeOrderEffect(effect)} stands.${whose}`,
         delivered: true,
         fixture: {
           kind: shape.kind,
@@ -849,7 +850,7 @@ export function applyOrderEffect(
       // Moving regard needs the whole board — the sender's influence is read
       // off `effectiveStats` — so the tick lands an envoy itself, before it
       // ever reaches here. See `envoyRegard`.
-      return { note: `${label} completed at ${system.name}.`, delivered: false };
+      return { note: `${doneAt(label, system.name)}.`, delivered: false };
   }
 }
 

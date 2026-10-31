@@ -45,7 +45,7 @@ import { classifyPrinciple, classifyPrinciples, enforcedByDrift } from '../domai
 import { checkGround, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
-import { serializeArchetypes } from '../domain/assets.js';
+import { ASSET_ARCHETYPES, serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import { paperOf, pressuresOn } from '../domain/pressures.js';
 import { capabilitiesOf } from '../domain/capabilities.js';
@@ -718,6 +718,19 @@ export async function resolveAction(
   // call-in; code names the reach.
   if (callingIn && (priced.appraisal.overt || priced.appraisal.stat) && !priced.appraisal.negotiation && !(priced.appraisal.reaches ?? []).includes('their_paper')) {
     priced = { ...priced, appraisal: { ...priced.appraisal, reaches: [...(priced.appraisal.reaches ?? []), 'their_paper'] } };
+  }
+  // A fixture named in the words is founded on its own primary attribute, and
+  // that is a lookup: "raise a hospital at Vashka" was ruled an industry
+  // check, rolled a critical success, and the hospital was refused for not
+  // being a resolve undertaking (bughunt 2026-10-29).
+  {
+    const named = ASSET_ARCHETYPES.filter(
+      (a) => a.fixture && a.modifies?.[0] && new RegExp(`\\b${a.kind.replace(/_/g, '[ _-]')}s?\\b`, 'i').test(action),
+    );
+    const wants = named.length === 1 ? named[0]!.modifies![0]! : undefined;
+    if (wants && priced.appraisal.admissible && !priced.appraisal.negotiation && priced.appraisal.stat && priced.appraisal.stat !== wants) {
+      priced = { ...priced, appraisal: { ...priced.appraisal, stat: wants } };
+    }
   }
   // The same for coercion: an ultimatum declared on its own was ruled, rolled
   // a critical success, and left out for want of the reach the ruling forgot

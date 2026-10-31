@@ -23,3 +23,8 @@ export function asSentence(text: string | undefined | null): string {
 export function count(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/** "X completed at Y", unless the label already says where: "university at Vantic completed". */
+export function doneAt(label: string, place: string): string {
+  return label.includes(place) ? `${label} completed` : `${label} completed at ${place}`;
+}

@@ -90,7 +90,7 @@ for (const e of seen) {
   if (SELF.test(text)) add('self-reference', 'cosmetic', e.turn, text, 'a template that does not handle origin === destination');
   if (SPLICE.test(text) && e.kind !== 'narrative') add('spliced-sentence', 'cosmetic', e.turn, text, 'a template joining a stored sentence mid-sentence');
   if (STALE.test(text)) add('stale-all-or-nothing', 'minor', e.turn, text, 'a corrected batch still reporting its first attempt');
-  const twice = text.match(/\bat ([A-Z][\w ]+?) at \1\b/);
+  const twice = text.match(/\bat ([A-Z][\w ]+?) (?:completed )?at \1\b/);
   if (twice) add('doubled-place', 'cosmetic', e.turn, text, 'a label that already names the world, given "at <world>" again', 'at @ at @');
 }
 

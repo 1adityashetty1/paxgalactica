@@ -386,7 +386,7 @@ import {
   type StarSystem,
   type WorldState,
 } from './state.js';
-import { asSentence, count, possessive } from './words.js';
+import { asSentence, count, doneAt, possessive } from './words.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -12414,7 +12414,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       // world. Without a payload the order really does just finish — correct for
       // a courier run or a decree, whose effects landed elsewhere.
       const target = order.onComplete ? getSystem(state, order.targetId) : undefined;
-      let note = `${order.label} completed at ${nameOf(order.targetId)}.`;
+      let note = `${doneAt(order.label, nameOf(order.targetId))}.`;
       if (order.onComplete && target) {
         const outcome = applyOrderEffect(
           target,
@@ -12441,9 +12441,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
             ? fixtureSlotRefusal(state, target, outcome.fixture.kind, { underway: false })
             : null;
           if (occupant) {
-            note = `${order.label} completed at ${target.name}, but a ${occupant.kind.replace(/_/g, ' ')} already stands there and a world carries one.`;
+            note = `${doneAt(order.label, target.name)}, but a ${occupant.kind.replace(/_/g, ' ')} already stands there and a world carries one.`;
           } else if (full) {
-            note = `${order.label} completed at ${target.name}, but raised nothing: ${full}`;
+            note = `${doneAt(order.label, target.name)}, but raised nothing: ${full}`;
           } else {
             // Through the schema, not a spread: replay compares
             // `JSON.stringify`, which preserves key order, and a record built
@@ -12501,7 +12501,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     for (const order of envoys) {
       const target = getSystem(state, order.targetId);
       if (!target) continue;
-      let note = `${order.label} completed at ${target.name}, and nobody there was listening.`;
+      let note = `${doneAt(order.label, target.name)}, and nobody there was listening.`;
       if (!envoyRefusal(state, target, order.factionId)) {
         const before = regardFor(target, order.factionId);
         const after = Math.min(100, before + envoyRegard(state, order.factionId, order.onComplete!.magnitude));
@@ -12583,7 +12583,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
 
   if (!keepsRegard) {
     for (const order of envoys) {
-      const note = `${order.label} completed at ${nameOf(order.targetId)}, and nobody there was listening.`;
+      const note = `${doneAt(order.label, nameOf(order.targetId))}, and nobody there was listening.`;
       logEvent(state, 'order', note, order.factionId, [order.factionId]);
       notes.push(note);
       report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(order.targetId), outcome: note, covert: true });
@@ -13282,6 +13282,7 @@ function landAs(system: StarSystem, factionId: string, survivors: ShipStack, sha
 }
 
 /** One of a power's fleets, by id, number or name — or why none answers. */
+
 function findFleet(state: WorldState, factionId: string, query: string): { fleet: Fleet; system: StarSystem } | string {
   const standing = state.systems.flatMap((system) => fleetsAt(system, factionId).map((fleet) => ({ fleet, system })));
   const found = resolveFleet(standing.map((x) => x.fleet), query);
