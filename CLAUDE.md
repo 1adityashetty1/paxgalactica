@@ -47,7 +47,15 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm trace <campaign> [other]` | where a played campaign's MODEL time went — per call kind and phase, from `saves/<name>.trace.jsonl`; two names compare runs; `--perfetto` draws a waterfall |
 | `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
+| `node scripts/bughunt-scan.mjs <campaign>` | the mechanical half of a bug hunt: replays a played campaign and lists raw ids, bad plurals, spliced sentences, rejections by code, double payments, drift charged on an act, failed model calls — each with its turn and evidence |
+| `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
+
+**The bug-hunt loop** is the `bughunt` skill (`.claude/skills/bughunt/SKILL.md`):
+play a short campaign through `scripts/pt.mjs --digest`, scan it, validate each
+candidate with a failing test, fix, gate, push to the branch's open PR — and
+stop on a round that finds nothing serious or minor, after five rounds or $20
+of model spend, or at the first question only the user can answer.
 
 > An earlier phase shipped an Ink terminal UI. It was retired: it could not run
 > headless, so it could never be tested or driven by an agent. Everything below
@@ -3100,7 +3108,9 @@ act without its action. No journal pin: no old journal can hold either op.
 
 **Calling one in is a declared action, never an accord** — `call_obligation`
 is not in `EXTRACTION_ALLOWED`, and the arbiter prices it `trivial`, consent
-having been given when the favour was made. The Treaties tab lists your favours
+having been given when the favour was made. Code holds it to that: a call-in
+ruled a negotiation with its debtor is put back once, and its ruling is stamped
+`reaches: their_paper` so the call is not left out (bughunt 2026-10-28); a declared demand, ultimatum, blackmail or publication is stamped `coercion` the same way (bughunt 2026-10-29). The Treaties tab lists your favours
 both ways, with a **call in** button per term (and *back our ultimatum* while
 you have one open) that writes the declaration on the command line; a blackmail
 hook shows the secret it rests on, since it lapses the turn that stops being
@@ -3160,7 +3170,13 @@ when the issuer's side outguns its own by `ULTIMATUM_YIELD_RATIO` (1.5), in
 battleship-equivalents (`sideStrength`); the player concedes by declaring it, a
 model-driven power by its reaction, and a target in the issuer's own channel by
 the transcript. Otherwise every party on each side goes to war with every party
-on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer.
+on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer
+— except a pair bound to peace or a truce by then: a backer that made peace with
+the other side after declaring stays out of the war (journal version 33,
+`peaceHoldsAtDeadline`). It comes due on the tick that starts `deadlineTurn`, so
+the briefing's **Ultimatums** group (`ultimatumLines`) says *"within N turns"*
+or *"before this turn ends"* — a demand made of the player was in the log alone
+until it did.
 
 **A cession comes out of the target's hands.** `cedeTerritory` moves a named
 world from whichever party holds it, so an issuer that took the world by force
@@ -3265,7 +3281,10 @@ not raid or blockade. **A letter of marque** (`terms.commission`, from
 *Starsector*) commissions one party against named non-parties: the paymaster
 pays the stipend in `incomePerTurn` and `share` percent (trimmed to
 `MAX_COMMISSION_SHARE`, 50) of what the raider takes from them each turn, as a
-transfer trimmed to its treasury. The raider then cannot raid its paymaster
+transfer trimmed to its treasury. The stipend runs to the raider, never from
+it: a marque with the raider paying is refused (journal version 34,
+`marqueStipendToRaider`). The raider then cannot raid its paymaster — a raid
+ordered at its paymaster's world is told it takes only other powers' cargo
 (`raidLandsOn`), and its raids on the named powers are **licensed**: no heat,
 and no piracy reputation charged by the paymaster. Extraction-only, like every
 treaty, and grounded: either term binds the other party, so it needs that party
@@ -3638,7 +3657,11 @@ at all. It is deliberately well below `REFUSAL_DISSENT` (8) — ordering your
 faction to betray itself is worse than merely failing to be it.
 
 A compulsion with no trigger is **not** inert; it is still enforced the original
-way, by refusal. `CompulsionSchema` accepts a bare string and normalises it, so
+way, by refusal. **And one with a trigger is drift's alone** (`enforcedByDrift`):
+no declaration, accord or counterparty ruling charges it, because an act can
+only answer it — a declared raid was charged 15 dissent for breaching *"the
+captains require plunder"*, ruled before the raid was on the board (bughunt
+2026-10-28). `CompulsionSchema` accepts a bare string and normalises it, so
 every save and journal written before triggers existed still loads.
 
 > The one thing TypeScript will not catch here: `faction.compulsions` is now
@@ -4225,7 +4248,11 @@ a reaction's offending ops are held back; a bot's are dropped (`honourLines`,
 beside `honourTreaties`); an accord reads `paid_for_peace` and
 `given_for_nothing` off the whole batch and the concession record
 (`accordActs`). The arbiter still rules on every line before the roll — a
-tagged line simply cannot be missed afterwards. **Drajk's second red line was
+tagged line simply cannot be missed afterwards. **On an accord, a tagged line
+is the acts' alone** (`lineReadByCode`), for either party: the model's reading
+of the narrative refused Drajk's letter of marque under the line that names a
+marque as allowed, and charged the Combine "nothing for nothing" for a ransom
+it paid (bughunt 2026-10-28). **Drajk's second red line was
 reworded** to *"will not be bound in public to another power — no alliance, no
 coalition, no foreign fleet based in its space"*, forbidding `alliance_signed`
 and `basing_granted`, so its letters of marque and ceasefires stand: no bot
@@ -4239,7 +4266,13 @@ commitment, a debt, a loan, a favour owed. `transfersFromRecord` builds every
 payment, thing handed over, favour released or sold, cession and toll lift from
 the ids each power wrote as it spoke (`Concession` gained `lifts` and
 `liftTurns`), and `withoutRecordTransfers` drops any extraction wrote itself, so
-a sale is paid once. A cession carries the buyer's credits and things as its
+a sale is paid once. A debt paid down is paid once too: a `settle_debt`
+extraction writes comes off the record's payment from that debtor to that
+creditor, which were both charged before (bughunt 2026-10-28). A treaty a power agreed to end — a letter of marque
+revoked, a pact with a third power left — is `Concession.ends`, built as a
+`break_treaty` naming that power as `factionId`, which only an accord may
+(bughunt 2026-10-28: the price for revoking a marque landed and the revocation
+was narrated and never done). A cession carries the buyer's credits and things as its
 `terms.payment` and `terms.assets`. The built transfers go in as `fixed`: one
 the reducer refuses fails the accord with no correction (a refused transfer
 cannot be reworded), and a correction may fix a term but never drop one. The
@@ -4756,8 +4789,9 @@ above never covered:
   theft operative into Vigil-held Vantic"*.
 
 `StagedBatch.secret` marks a batch that is the actor's business alone: the
-arbiter ruled it covert, or it places an operative, or its own institutions
-refused it. **The ruling is the load-bearing half** — a covert attempt that
+arbiter ruled it covert, or it places, recruits or recalls an operative (a
+recruitment told the Vigil a Meridian ghost had come off the Lists, bughunt
+2026-10-29), or its own institutions refused it. **The ruling is the load-bearing half** — a covert attempt that
 *failed* places nobody, so it carries no `deploy_agent` to recognise it by, and
 its narrative is exactly what gave the game away.
 
@@ -4766,7 +4800,10 @@ ops toward responder selection only where they are **public by the fog's own
 rule** — a fleet under way is seen by everyone, so an attack riding in the same
 declaration still wakes the power it lands on, and a test pins the battle
 end to end. A turn in which everything was secret is described as nothing
-visible, rather than as "acted this turn:" over an empty list.
+visible, rather than as "acted this turn:" over an empty list. **An accord is
+kept out the same way**: treaties are scoped to their parties, and the one
+summary every responder reads told the Vigil of a private letter of marque
+against it (bughunt 2026-10-28).
 
 A secret batch's notes carry `private: true` on the op, which the reducer scopes
 to the actor. On the op rather than decided in the reducer because the reducer
@@ -6158,6 +6195,17 @@ away, and anywhere else they fall with it. Measured: the harness board is
 unchanged at 5/5/6/5/4, and over 40 bot turns no hull stands outside a fleet
 and no listener or freighter rides in a warfleet.
 
+**Everything that sails is a fleet** (journal version 35,
+`LegacyRules.adhocForcesAreFleets`). A move written as a `force` rather than a
+fleet is formed into one, at no cost: every fleet wholly inside the force is
+merged into the senior of them, which lends its name, and the rest is split off
+the fleets it draws on. It keeps its identity where it lands. A `force` beside
+a named fleet, and smaller than it, is split off that fleet — it was ignored,
+and a reaction that wrote four and four of the 1st Pack sailed six and six,
+leaving Vergesse empty (bughunt 2026-10-29). The bots' massing alone still goes
+as a detachment that rejoins the senior fleet, or their constant moves would
+multiply fleets without end.
+
 **Being present is what risks you; commanding is what helps.** Every officer on
 the field falls if their contingent does, while only the senior officer of the
 largest contingent applies their effects. Where they end up is tracked per
@@ -6559,6 +6607,16 @@ anything. The caller kept their output only when something was dropped, so a
 clean success swayed three powers by the model's 9 rather than the band's 6, and
 nine declared commitments carried no ruled mechanism; and a correction call's
 batch went to staging through none of them (playtest 2026-10-18).
+
+**A declaration spends only what the player put at stake** (`spendsAsSaid`): a
+`consume_asset` of a thing the player's words do not name — by id, or by every
+word of its kind — is left out, said. And **work that pays for itself carries no
+income charter**: a fixture, a development, a build or a levy beside an
+`establish_commitment` drops the commitment, since founding a factory once also
+minted a 12-a-turn charter for it (bughunt 2026-10-28). Only a dropped income is
+told to the player; a dropped record goes without a word. A `scuttle_ships` is
+the same: struck off only when the player's words say scuttle, scrap or strike
+off — a critical failure on laying down boats scuttled a freighter.
 
 **Sends are the ruling's.** A resolution call may fill in a send the arbiter
 ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any
@@ -7133,7 +7191,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME`. A declared income is chartered on `systemId` (a world the power holds, else its richest) and pays at most a quarter of it |
 | `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party, and heat; onlookers only at three or more, and never the parties |
-| `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts` |
+| `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts`. `factionId` names the breaker when it is not the actor — from an accord only |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |
@@ -7669,6 +7727,9 @@ whole negotiation was lost after both sides had said yes. A blocker goes through
 the relevance check first, and goes when the concession it stands on is
 retracted (playtest 2026-10-18: a payment made *for* open lanes was blocked by
 "will not close a lane", and a retracted handover still refused the accord).
+A line code reads off the accord's acts (`lineReadByCode`) raises no blocker:
+the Vigil paying rent for hired hulls was ruled "being bought", and the whole
+accord refused (bughunt 2026-10-29).
 
 What this does **not** establish: a persona that records a concession
 contradicting its own prose is still possible. But that is a contradiction
@@ -8807,8 +8868,10 @@ Five decisions shaped it:
 - **Always on**, because an opt-in flag is exactly why the data did not exist.
   A dozen numbers a record and no prompt text. The default sink records
   nothing, so the suite writes no files; the server installs a file sink when a
-  campaign starts or resumes, at `CampaignStore.tracePath` — on the store, so
-  wherever saves move the traces follow.
+  campaign starts, resumes or is restored from a request's snapshot, at
+  `CampaignStore.tracePath` — on the store, so wherever saves move the traces
+  follow. Restoring was missed at first, so a campaign played on past a server
+  restart recorded nothing.
 - **Context rides `AsyncLocalStorage`**, not parameters, so a call deep in
   `resolveAction` knows its turn and action without either being threaded
   through, and three parallel reactions stay attributed to the end of turn

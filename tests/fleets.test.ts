@@ -53,8 +53,8 @@ describe('a named fleet', () => {
   it('sails whole from wherever it stands, and keeps its name under way and on arrival', () => {
     const s0 = createSeedState('meridian');
     const og1 = sys(s0, 'sek-1').fleets!.find((f) => f.factionId === 'meridian')!.stack;
-    // Origin and force are the fleet's, whatever is written.
-    const { state } = apply(s0, [{ op: 'move', factionId: 'meridian', fleet: 'Operating Group 1', targetId: 'sek-4', force: 1 }]);
+    // Origin is the fleet's, whatever is written.
+    const { state } = apply(s0, [{ op: 'move', factionId: 'meridian', fleet: 'Operating Group 1', originId: 'sek-4', targetId: 'sek-4' }]);
     const order = state.pendingOrders.at(-1)!;
     expect(order.fleet).toMatchObject({ id: 'flt-meridian-1', number: 1, detached: false });
     expect(order.force).toEqual(og1);
@@ -102,17 +102,78 @@ describe('a named fleet', () => {
 });
 
 describe('ships sent without a fleet', () => {
-  it('go as a detachment that rejoins the senior fleet where they arrive', () => {
-    const { state } = apply(createSeedState('meridian'), [
+  it('sail as a fleet of their own, split off the fleets they draw on, and keep it where they land', () => {
+    // Everything is a fleet (bughunt 2026-10-29, the user's ruling).
+    const { state, notes } = apply(createSeedState('meridian'), [
       { op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-4', force: { battleship: 2 } },
     ]);
     const order = state.pendingOrders.at(-1)!;
-    expect(order.fleet).toMatchObject({ detached: true });
+    expect(order.fleet).toMatchObject({ detached: false });
     expect(sys(state, 'sek-1').fleets!.find((f) => f.factionId === 'meridian')!.stack.battleship).toBe(5);
+    expect(notes.join(' ')).not.toMatch(/merged/);
     const s = until(state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
-    expect(names(s, 'sek-4')).toEqual(['Operating Group 4']);
-    expect(sys(s, 'sek-4').fleets!.find((f) => f.factionId === 'meridian')!.stack.battleship).toBe(6);
+    expect(names(s, 'sek-4')).toHaveLength(2);
+    expect(names(s, 'sek-4')).toContain(fleetName('meridian', order.fleet!));
     indexHolds(s);
+  });
+
+  it('a force written smaller than the fleet it names splits off it, and the rest stays', () => {
+    const s0 = createSeedState('meridian');
+    const og1 = sys(s0, 'sek-1').fleets!.find((f) => f.factionId === 'meridian')!;
+    const { state, notes } = apply(s0, [
+      { op: 'move', factionId: 'meridian', fleet: 'Operating Group 1', targetId: 'ark-2', force: { battleship: 3, escort: 2 } },
+    ]);
+    const order = state.pendingOrders.at(-1)!;
+    expect(order.force).toEqual({ battleship: 3, escort: 2 });
+    expect(order.fleet!.id).not.toBe(og1.id);
+    const left = sys(state, 'sek-1').fleets!.find((f) => f.id === og1.id)!;
+    expect(left.stack.battleship).toBe((og1.stack.battleship ?? 0) - 3);
+    expect(notes.join(' ')).toMatch(/split from Operating Group 1/);
+    indexHolds(state);
+  });
+
+  it('two whole fleets sent together merge into the senior, which sails under its own name', () => {
+    let s = createSeedState('meridian');
+    s = apply(s, [{ op: 'move', factionId: 'meridian', fleet: '3rd', targetId: 'sek-1' }]).state;
+    const here = fleetsAt(sys(s, 'sek-1'), 'meridian').filter((f) => f.kind === 'line');
+    const both = here.reduce((a, f) => mergeStacks(a, f.stack), {});
+    const { state, notes } = apply(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'ark-2', force: both }]);
+    expect(state.pendingOrders.at(-1)!.fleet).toMatchObject({ id: 'flt-meridian-1', detached: false });
+    expect(notes.join(' ')).toMatch(/Operating Group 3 merged into Operating Group 1/);
+    expect(names(state, 'sek-1')).toEqual([]);
+    indexHolds(state);
+  });
+
+  it('a bot massing still goes as a detachment that rejoins the senior fleet', () => {
+    const out = applyOps(
+      createSeedState('meridian'),
+      [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-4', force: { battleship: 2 } }],
+      'model',
+      'meridian',
+      true,
+      {},
+      'bot',
+    );
+    expect(out.rejections).toEqual([]);
+    const order = out.state.pendingOrders.at(-1)!;
+    expect(order.fleet).toMatchObject({ detached: true });
+    const s = until(out.state, (x) => !x.pendingOrders.some((o) => o.id === order.id));
+    expect(names(s, 'sek-4')).toEqual(['Operating Group 4']);
+  });
+
+  it('a journal before version 35 sails the named fleet whole and detaches the rest, as played', () => {
+    const legacy = { adhocForcesAreFleets: false };
+    const out = applyOps(
+      createSeedState('meridian'),
+      [{ op: 'move', factionId: 'meridian', fleet: 'Operating Group 1', targetId: 'sek-4', force: 1 }],
+      'model',
+      'meridian',
+      true,
+      legacy,
+      'declared',
+    );
+    const og1 = sys(createSeedState('meridian'), 'sek-1').fleets!.find((f) => f.factionId === 'meridian')!.stack;
+    expect(out.state.pendingOrders.at(-1)!.force).toEqual(og1);
   });
 
   it('are built into the senior fleet at the yard', () => {
@@ -144,7 +205,7 @@ describe('organising', () => {
     const far = applyOps(s, [{ op: 'merge_fleets', factionId: 'meridian', into: '1', from: ['2'] }], 'model', 'meridian', true, {}, 'organise');
     expect(far.rejections[0]!.message).toMatch(/Operating Group 2 is at Torrek Anchorage, not Sekkar Gate/);
     const theirs = applyOps(s, [{ op: 'rename_fleet', factionId: 'vigil', fleet: '1', name: 'Mine now' }], 'model', 'meridian', true, {}, 'organise');
-    expect(theirs.rejections[0]!.message).toMatch(/cannot organise the fleets of vigil/);
+    expect(theirs.rejections[0]!.message).toMatch(/cannot organise the fleets of Iron Vigil Remnant/);
   });
 });
 
@@ -587,5 +648,50 @@ describe('bughunt 2026-10-27', () => {
     expect(r.report.battles.some((b) => b.systemId === 'sek-5')).toBe(false);
     expect(r.notes.some((n) => /takes station over Var Hollow\.$/.test(n))).toBe(true);
     expect(sys(r.state, 'sek-5').garrison).toBe(3);
+  });
+});
+
+describe('a landing with nothing to land with (bughunt 2026-10-28)', () => {
+  it('says so when the fleet sails, and says nothing when it stands guard', async () => {
+    const { createSeedState } = await import('../src/seed/scenario.js');
+    const { applyOps } = await import('../src/domain/reducer.js');
+    const s = createSeedState('meridian');
+    const land = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, label: 'to Ithaal' }], 'model', 'meridian');
+    expect(land.rejections).toEqual([]);
+    expect(land.notes.some((n) => /No lifters sail to Ithaal: .*nobody lands/.test(n))).toBe(true);
+    const guard = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, land: false, label: 'to Ithaal' }], 'model', 'meridian');
+    expect(guard.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
+    // A battle line and its lifter sent as two moves are one landing.
+    const pair = applyOps(
+      s,
+      [
+        { op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, label: 'line' },
+        { op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { lifter: 1 }, label: 'lift' },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(pair.rejections).toEqual([]);
+    expect(pair.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
+  });
+});
+
+describe('a courier written into a fleet’s force (bughunt 2026-10-29)', () => {
+  it('is not counted as a ship that could not sail', () => {
+    // The courier is the officer's passage, never in the `ships` index: the
+    // officer named sails with the fleet whatever. Counting it told the player
+    // "Requested 23 ships but only 22 could sail" of a fleet that sailed whole.
+    const s = createSeedState('vigil');
+    const out = applyOps(
+      s,
+      [{ op: 'move', factionId: 'vigil', originId: 'tor-3', targetId: 'tor-4', force: { battleship: 7, courier: 1 }, officers: ['Galba'] }],
+      'model',
+      'vigil',
+      true,
+      {},
+      'declared',
+    );
+    expect(out.rejections).toEqual([]);
+    expect(out.notes.join(' ')).not.toMatch(/Requested/);
   });
 });

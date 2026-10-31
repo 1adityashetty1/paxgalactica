@@ -683,7 +683,9 @@ export const IssueOrderOp = z.object({
   /**
    * The fleet that sails, by id, number or name — `fleet_movement` only, in a
    * campaign that keeps fleets. It sails whole from wherever it stands: the
-   * origin is its world and `force` is ignored. See `fleets.ts`.
+   * origin is its world. A `force` smaller than it is split off and sails as
+   * a fleet of its own (journal version 35; before it, `force` was ignored).
+   * See `fleets.ts`.
    */
   fleet: z.string().min(1).optional(),
   onInterrupt: OnInterruptSchema.default('cancel'),
@@ -775,6 +777,12 @@ export const BreakTreatyOp = z.object({
   op: z.literal('break_treaty'),
   treatyId: z.string().min(1),
   reason: z.string().default(''),
+  /**
+   * The power breaking it, when that is not the actor: the other party to an
+   * accord, ending a treaty of its own it agreed across the table to end —
+   * built from its concession's `ends`, never written by extraction.
+   */
+  factionId: z.string().min(1).optional(),
 });
 
 /** A rider as the arbiter writes it: the price is the engine's. */
@@ -1443,11 +1451,14 @@ export const MoveOp = z.object({
   targetId: z.string().min(1),
   /**
    * A named fleet, by id, number or name ("2nd Pack", "Operating Group 3",
-   * "3"). It sails whole, and keeps its name. Without one, the ships sent go
-   * as a detachment that rejoins the senior fleet where it arrives.
+   * "3"). It sails whole, and keeps its name — or, with a smaller `force`,
+   * that much of it is split off and sails as a fleet of its own. Without
+   * one, the force is formed into a fleet: whole fleets inside it merged into
+   * the senior, the rest split off. A bot's massing still goes as a
+   * detachment that rejoins the senior fleet where it arrives.
    */
   fleet: z.string().min(1).optional(),
-  /** A count, drawn proportionally, or a composition. Omitted, the whole port and its officers. Ignored with `fleet`. */
+  /** A count, drawn proportionally, or a composition. Omitted, the whole port and its officers. With `fleet`, how much of it sails. */
   force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
   officers: z.array(z.string().min(1)).max(5).default([]),
   /** The power whose pact, truce, accord or contract this knowingly breaks. */

@@ -114,6 +114,14 @@ export const ConcessionSchema = z.object({
   lifts: z.array(z.string().min(1)).max(4).default([]),
   /** Turns the lift runs for, when the parties named a term. Absent: for good. */
   liftTurns: z.number().int().min(1).max(50).optional(),
+  /**
+   * Treaties `by` ends — its own, with the other party or with a third power —
+   * **resolved to treaty ids** by `by`: a letter of marque revoked, an alliance
+   * left. It had no field, so the one term that ends a deal elsewhere was
+   * narrated and never done, while the price paid for it landed (bughunt
+   * 2026-10-28).
+   */
+  ends: z.array(z.string().min(1)).max(4).default([]),
 });
 export type Concession = z.infer<typeof ConcessionSchema>;
 

@@ -205,6 +205,26 @@ describe('covert work stays with the power that did it', () => {
     expect(kinds).toEqual(['issue_order']);
   });
 
+  it('tells no third power of an accord (bughunt 2026-10-28)', () => {
+    // The Vigil reacted to a private letter of marque against it: the one
+    // summary every responder reads carried the accord's story.
+    const campaign = Campaign.start('drajk', 'accord-private');
+    campaign.stage(
+      [
+        {
+          op: 'form_treaty', parties: ['drajk', 'ojjul'], treatyType: 'contract',
+          terms: { incomePerTurn: { ojjul: -15, drajk: 15 }, commission: { raider: 'drajk', against: ['vigil'], share: 0 } },
+          durationTurns: 10, summary: 'a letter of marque against the Vigil',
+        },
+      ],
+      'accord with Ojjul Nar Combine', 'The Combine commissions the Pack against the Vigil.', 'extraction', 'drajk',
+      { accordWith: 'ojjul', path: 'accord' },
+    );
+    const brief = campaign.reactionBrief();
+    expect(brief.summary).toBe('');
+    expect(brief.ops).toEqual([]);
+  });
+
   it('fights the battle an attack in a secret declaration sails into', async () => {
     // The fix touches what reactions are told, which notes are private, and
     // what may be discarded — none of which a battle reads. Pinned end to end

@@ -41,11 +41,11 @@ import {
   type WorldState,
   hullsAt,
 } from '../domain/state.js';
-import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
+import { classifyPrinciple, classifyPrinciples, enforcedByDrift } from '../domain/compulsions.js';
 import { checkGround, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
-import { serializeArchetypes } from '../domain/assets.js';
+import { ASSET_ARCHETYPES, serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import { paperOf, pressuresOn } from '../domain/pressures.js';
 import { capabilitiesOf } from '../domain/capabilities.js';
@@ -689,6 +689,57 @@ export async function resolveAction(
     }
   }
 
+  // Calling in a favour needs nobody's agreement: the debtor gave it when the
+  // favour was made. "Call in the hook we hold over Drajk" was sent to a
+  // channel with Drajk (bughunt 2026-10-28). Put back once, naming the favour.
+  const owedToMe = (state.obligations ?? []).filter(
+    (o) =>
+      o.holderFactionId === state.playerFactionId &&
+      o.status === 'open' &&
+      (o.restsUntil === null || o.restsUntil === undefined || o.restsUntil <= state.turn),
+  );
+  const callingIn = owedToMe.length > 0 && /\b(?:hook|favou?rs?|owes?|owed|call(?:s|ing)? (?:in|on))\b/i.test(action);
+  if (priced.appraisal.negotiation && callingIn) {
+    const callable = owedToMe.filter((o) => priced.appraisal.negotiation!.withFactionIds.includes(o.debtorFactionId));
+    if (callable.length > 0) {
+      const again = await appraiseAction(state, action, undefined, {
+        note: [
+          '## Calling in a favour is not a negotiation',
+          '',
+          `The acting power holds ${callable.map((o) => `\`${o.id}\` (owed by ${getFaction(state, o.debtorFactionId)?.name ?? o.debtorFactionId})`).join(', ')}.`,
+          'The debtor consented when the favour was made: calling it in is `trivial`, and resolution writes `call_obligation`. Rule it as an act whose overt part `reaches` `their_paper`.',
+        ].join('\n'),
+      });
+      priced = { appraisal: again.appraisal, attempts: priced.attempts + again.attempts, costUsd: priced.costUsd + again.costUsd };
+    }
+  }
+  // And it reaches the debtor's paper, which the ruling then forgot to name,
+  // so the call itself was left out (the same playtest). Code knows it is a
+  // call-in; code names the reach.
+  if (callingIn && (priced.appraisal.overt || priced.appraisal.stat) && !priced.appraisal.negotiation && !(priced.appraisal.reaches ?? []).includes('their_paper')) {
+    priced = { ...priced, appraisal: { ...priced.appraisal, reaches: [...(priced.appraisal.reaches ?? []), 'their_paper'] } };
+  }
+  // A fixture named in the words is founded on its own primary attribute, and
+  // that is a lookup: "raise a hospital at Vashka" was ruled an industry
+  // check, rolled a critical success, and the hospital was refused for not
+  // being a resolve undertaking (bughunt 2026-10-29).
+  {
+    const named = ASSET_ARCHETYPES.filter(
+      (a) => a.fixture && a.modifies?.[0] && new RegExp(`\\b${a.kind.replace(/_/g, '[ _-]')}s?\\b`, 'i').test(action),
+    );
+    const wants = named.length === 1 ? named[0]!.modifies![0]! : undefined;
+    if (wants && priced.appraisal.admissible && !priced.appraisal.negotiation && priced.appraisal.stat && priced.appraisal.stat !== wants) {
+      priced = { ...priced, appraisal: { ...priced.appraisal, stat: wants } };
+    }
+  }
+  // The same for coercion: an ultimatum declared on its own was ruled, rolled
+  // a critical success, and left out for want of the reach the ruling forgot
+  // (bughunt 2026-10-29). The words say it is a demand; code names the reach.
+  const coercing = /\b(?:ultimatums?|demands?|blackmail\w*|publish\w*)\b/i.test(action);
+  if (coercing && (priced.appraisal.overt || priced.appraisal.stat) && !priced.appraisal.negotiation && !(priced.appraisal.reaches ?? []).includes('coercion')) {
+    priced = { ...priced, appraisal: { ...priced.appraisal, reaches: [...(priced.appraisal.reaches ?? []), 'coercion'] } };
+  }
+
   // An act that names one of the actor's own operatives, ruled with no covert
   // or groundwork part, has almost certainly lost the part that sends them —
   // and with sends now the ruling's alone, a lost part is an operative who
@@ -740,7 +791,9 @@ export async function resolveAction(
   let relevanceCost = 0;
   let classified = firstPass;
   let relevant: boolean | null = null;
-  if (firstPass) {
+  if (firstPass?.kind === 'compulsion' && actor && enforcedByDrift(state, actor.id, firstPass.principle)) {
+    classified = null;
+  } else if (firstPass) {
     const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind, actor);
     relevanceCost = check.costUsd;
     relevant = check.relevant;
@@ -1093,6 +1146,20 @@ export async function resolveAction(
             'method itself, and groundwork costs the action alone.',
             '',
           ]),
+      // What the ruling left out is not this order's to do. The player is told
+      // "not done in this order", and resolution wrote the second move anyway
+      // and it landed (bughunt 2026-10-28).
+      ...(priced.appraisal.unexpressed
+        ? [
+            '### Left out of this order',
+            '',
+            `${priced.appraisal.unexpressed}`,
+            '',
+            'That is not done here, and the player has been told so. Emit no ops for it',
+            'and do not narrate it as done.',
+            '',
+          ]
+        : []),
       ...(breach?.kind === 'compulsion'
         ? [
             '### Your institutions object, and the order stands',
@@ -1189,6 +1256,8 @@ export async function resolveAction(
     sentOnly: !checkOp,
     reaches: priced.appraisal.reaches ?? [],
     foreignOrders: state.pendingOrders.filter((o) => o.factionId !== state.playerFactionId).map((o) => o.id),
+    said: action,
+    held: (state.assets ?? []).filter((a) => a.heldBy === state.playerFactionId).map((a) => ({ id: a.id, kind: a.kind })),
   };
   const withCheck = (o: ResolutionOutput): ResolutionOutput => {
     // Sends, sways, commitments and prizes are the ruling's (intent-ops §3–5),
@@ -1198,7 +1267,10 @@ export async function resolveAction(
     let ops = held.ops as ResolutionOutput['ops'];
     // A windfall is one more of a prize the ruling named, and only on a
     // critical (§4). The other bonuses are applied by the engine once staged.
-    if (check?.outcome === 'critical_success' && o.bonus === 'windfall') {
+    // Not beside a raid: its prize is the lanes' to pay, and is dropped before
+    // staging, so the windfall was announced on nothing (bughunt 2026-10-28).
+    const raiding = ops.some((x) => x.op === 'raid');
+    if (check?.outcome === 'critical_success' && o.bonus === 'windfall' && !raiding) {
       const at = ops.findIndex((x) => x.op === 'create_asset' && (bounds.yields as readonly string[]).includes(x.kind));
       if (at >= 0) {
         const prize = ops[at] as Extract<ResolutionOutput['ops'][number], { op: 'create_asset' }>;
@@ -1261,11 +1333,11 @@ const OUTCOME_GUIDANCE: Record<CheckResult['outcome'], string> = {
   success:
     'It worked as intended. Emit the ops for exactly what was attempted; no windfall, no complication.',
   partial:
-    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success.',
+    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success. A fixture is the exception: it is one thing or nothing, so a partial raises none — write its `found_fixture` anyway and narrate the ground broken and nothing standing yet.',
   failure:
     'It did not work. Emit the ops for what the attempt COST — spent credits, wasted turns, a rival forewarned — and NOT the ops for the thing the player wanted. Nothing they were reaching for changes hands.',
   critical_failure:
-    'It failed badly and made things worse. Emit ops for the cost and for a real consequence beyond it: an exposed agent, a broken relationship, a loss that was not on the table when the order was given.',
+    'It failed badly and made things worse. Emit ops for the cost and for a real consequence beyond it: an exposed agent, a broken relationship, credits lost, a rival forewarned. Never strike off the player\'s own ships or spend a thing they did not put at stake — those are left out by the engine.',
 };
 
 /* ------------------------------------------------------------------ */

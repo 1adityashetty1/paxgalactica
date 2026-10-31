@@ -541,32 +541,19 @@ describe('the persona speaks rather than narrating itself', () => {
 describe('slow diplomacy can accumulate', () => {
   const appraisal = () => loadPrompt('appraisal').replace(/\s+/g, ' ');
 
-  it('tells the arbiter that partial headway is worth recording', () => {
-    // A playtest spent three turns and real credits courting neutral worlds;
-    // every world-targeted partial left `commitments: []` and the system
-    // byte-identical, so turn four started from nothing. Combat damage
-    // persists and agents persist — diplomacy was the one pressure track
-    // with no ratchet.
-    expect(appraisal()).toMatch(/ground gained also counts/i);
-    expect(appraisal()).toMatch(/`accession_talks`/);
-  });
-
-  it('asks for the specific world and how far it got', () => {
-    expect(appraisal()).toMatch(/name \*\*which world or party\*\*/i);
+  it('reads headway off the board, not off a record (bughunt 2026-10-28)', () => {
+    // A playtest once found courting left nothing behind, and the answer then
+    // was an `accession_talks` record. The world's standing is that memory now,
+    // and the engine drops a record from a declaration — so the prompt that
+    // asked for one produced a dropped term on every envoy.
+    expect(appraisal()).toMatch(/Courting a world is `send_envoy`, and the world's standing toward you is its record/);
+    expect(appraisal()).not.toMatch(/ground gained also counts/i);
   });
 
   it('makes banked progress lower the next difficulty', () => {
     // The ratchet itself: without this, recording progress would be flavour.
     expect(appraisal()).toMatch(/ground already gained makes the next step easier/i);
     expect(appraisal()).toMatch(/drop by roughly 2 or 3 per round/i);
-  });
-
-  it('keeps courtship non-exclusive so rivals can contest the same world', () => {
-    expect(appraisal()).toMatch(/normally \*\*false\*\*/i);
-  });
-
-  it('still refuses to record headway that did not happen', () => {
-    expect(appraisal()).toMatch(/do not record headway that did not happen/i);
   });
 });
 
@@ -1007,6 +994,7 @@ describe('an accord may only enact what was actually conceded', () => {
     obligations: [],
     lifts: [],
     about: [],
+    ends: [],
     ...over,
   });
 
@@ -1109,7 +1097,7 @@ describe('an accord may only enact what was actually conceded', () => {
 describe('the concession ledger', () => {
   const c = (over: Partial<Concession> = {}): Concession => ({
     by: 'ojjul', kind: 'hire_hulls', text: 'Twelve hulls at ten a turn.',
-    systems: [], credits: 0, perTurn: 10, hulls: 12, assets: [], obligations: [], lifts: [], about: [],
+    systems: [], credits: 0, perTurn: 10, hulls: 12, assets: [], obligations: [], lifts: [], about: [], ends: [],
     ...over,
   });
 
@@ -1796,7 +1784,7 @@ describe('a thing sold under a treaty', () => {
     const conceded: Concession[] = [
       {
         by: 'ojjul', kind: 'asset_sale', text: 'The Ithaal assay, ninety, one payment.',
-        systems: [], credits: 0, perTurn: 0, hulls: 0, assets: ['ast-0-0'], obligations: [], lifts: [], about: [],
+        systems: [], credits: 0, perTurn: 0, hulls: 0, assets: ['ast-0-0'], obligations: [], lifts: [], about: [], ends: [],
       },
     ];
     expect(groundInConcessions(s, [sale()], conceded, 'ojjul').ops).toHaveLength(1);

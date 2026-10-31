@@ -102,6 +102,7 @@ import {
 import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
 import { ACT_WORDS, linesCrossed, type Act } from './acts.js';
+import { count, possessive } from './words.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -2200,7 +2201,7 @@ function workNotables(ctx: Ctx): Ops {
       mission: atWar ? 'subversion' : 'seduction',
       effect: atWar ? { kind: 'turn_notable' } : { kind: 'seduce' },
       targetNotable: target.n!.id,
-      cover: `a guest of ${target.n!.name}'s house on ${target.x.name}`,
+      cover: `a guest of ${possessive(target.n!.name)} house on ${target.x.name}`,
     },
   ];
 }
@@ -2494,12 +2495,16 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
         // A raid run dark is not announced, least of all in its own account.
         if (!op.dark) parts.push(`sets raiders on the traffic through ${where(op.targetId)}`);
       } else {
-        parts.push(`begins ${String(op.label ?? op.type)} at ${where(op.targetId)}`);
+        // A label that already names the world is not given it again: "begins
+        // university at Vantic at Vantic" (bughunt 2026-10-28).
+        const label = String(op.label ?? op.type);
+        const place = where(op.targetId);
+        parts.push(label.includes(place) ? `begins ${label}` : `begins ${label} at ${place}`);
       }
     }
   }
-  if (massed > 0) parts.unshift(`sails ${massed} hull(s) to concentrate`);
-  if (bought > 0) parts.unshift(`lays down ${bought} hull(s)`);
+  if (massed > 0) parts.unshift(`sails ${count(massed, 'hull')} to concentrate`);
+  if (bought > 0) parts.unshift(`lays down ${count(bought, 'hull')}`);
 
   return parts.length === 0 ? `${name} holds its position.` : `${name} ${parts.join(', ')}.`;
 }

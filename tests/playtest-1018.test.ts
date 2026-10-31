@@ -274,6 +274,13 @@ describe('D4 — reactions hear what landed', () => {
 describe('C1, C2, C3, C13 — the other power’s charge for signing an accord', () => {
   const NO_GIFTS =
     'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift';
+  // These pin the plumbing of a charge the model rules on. Every line on these
+  // two sheets is now read off the acts or by drift, so the tags are cleared to
+  // reach it (bughunt 2026-10-28).
+  const untag = <T extends { state: World }>(c: T): T => {
+    for (const f of c.state.factions) f.lineActs = [];
+    return c;
+  };
   const NO_CLOSED_LANES =
     'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer';
   const said = [
@@ -304,7 +311,7 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
       appraisal: [breach(NO_CLOSED_LANES, 'red_line')],
       breach_relevance: [{ relevant: true, why: '' }],
     };
-    const campaign = Campaign.start('meridian', 'pt1018-c2');
+    const campaign = untag(Campaign.start('meridian', 'pt1018-c2'));
     const out = await closeChannel(campaign, 'ojjul', said, conceded);
     expect(out.refusal).not.toBeNull();
     expect(ojjul(campaign)).toBe(0);
@@ -317,7 +324,7 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
       appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
       breach_relevance: [{ relevant: false, why: 'it was paid for' }],
     };
-    const campaign = Campaign.start('meridian', 'pt1018-c3');
+    const campaign = untag(Campaign.start('meridian', 'pt1018-c3'));
     await closeChannel(campaign, 'ojjul', said, conceded);
     expect(ojjul(campaign)).toBe(0);
     // And the deal itself landed, the toll lift included (C4).
@@ -330,7 +337,7 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
       appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
       breach_relevance: [{ relevant: true, why: '' }],
     };
-    const campaign = Campaign.start('meridian', 'pt1018-c1');
+    const campaign = untag(Campaign.start('meridian', 'pt1018-c1'));
     await closeChannel(campaign, 'ojjul', said, conceded);
     expect(ojjul(campaign)).toBe(COUNTERPARTY_BREACH_DISSENT.compulsion);
     expect(campaign.stagedBindings()).toContain('attached');
@@ -349,11 +356,22 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
       appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
       breach_relevance: [{ relevant: true, why: '' }],
     };
-    const campaign = Campaign.start('meridian', 'pt1018-c1b');
+    const campaign = untag(Campaign.start('meridian', 'pt1018-c1b'));
     await closeChannel(campaign, 'ojjul', said, conceded);
     const at = campaign.stagedBindings().indexOf('attached');
     expect(campaign.discardStagedAt(at)).toBe('attached');
     expect(ojjul(campaign)).toBe(COUNTERPARTY_BREACH_DISSENT.compulsion);
+  });
+
+  it('charges nothing on a line code reads off the acts, whatever a reading of one side says (bughunt 2026-10-28)', async () => {
+    queue = {
+      extraction: [extraction],
+      appraisal: [clean, breach(NO_GIFTS, 'compulsion')],
+      breach_relevance: [{ relevant: true, why: '' }],
+    };
+    const campaign = Campaign.start('meridian', 'pt1018-tagged');
+    await closeChannel(campaign, 'ojjul', said, conceded);
+    expect(ojjul(campaign)).toBe(0);
   });
 });
 

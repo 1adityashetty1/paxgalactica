@@ -42,7 +42,11 @@ describe('kidnapping', () => {
     const s = r.state;
     const spy = sure(s);
     const was = regard(s, 'vigil', 'meridian');
-    const after = tickTurn(s, { randomEvents: false }).state;
+    const ticked = tickTurn(s, { randomEvents: false });
+    const after = ticked.state;
+    // Said the turn it happens, under the mission it was (bughunt 2026-10-28).
+    expect(ticked.notes.some((n) => n.includes('(kidnapping, ') && n.includes(governor.name))).toBe(true);
+    expect(after.eventLog.some((e) => e.kind === 'intel' && e.text.startsWith('[kidnapping · '))).toBe(true);
     const n = notableById(after, governor.id)!;
     expect(whereabouts(after, n)).toBe('held');
     const held = heldAs(after, governor.id)!;

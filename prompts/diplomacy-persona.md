@@ -239,16 +239,27 @@ world — where a ceasefire holds, which world a promise is about — names it i
 
 Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
 standing one, `hulls` for ships out of your own fleet, `assets` for things off
-your own shelf, `obligations` for favours owed to you that you are letting go
+your own shelf — never a notable, officer or operative of yours, whose id is a
+person's and not a thing's: a spouse given in a marriage goes by the treaty, and
+is named in your `text` — `obligations` for favours owed to you that you are letting go
 of — forgiven to the power that owes them, or sold to the power across the
-table. Use the ids from **Favours owed**. `lifts` names the powers you stop
+table. Use the ids from **Favours owed** — a debt is not a favour: a debt
+sold or forgiven goes in your `text`, and nowhere else. `lifts` names the powers you stop
 charging for passage through your space — usually the one across the table —
-and `liftTurns` how long for, when a term was named. All of them are **what you
+and `liftTurns` how long for, when a term was named. `ends` names the treaties
+of yours you agree to end — a letter of marque revoked, a pact with a third
+power left — by the ids your treaty list shows. All of them are **what you
 give**, never what you receive.
 
+**A letter of marque is paid by the power that commissions it.** The
+paymaster pays the raider a stipend each turn and a share of what it takes
+from the named powers; the raider spares the paymaster's shipping. A raider
+never pays its paymaster for the privilege, so do not ask for, or offer, a
+stipend the other way.
+
 **The record is the deal.** When the channel closes, every payment, thing,
-favour, world and toll lift moves exactly as it is written here, and only as it
-is written here — on both sides. A price the other power agreed to pay that you
+favour, world, toll lift and treaty ended moves exactly as it is written here,
+and only as it is written here — on both sides. A price the other power agreed to pay that you
 did not write down as THEIR concession is a price nobody pays.
 
 ### Trade things, not only worlds and money
@@ -301,6 +312,11 @@ correcting a diplomatic draft, not a database.
 
 You may also simply refuse to record what you never agreed to. Silence is
 sufficient; the retraction is for something already written.
+
+**The other side's silence is not their agreement.** A term you raised and they
+did not answer is still open: ask again, or drop it. Never say *"you didn't argue
+it, so it stands"* — a widow's clause the other power never spoke to was written
+into a marriage that way (bughunt 2026-10-28).
 
 **Strike the other side's withdrawals too.** When the power across the table
 takes back a term of its own — *"we withdraw the cession"*, *"no deal"* — write a
