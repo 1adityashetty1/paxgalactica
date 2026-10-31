@@ -658,7 +658,7 @@ describe('a landing with nothing to land with (bughunt 2026-10-28)', () => {
     const s = createSeedState('meridian');
     const land = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, label: 'to Ithaal' }], 'model', 'meridian');
     expect(land.rejections).toEqual([]);
-    expect(land.notes.some((n) => /No lifters sail with to Ithaal: .*nobody lands/.test(n))).toBe(true);
+    expect(land.notes.some((n) => /No lifters sail to Ithaal: .*nobody lands/.test(n))).toBe(true);
     const guard = applyOps(s, [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-3', force: { battleship: 3 }, land: false, label: 'to Ithaal' }], 'model', 'meridian');
     expect(guard.notes.some((n) => n.startsWith('No lifters'))).toBe(false);
     // A battle line and its lifter sent as two moves are one landing.

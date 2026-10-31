@@ -7988,7 +7988,7 @@ function applyOpsUnderRules(
             -100,
             Math.min(100, (victim.disposition[party] ?? 0) - COERCION_RESENTMENT),
           );
-          const note = `${other} signs with ${party}'s ships over ${worlds} of its worlds: −${COERCION_RESENTMENT} disposition toward ${party}.`;
+          const note = `${nameFor(state, other)} signs with ${possessive(nameFor(state, party))} ships over ${worlds} of its worlds: −${COERCION_RESENTMENT} disposition toward ${nameFor(state, party)}.`;
           notes.push(note);
           logEvent(state, 'diplomacy', note, other);
         }
@@ -10218,11 +10218,15 @@ function applyOpsUnderRules(
   // A landing with nothing to land with, in the whole batch. "Land troops on
   // Ithaal" from a squadron of battleships was rolled, narrated as shuttles
   // going in, and took station with nothing saying why (bughunt 2026-10-28).
+  // Once a world: two fleets sent at one world said it twice, each through a
+  // label already carrying its fleet's name (bughunt 2026-10-29).
+  const landless = new Set<string>();
   for (const l of landings) {
     // The player's moves only: an NPC's reaction landing nobody is its own affair.
-    if (l.factionId !== state.playerFactionId) continue;
+    if (l.factionId !== state.playerFactionId || landless.has(l.targetId)) continue;
     if (l.lift > 0 || landings.some((m) => m !== l && m.factionId === l.factionId && m.targetId === l.targetId && m.lift > 0)) continue;
-    notes.push(`No lifters sail with ${l.label}: it can win the orbit over ${getSystem(state, l.targetId)?.name ?? l.targetId}, but nobody lands.`);
+    landless.add(l.targetId);
+    notes.push(`No lifters sail to ${getSystem(state, l.targetId)?.name ?? l.targetId}: the fleet can win the orbit there, but nobody lands.`);
   }
   notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
   const pricedByYards = new Set<string>();
