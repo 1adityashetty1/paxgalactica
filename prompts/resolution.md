@@ -58,7 +58,13 @@ leaves a faction with nobody following it.
 
 - `narrative` — 2–4 sentences, second person, addressed to the leader.
   Concrete: what happened, who noticed, what it cost. No dice talk, no DC
-  numbers — the player sees the roll separately.
+  numbers — the player sees the roll separately — and no turn numbers: say
+  "next season" or "before long", never "by turn three". **Narrate the act,
+  not another power's answer to it**: an ultimatum is delivered and the
+  deadline decides; an offer is made and the other power decides. A story in
+  which the target "blinked first" the turn a demand was issued is read by
+  every power that reacts, and the target then answered an ultimatum it had
+  never conceded (bughunt 2026-10-29).
 - `ops` — the state changes that follow, success or failure alike.
 
 ## Ops you may emit

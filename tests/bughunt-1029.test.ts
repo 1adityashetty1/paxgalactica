@@ -104,3 +104,27 @@ describe('a theft the player did not ask to be a copy', () => {
     expect((sent.effect as { copy?: boolean }).copy).toBe(false);
   });
 });
+
+describe('acts the board answers before the roll', () => {
+  it('a bounty is priced trivial, whatever the arbiter wrote', async () => {
+    const campaign = Campaign.start('meridian', 'bounty-trivial');
+    queue = {
+      appraisal: [{ kind: 'act', parts: [{ kind: 'overt', what: 'post a bounty', stat: 'influence', difficulty: 10 }] }],
+      resolution: [{ narrative: 'The price goes up.', ops: [{ op: 'post_bounty', targetFactionId: 'vigil', credits: 200, reason: 'raids' }] }],
+    };
+    const out = await submitAction(campaign, 'Post a bounty of 200 credits on the Iron Vigil Remnant.');
+    expect(out.check?.difficulty).toBe(5);
+  });
+
+  it('a levy on full barracks is turned away, and spends nothing', async () => {
+    const campaign = Campaign.start('freeworlds', 'full-barracks');
+    const vashka = campaign.state.systems.find((x) => x.id === 'ark-4')!;
+    expect(vashka.garrison).toBe(vashka.garrisonMax);
+    queue = { appraisal: [{ kind: 'act', parts: [{ kind: 'overt', what: 'raise troops', stat: 'industry', difficulty: 10 }] }] };
+    const out = await submitAction(campaign, 'Raise four more troops in the Vashka garrison.');
+    expect(out.check ?? null).toBeNull();
+    expect(out.narrative).toMatch(/already full/);
+    expect(out.inadmissible).toMatch(/already full/);
+    expect(campaign.actionPointsLeft).toBe(2);
+  });
+});

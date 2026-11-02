@@ -1831,7 +1831,8 @@ function steal(
   const what = `${mark.kind.replace(/_/g, ' ')} (${mark.text.replace(/[.\s]+$/, '')})`;
   logEvent(state, 'narrative', `Your ${what} is gone from ${host.name}, and nobody can say who took it.`, from, [from]);
   logEvent(state, 'narrative', `The ${what} is taken from ${host.name}${home ? ` and carried to ${home.name}` : ''}.`, thief, [thief]);
-  return `took ${mark.kind.replace(/_/g, ' ')} from ${host.name}${home ? ` and carried it to ${home.name}` : ''} (${mark.text.replace(/[.\s]+$/, '')}).`;
+  const taken = mark.kind.replace(/_/g, ' ');
+  return `took ${taken} from ${host.name}${home ? ` and carried ${/s$/.test(taken) ? 'them' : 'it'} to ${home.name}` : ''} (${mark.text.replace(/[.\s]+$/, '')}).`;
 }
 
 /** The world `faction` holds nearest `from`, where what it takes is carried. */
@@ -7651,6 +7652,19 @@ function applyOpsUnderRules(
             `Only a coalition names whom it is against, not a ${op.treatyType}. Record a pact against named powers as a coalition.`,
           );
           break;
+        }
+        // The worlds a defence pact answers for: a party's own, on a pact.
+        const defends = op.terms.defends ?? [];
+        if (defends.length > 0) {
+          if (!(DEFENCE_PACTS as readonly string[]).includes(op.treatyType)) {
+            reject(raw, 'illegal_value', `Only a defence pact or a coalition names the worlds it defends, not a ${op.treatyType}.`);
+            break;
+          }
+          const bad = defends.find((id) => !op.parties.includes(getSystem(state, id)?.controllerFactionId ?? ''));
+          if (bad) {
+            reject(raw, 'illegal_value', `A pact defends the parties' own worlds; ${getSystem(state, bad)?.name ?? `"${bad}"`} is not one.`);
+            break;
+          }
         }
         // A marriage names the two it weds, one of each party, both unwed: one
         // seated, and one off the other party's Lists who goes to live at the
@@ -13730,6 +13744,8 @@ function resolveBattle(
       if (!isTreatyLive(treaty, state.turn)) continue;
       if (!(DEFENCE_PACTS as readonly string[]).includes(treaty.type)) continue;
       if (!treaty.parties.includes(holder)) continue;
+      // A pact limited to named worlds answers an attack on those alone.
+      if ((treaty.terms.defends ?? []).length > 0 && !treaty.terms.defends!.includes(target.id)) continue;
       const ally = treaty.parties.find((p) => p !== holder);
       if (!ally || attackerIds.has(ally)) continue;
       const allyFaction = state.factions.find((f) => f.id === ally);

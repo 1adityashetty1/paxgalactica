@@ -1619,6 +1619,15 @@ export const TreatyTermsSchema = z.object({
    */
   against: z.array(z.string().min(1)).optional(),
   /**
+   * The worlds a defence pact or coalition answers an attack on. Empty or
+   * absent, every world of either party. Meridian agreed to answer "only a
+   * Vigil move against Arkane Prime and Delvane", the narrative said so, and
+   * the pact answered an attack on any Arkane world, the limit living only in
+   * `mutualDefenseTrigger`'s prose (bughunt 2026-10-29). Optional, so every
+   * treaty written before it parses to exactly what it was.
+   */
+  defends: z.array(z.string().min(1)).optional(),
+  /**
    * The two notables a `marriage` weds, one of each party — required on a
    * marriage and refused on every other type. Names are resolved to ids at
    * signature.

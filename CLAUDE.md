@@ -2061,7 +2061,10 @@ a coalition and refused on every other type (`illegal_value`), the shape
 signatories (`COALITION_RESENTMENT`, 10, once, logged to the target too).
 Borrowed from *Europa Universalis IV*: powers that fear one power bind to
 answer it together. Two parties each, like every treaty, so a coalition of
-three is three coalitions. `pactAnswers` is the one reading of which attack a
+three is three coalitions. Either kind may name the worlds it answers for in
+`terms.defends`, a party's own; an attack anywhere else calls nobody. The
+limit lived in `mutualDefenseTrigger`'s prose until it bit nothing (bughunt
+2026-10-29). `pactAnswers` is the one reading of which attack a
 pact covers.
 
 The pact did very little before this, for three reasons (`resolveBattle`):

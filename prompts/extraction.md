@@ -264,7 +264,11 @@ Specifically:
   one power — *"if the Vigil moves on you, we answer"* — it is a `coalition`
   with `terms.against: ["vigil"]`. If they agreed to defend each other against
   anyone, it is a `mutual_defense`, and `terms.against` is refused on it. A
-  member that is itself at peace with the attacker is not called.
+  member that is itself at peace with the attacker is not called. **If they
+  agreed it answers only for certain worlds** — *"a move on Sekkar Gate or
+  Torrek Anchorage"* — list those worlds' ids in `terms.defends`; the pact then
+  answers an attack on them and nowhere else. Left empty, it answers for every
+  world either party holds. `mutualDefenseTrigger` is prose and binds nothing.
 
   **A marriage names people.** Write each spouse by the name or id the state
   block gives them, one of each party's; a notable already married cannot wed

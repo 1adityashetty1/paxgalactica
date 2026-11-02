@@ -732,6 +732,39 @@ export async function resolveAction(
       priced = { ...priced, appraisal: { ...priced.appraisal, stat: wants } };
     }
   }
+  const TRIVIAL_DC = DIFFICULTY_BANDS.find((b) => b.label === 'trivial')!.dc;
+  // Posting or withdrawing a bounty is the actor's own money into escrow, and
+  // `trivial`; one was priced influence DC 10 and came in partial (bughunt
+  // 2026-10-29).
+  if (/\bbount(?:y|ies)\b/i.test(action) && priced.appraisal.admissible && !priced.appraisal.negotiation && (priced.appraisal.difficulty ?? 0) > TRIVIAL_DC) {
+    priced = { ...priced, appraisal: { ...priced.appraisal, difficulty: TRIVIAL_DC } };
+  }
+  // A levy on barracks already full raises nothing, and that is on the board
+  // before the roll: one was rolled and spent the action (bughunt 2026-10-29).
+  // Turned away as already so, which costs nothing.
+  if (
+    priced.appraisal.admissible &&
+    !priced.appraisal.negotiation &&
+    /\b(?:levy|levies|raise|raising|recruit|muster)\b/i.test(action) &&
+    /\b(?:troops?|garrison|levy|levies|militia|soldiers)\b/i.test(action) &&
+    !/\b(?:fortif\w*|walls?|barracks? (?:built|expanded|enlarged))\b/i.test(action)
+  ) {
+    const mine = state.systems.filter((x) => x.controllerFactionId === state.playerFactionId);
+    const named = mine.filter((x) => new RegExp(`\\b${x.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(action));
+    const full = named.filter((x) => x.garrison >= x.garrisonMax);
+    if (named.length > 0 && full.length === named.length) {
+      const where = full.map((x) => `${x.name} (${x.garrison}/${x.garrisonMax})`).join(', ');
+      priced = {
+        ...priced,
+        appraisal: {
+          ...priced.appraisal,
+          admissible: false,
+          reason: `The barracks are already full at ${where}: a levy there raises nobody. Fortify the world to raise its ceiling first.`,
+          ground: { kind: 'already_so', ref: full[0]!.id },
+        },
+      };
+    }
+  }
   // The same for coercion: an ultimatum declared on its own was ruled, rolled
   // a critical success, and left out for want of the reach the ruling forgot
   // (bughunt 2026-10-29). The words say it is a demand; code names the reach.
