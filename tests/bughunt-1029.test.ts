@@ -81,3 +81,26 @@ describe('a fixture named in the words', () => {
     expect(out.notes.join(' ')).not.toMatch(/was not begun/);
   });
 });
+
+describe('a theft the player did not ask to be a copy', () => {
+  it('takes the thing', async () => {
+    // "Steal the Vigil's line-of-battle drawings" was sent with copy: true,
+    // which leaves the original with the Vigil.
+    const campaign = Campaign.start('ojjul', 'steal-not-copy');
+    campaign.commit([{ op: 'recruit_agent', factionId: 'ojjul', systemId: 'ilv-5' }], 'model', 'ojjul');
+    const agent = campaign.state.agents.find((a) => a.ownerFactionId === 'ojjul')!;
+    queue = {
+      appraisal: [{ kind: 'act', parts: [{ kind: 'covert', what: 'steal the drawings', mission: 'larceny', systemId: 'tor-3', agent: agent.name }] }],
+      resolution: [
+        {
+          narrative: 'The ghost goes to Vantic.',
+          ops: [{ op: 'deploy_agent', agent: agent.name, systemId: 'tor-3', mission: 'larceny', effect: { kind: 'steal', assetId: null, copy: true }, cover: 'a clerk' }],
+        },
+      ],
+    };
+    await submitAction(campaign, `Send ${agent.name} to Vantic to steal the Vigil's line-of-battle drawings.`);
+    const sent = campaign.state.agents.find((a) => a.id === agent.id)!;
+    expect(sent.mission).toBe('larceny');
+    expect((sent.effect as { copy?: boolean }).copy).toBe(false);
+  });
+});

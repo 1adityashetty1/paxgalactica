@@ -265,9 +265,18 @@ export function spendsAsSaid(
   // laying down torpedo boats scuttled a freighter moored beside the yard
   // (bughunt 2026-10-28): a loss nobody fought, written as an order.
   const scuttling = /\b(?:scuttle|scuttles|scuttling|scrap|scrapping|decommission|decommissioning|strike off|sink our own|break up)\b/.test(words);
+  // A theft takes the thing unless the player asked for a copy: "steal the
+  // Vigil's line-of-battle drawings" was sent as a copy, which leaves the
+  // original where it was (bughunt 2026-10-29).
+  const copying = /\b(?:copy|copies|copying|photograph\w*|transcrib\w*|duplicate\w*)\b/.test(words);
   const kept: unknown[] = [];
   const dropped: string[] = [];
-  for (const op of ops) {
+  for (const raw of ops) {
+    let op = raw;
+    const send = raw as { op?: string; effect?: { kind?: string; copy?: boolean } } | null;
+    if (send?.op === 'deploy_agent' && send.effect?.kind === 'steal' && send.effect.copy === true && !copying) {
+      op = { ...send, effect: { ...send.effect, copy: false } };
+    }
     const o = op as { op?: string; assetId?: string; count?: number; hull?: string } | null;
     if (o?.op === 'scuttle_ships' && !scuttling) {
       dropped.push(`${o.count ?? 'some'} ${String(o.hull ?? 'hull').replace(/_/g, ' ')}${o.count === 1 ? '' : 's'} struck off`);
