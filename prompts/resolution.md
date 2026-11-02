@@ -58,7 +58,13 @@ leaves a faction with nobody following it.
 
 - `narrative` — 2–4 sentences, second person, addressed to the leader.
   Concrete: what happened, who noticed, what it cost. No dice talk, no DC
-  numbers — the player sees the roll separately.
+  numbers — the player sees the roll separately — and no turn numbers: say
+  "next season" or "before long", never "by turn three". **Narrate the act,
+  not another power's answer to it**: an ultimatum is delivered and the
+  deadline decides; an offer is made and the other power decides. A story in
+  which the target "blinked first" the turn a demand was issued is read by
+  every power that reacts, and the target then answered an ultimatum it had
+  never conceded (bughunt 2026-10-29).
 - `ops` — the state changes that follow, success or failure alike.
 
 ## Ops you may emit
@@ -80,9 +86,6 @@ leaves a faction with nobody following it.
 | `sweep` | counter-intelligence on a world of your own |
 | `sway` | an influence attempt moves how another power sees you (`whom`). The roll sizes it; it does nothing unless the check was influence and it worked |
 | `gift` | credits given to another power (`to`, `amount`), which buy its regard at 20 credits a point, ten at most |
-
-`regard` is how a reacting power records what it thinks of you, for a reason
-from a closed list; it is never yours to write about yourself.
 | `build_ships` | lay down new hulls of your own, now, at a world you hold — or, with `programme: true`, as a hidden yard programme delivered later |
 | `pay` | your credits to another power (`to`, `amount`, `for`) |
 | `spend` | your credits to nobody on the board — a bribe, a hire, materials (`amount`, `for`) |
@@ -132,6 +135,11 @@ from a closed list; it is never yours to write about yourself.
 | `recruit_commander` | appoint an officer off your Lists — named in `officer`, or the first of a `school` — to a world you hold; up to five in post; **an action of its own** |
 | `dissolve_commitment` | end one, by id |
 | `log_narrative` | a note for the event log |
+
+**Never write `regard`.** How another power feels about what you did is its own
+to record, in its reaction after the turn — a declaration that writes it is
+refused whole. An influence check that worked is `sway`; credits that buy
+goodwill are `gift`.
 
 `transfer_control` is **not available to you.** A system changes hands only when
 a fleet you `move` physically arrives.
@@ -241,8 +249,11 @@ assault from an orbit you hold, a turn.
 world in the state block ("Operating Group 2", "3rd Pack"). **When the player
 names a fleet, move it by name**: `"fleet": "Operating Group 2"` on the
 `move`, and no `force` — a named fleet sails whole from wherever it stands, and
-keeps its name. A move that names no fleet sends what `force` says as a
-detachment, which rejoins the senior fleet where it arrives. **Every hull is in
+keeps its name. **Everything that sails is a fleet**: a `force` smaller than
+the fleet named is split off it and sails as a fleet of its own, and a move
+that names no fleet forms its `force` into one — whole fleets inside it merged
+into the senior, the rest split off — which keeps its identity where it lands.
+When the player names ships rather than a fleet, write `force`, not `fleet`. **Every hull is in
 a fleet, and a single-vessel job is a fleet of its own**: each listener and
 each freighter stands as a one-ship fleet ("Ear of the Family 2", "Spice Hauler 3"), built
 and landed that way, and rides in a warfleet only once its power merges it in.

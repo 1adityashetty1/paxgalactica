@@ -36,6 +36,7 @@ import {
   type WarEthic,
   type WorldState,
 } from '../domain/state.js';
+import { possessive } from '../domain/words.js';
 
 /**
  * The Rim seed: 25 systems across four sectors, five powers, no calendar.
@@ -911,7 +912,7 @@ function seedNotes(): Asset[] {
   return SEED_FACTIONS.map((f, i) => ({
     id: `ast-0-${9 + i}`,
     kind: NOTE_ASSET_KIND,
-    text: `${f.name}'s note of ${NOTE_TITLE[f.note].toLowerCase()}: ${NOTE_MEANING[f.note]}.`,
+    text: `${possessive(f.name)} note of ${NOTE_TITLE[f.note].toLowerCase()}: ${NOTE_MEANING[f.note]}.`,
     heldBy: f.id,
     quantity: 1,
     unit: 'note',

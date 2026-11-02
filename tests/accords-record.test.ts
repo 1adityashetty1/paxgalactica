@@ -183,3 +183,125 @@ describe('an accord built from the record', () => {
     expect(campaign.state.factions.find((f) => f.id === 'meridian')!.credits).toBe(before);
   });
 });
+
+describe('a treaty ended across the table (bughunt 2026-10-28)', () => {
+  const marque = () => {
+    const s = createSeedState('vigil');
+    const out = applyOps(
+      s,
+      [
+        {
+          op: 'form_treaty',
+          parties: ['ojjul', 'drajk'],
+          treatyType: 'contract',
+          terms: { incomePerTurn: { ojjul: -10, drajk: 10 }, commission: { raider: 'drajk', against: ['vigil'], share: 25 } },
+          durationTurns: 10,
+          summary: 'Ojjul Nar Combine commissions Drajk Confederacy to raid Iron Vigil Remnant',
+        },
+      ],
+      'engine',
+    );
+    const id = out.state.treaties.find((t) => t.type === 'contract' && t.parties.includes('drajk'))!.id;
+    return { s: out.state, id };
+  };
+
+  it('is broken by the power that conceded it, at the price of a breach', () => {
+    const { s, id } = marque();
+    const built = transfersFromRecord(s, [c('ojjul', 'end_letter_of_marque', { ends: [id] }), c('vigil', 'price', { credits: 150 })], 'vigil', 'ojjul');
+    expect(built.ops).toContainEqual({ op: 'break_treaty', treatyId: id, factionId: 'ojjul', reason: 'ojjul gives end_letter_of_marque.' });
+    const before = s.factions.find((f) => f.id === 'drajk')!.disposition.ojjul ?? 0;
+    const out = applyOps(s, built.ops, 'extraction', 'vigil');
+    expect(out.rejections).toEqual([]);
+    expect(out.state.treaties.find((t) => t.id === id)!.status).toBe('broken');
+    expect(out.state.factions.find((f) => f.id === 'drajk')!.disposition.ojjul ?? 0).toBeLessThan(before);
+  });
+
+  it('builds nothing for a treaty the conceder is not bound by', () => {
+    const { s, id } = marque();
+    const built = transfersFromRecord(s, [c('meridian', 'end_it', { ends: [id] })], 'vigil', 'meridian');
+    expect(built.ops).toEqual([]);
+    expect(built.notes[0]).toMatch(/No treaty/);
+  });
+
+  it('cannot be broken on another power’s behalf by a declaration', () => {
+    const { s, id } = marque();
+    const out = applyOps(s, [{ op: 'break_treaty', treatyId: id, factionId: 'ojjul' }], 'model', 'vigil');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+});
+
+describe('a line code reads off the acts (bughunt 2026-10-28)', () => {
+  it('does not refuse the letter of marque the line itself allows', async () => {
+    const s = createSeedState('drajk');
+    const line = s.factions.find((f) => f.id === 'drajk')!.lineActs!.find((t) => t.forbids.includes('alliance_signed'))!.text;
+    queue = {
+      extraction: [
+        {
+          narrative: 'The Combine commissions the Pack against the Vigil.',
+          accepted: ['ojjul:letter_of_marque'],
+          ops: [
+            {
+              op: 'form_treaty',
+              parties: ['ojjul', 'drajk'],
+              treatyType: 'contract',
+              terms: { incomePerTurn: { ojjul: -15, drajk: 15 }, commission: { raider: 'drajk', against: ['vigil'], share: 50 } },
+              durationTurns: 10,
+              summary: 'a letter of marque against the Vigil',
+            },
+          ],
+        },
+      ],
+      appraisal: [
+        { ...clean, breach: { kind: 'red_line', principles: [line], how: 'it binds', by: 'the captains', reason: 'An alliance by another name.' } },
+        clean,
+      ],
+      breach_relevance: [{ relevant: true, why: '' }],
+    };
+    const campaign = Campaign.start('drajk', 'marque-allowed');
+    const out = await closeChannel(campaign, 'ojjul', said, [c('ojjul', 'letter_of_marque', { perTurn: 15 })]);
+    expect(out.refusal ?? null).toBeNull();
+    expect(out.rejections).toEqual([]);
+    expect(campaign.state.treaties.some((t) => t.type === 'contract' && t.terms.commission?.raider === 'drajk')).toBe(true);
+  });
+});
+
+describe('a debt paid down across the table (bughunt 2026-10-28)', () => {
+  it('is paid once, though extraction settles it and the record pays it', async () => {
+    const s = createSeedState('drajk');
+    const debt = s.debts.find((d) => d.debtorFactionId === 'drajk')!;
+    queue = {
+      extraction: [
+        {
+          narrative: 'Drajk pays down 100 of its debt.',
+          accepted: ['drajk:debt_paydown', 'ojjul:goodwill'],
+          ops: [{ op: 'settle_debt', debtId: debt.id, amount: 100, reason: 'paid down' }],
+        },
+      ],
+      appraisal: [clean, clean],
+    };
+    const campaign = Campaign.start('drajk', 'debt-once');
+    const before = campaign.state.factions.find((f) => f.id === 'drajk')!.credits;
+    const owed = campaign.state.debts.find((d) => d.id === debt.id)!.balance;
+    const out = await closeChannel(campaign, 'ojjul', said, [c('drajk', 'debt_paydown', { credits: 100 }), c('ojjul', 'goodwill')]);
+    expect(out.rejections).toEqual([]);
+    expect(before - campaign.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(Math.min(100, owed));
+    expect(campaign.state.debts.find((d) => d.id === debt.id)!.balance).toBe(Math.max(0, owed - 100));
+  });
+});
+
+describe('a person written where a thing goes (bughunt 2026-10-29)', () => {
+  it('is not handed over as an asset, so the marriage around it stands', () => {
+    // Arkane's persona put the groom's notable id in `assets`; the transfer
+    // built from it was refused and the whole marriage failed.
+    const s = createSeedState('meridian');
+    const groom = s.notables!.find((n) => (n.estateId ?? '').startsWith('freeworlds:') && n.systemId === null)!;
+    const built = transfersFromRecord(
+      s,
+      [c('freeworlds', 'marriage_binding', { assets: [groom.id] }), c('meridian', 'dowry', { assets: ['ast-0-9'] })],
+      'meridian',
+      'freeworlds',
+    );
+    const handed = built.ops.filter((o) => o.op === 'transfer_asset').map((o) => o.assetId);
+    expect(handed).toEqual(['ast-0-9']);
+  });
+});

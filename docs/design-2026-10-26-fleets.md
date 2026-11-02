@@ -42,18 +42,25 @@ its identity, as in *Stellaris*. Two decisions were taken with the user:
   A new fleet takes the lowest number its power is not using. Its id is
   `flt-<power>-<number>`. Empty fleets are dropped, and lists are sorted for
   replay.
-- **Anonymous moves form detachments.** A move that names no fleet sends a
-  numbered detachment. On arrival it merges into the senior fleet already
-  there; if there is none it stands as a fleet of its own. So the bots' constant
-  massing does not multiply fleets without end.
+- **Everything that sails is a fleet** (journal version 35, the user's ruling
+  after bughunt 2026-10-29). A move that names no fleet forms its force into
+  one, for free: every fleet wholly inside the force is merged into the senior
+  of them, which lends its name, and the rest is split off the fleets it draws
+  on. It keeps its identity where it lands. A force written beside a named
+  fleet, and smaller than it, is split off it the same way.
+- **The bots' massing still forms detachments.** A bot's move that names no
+  fleet sends a numbered detachment, which on arrival merges into the senior
+  fleet there, or stands alone where there is none. So the bots' constant
+  massing does not multiply fleets without end. Before version 35 every
+  anonymous move did this.
 - **Old journals are untouched.** A world with no `fleets` list, which is every
   seed before version 31, is read and written exactly as before.
 
 ## Ops
 
 - **`move.fleet` / `issue_order.fleet`.** This names a fleet by id, number or
-  name. The fleet sails whole from wherever it stands. `force` is not needed,
-  and is ignored if given.
+  name. The fleet sails whole from wherever it stands. `force` is not needed;
+  given and smaller, it is how much of the fleet is split off to sail.
 - **Organising.** These are free, are not an act in the world, and are
   committed directly like the cheat menu (path `organise`). They may also be
   written by a declaration, reaction or bot:

@@ -35,4 +35,15 @@ describe('a story that takes a world the power does not hold', () => {
     expect(rewrite?.user).toMatch(/HOLDER: Threx is held by Drajk Confederacy, not by you; nothing in this act took it/);
     expect(out.narrative).toMatch(/still the Vigil/);
   });
+
+  it('is not read into a world named beside a taking about something else (bughunt 2026-10-28)', async () => {
+    const campaign = Campaign.start('meridian', 'holder-near');
+    queue = {
+      appraisal: [{ admissible: true, reason: '', stat: 'resolve', difficulty: 8, rationale: '' }],
+      resolution: [{ narrative: 'Meridian settles its Shalka refit account and keeps a fifth of every prize it takes.', ops: [] }],
+    };
+    const out = await submitAction(campaign, 'Settle the Shalka refit account.');
+    expect(users.some((u) => u.kind === 'reconcile')).toBe(false);
+    expect(out.narrative).not.toMatch(/Not as told/);
+  });
 });

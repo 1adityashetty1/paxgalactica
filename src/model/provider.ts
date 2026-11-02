@@ -94,6 +94,8 @@ export interface Provider {
  * providers, which do not.
  */
 export const CALL_TIMEOUT_MS = 180_000;
+/** How long an abandoned call waits for its process to close before moving on. */
+export const TEARDOWN_GRACE_MS = 5_000;
 
 /** The one wording `callStructured` reads a timeout by. */
 function silentFor(ms: number): ModelCallError {
@@ -283,10 +285,19 @@ export const subscriptionProvider: Provider = {
       clearTimeout(timer);
       // Release the child process. Without this an abandoned call leaves a
       // binary running and its output going nowhere.
+      // Bounded: a hung binary may never answer the teardown either, and
+      // waiting on it held a call the deadline had abandoned at 180s for 542s
+      // (bughunt 2026-10-29). The child is left to the SDK past that.
+      let grace: ReturnType<typeof setTimeout> | undefined;
       try {
-        await q.return?.(undefined);
+        await Promise.race([
+          Promise.resolve(q.return?.(undefined)).catch(() => undefined),
+          new Promise((done) => (grace = setTimeout(done, TEARDOWN_GRACE_MS))),
+        ]);
       } catch {
         // Nothing useful to do if the teardown itself fails.
+      } finally {
+        clearTimeout(grace);
       }
     }
 

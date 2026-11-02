@@ -579,7 +579,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
             ? 'YOURS'
             : 'between others — you may back either side';
       lines.push(
-        `  - \`${d.id}\` ${nameOfFaction(state, d.fromFactionId)} demands of ${nameOfFaction(state, d.toFactionId)}: ${d.text} (${d.kind.replace(/_/g, ' ')}). Answer by turn ${d.deadlineTurn}, ${left} turn${left === 1 ? '' : 's'} left. ${whose}.${
+        `  - \`${d.id}\` ${nameOfFaction(state, d.fromFactionId)} demands of ${nameOfFaction(state, d.toFactionId)}: ${d.text} (${d.kind.replace(/_/g, ' ')}). Answer before turn ${d.deadlineTurn} begins, ${left} turn${left === 1 ? '' : 's'} left. ${whose}.${
           backers('from').length > 0 ? ` Backing the demand: ${backers('from').join(', ')}.` : ''
         }${backers('to').length > 0 ? ` Backing the target: ${backers('to').join(', ')}.` : ''}`,
       );

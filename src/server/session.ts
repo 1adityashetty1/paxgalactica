@@ -33,6 +33,7 @@ import { effectiveStats, getFaction, ledgerFor, spanOfControl } from '../domain/
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement, verifyBreachRelevance } from '../model/calls.js';
+import { lineReadByCode } from '../domain/line-reach.js';
 import { stats, timingReport } from '../model/client.js';
 import { spendCap } from '../model/settings.js';
 import { FileSink, NULL_SINK, setTelemetrySink, span } from '../model/telemetry.js';
@@ -420,6 +421,10 @@ export class GameSession {
   /** Adopt a snapshot the browser sent. Replaces whatever this session held. */
   restore(snapshot: SessionSnapshot): void {
     this.campaign = Campaign.fromSnapshot(snapshot.campaign, BUILD_ID, this.store);
+    // Every request restores, so this is where a campaign is adopted now: the
+    // trace was pointed only on new and resume, and a campaign played on past
+    // a server restart recorded nothing (bughunt 2026-10-28).
+    this.traceTo(this.campaign.name);
     this.adoptChannel(snapshot.channel);
     this.lastBriefing =
       (snapshot.briefing as Briefing | null) ?? briefingFromState(this.campaign.state);
@@ -941,6 +946,13 @@ export class GameSession {
           const named = ruled.appraisal.breach?.principles ?? [];
           const found = me && named.length > 0 ? classifyPrinciples(me, named) : null;
           if (found?.kind !== 'red_line') return { c, ruled, found: null, extra: 0 };
+          // A line code reads off the accord's acts is not the model's to read
+          // here either: the close would ignore the ruling, and a blocker made
+          // from it refused the whole accord (bughunt 2026-10-29: the Vigil
+          // paying rent for hulls, ruled "being bought").
+          if (lineReadByCode(campaign.state, campaign.state.playerFactionId, found.principle)) {
+            return { c, ruled, found: null, extra: 0 };
+          }
           const check = await verifyBreachRelevance(c.text, found.principle, 'red_line');
           return { c, ruled, found: check.relevant ? found : null, extra: check.costUsd };
         }),

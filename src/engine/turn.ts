@@ -28,7 +28,7 @@ import {
   type ChatMessage,
 } from '../model/calls.js';
 import {
-  breachContradictsState, classifyPrinciples } from '../domain/compulsions.js';
+  breachContradictsState, classifyPrinciples, enforcedByDrift } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
@@ -40,6 +40,8 @@ import { holdToRuling, noPaymentBesideAGift,
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
 import { isMovementType } from '../domain/state.js';
+import { ASSET_ARCHETYPES } from '../domain/assets.js';
+import { lineReadByCode } from '../domain/line-reach.js';
 import { PEACE_TREATIES, type Concession } from '../domain/diplomacy.js';
 import type { WorldState } from '../domain/state.js';
 import {
@@ -595,7 +597,7 @@ export function applyBonus(
  * a ruling filter dropped, a trim or clamp, a correction (§5). Read off the
  * notes the engine and the reducer already write, so nothing new is tracked.
  */
-const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect|barracks are already full|lay down nothing/;
+const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect|barracks are already full|lay down nothing|fixture unbuilt/;
 
 export function storyDiverged(notes: readonly string[], rejections: readonly unknown[]): boolean {
   if (rejections.length > 0) return true;
@@ -658,7 +660,15 @@ async function reconcileStory(
   const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
   if (!out?.narrative) {
     const base = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
-    const corrected = holders.length > 0 ? `${base}\n\nNot as told: ${holders.map((h) => h.replace(/^- HOLDER: /, '')).join(' ')}` : base;
+    // What did not happen yet, as well as whose a world is: a fleet three
+    // turns out "makes Corvid days ahead" stood uncorrected when the rewrite
+    // failed (bughunt 2026-10-28).
+    const untold = [
+      ...holders.map((h) => h.replace(/^- HOLDER: /, '')),
+      ...timing.map((t) => t.replace(/^- TIMING: /, '')),
+    ];
+    const corrected =
+      untold.length === 0 ? base : base.includes('\n\nNot as told: ') ? `${base} ${untold.join(' ')}` : `${base}\n\nNot as told: ${untold.join(' ')}`;
     campaign.rewriteNarrative(from, corrected);
     return { narrative: corrected, costUsd: out?.costUsd ?? 0, reconciled: false };
   }
@@ -674,6 +684,18 @@ async function reconcileStory(
  * sentences that name a world beside a word of taking it.
  */
 const TAKEN = /\b(?:colou?rs? (?:go|goes|went) up|banners? (?:come|comes|came) down|falls?|fell|taken|takes|took|captured?|seized?|storm(?:s|ed)?|lands home|is ours|ours now|in (?:our|meridian) hands)\b/i;
+function takenNear(sentence: string, name: string): boolean {
+  for (const clause of sentence.split(/[,;:—–]|\band\b/)) {
+    const at = clause.indexOf(name);
+    if (at < 0) continue;
+    const words = (t: string) => t.split(/\s+/).filter(Boolean);
+    const before = words(clause.slice(0, at)).slice(-4).join(' ');
+    const after = words(clause.slice(at + name.length)).slice(0, 4).join(' ');
+    if (TAKEN.test(before) || TAKEN.test(after)) return true;
+  }
+  return false;
+}
+
 function holdersOf(campaign: Campaign, draft: string): string[] {
   const me = campaign.state.playerFactionId;
   const out: string[] = [];
@@ -681,6 +703,10 @@ function holdersOf(campaign: Campaign, draft: string): string[] {
     if (!TAKEN.test(sentence)) continue;
     for (const world of campaign.state.systems) {
       if (world.controllerFactionId === me || !sentence.includes(world.name)) continue;
+      // The taking has to be about this world: within a few words of its name,
+      // in its clause. "paid down its Shalka refit debt … every prize it takes"
+      // read as Shalka taken (bughunt 2026-10-28).
+      if (!takenNear(sentence, world.name)) continue;
       const holder = world.controllerFactionId ? (getFaction(campaign.state, world.controllerFactionId)?.name ?? world.controllerFactionId) : 'nobody';
       const line = `- HOLDER: ${world.name} is held by ${holder}, not by you; nothing in this act took it.`;
       if (!out.includes(line)) out.push(line);
@@ -690,7 +716,24 @@ function holdersOf(campaign: Campaign, draft: string): string[] {
 }
 
 /** When each order the act began will land, said plainly for the reconcile pass. */
-function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
+export function agentKey(a: { id: string; systemId: string; mission: string | null }): string {
+  return `agent:${a.id}:${a.systemId}:${a.mission ?? ''}`;
+}
+
+export function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
+  // An operative sent this act "slips through Threx" while seven jumps out, at
+  // work from turn 5 (bughunt 2026-10-28).
+  const me0 = campaign.state.playerFactionId;
+  const travelling = (campaign.state.agents ?? [])
+    .filter((a) => a.ownerFactionId === me0 && !ordersBefore.has(agentKey(a)) && (a.inPlaceFrom ?? 0) > campaign.state.turn)
+    .map((a) => {
+      const where = campaign.state.systems.find((x) => x.id === a.systemId)?.name ?? a.systemId;
+      return `- TIMING: ${a.name || 'the operative'} is on the road to ${where} and is at work from turn ${a.inPlaceFrom}, not now.`;
+    });
+  return [...travelling, ...timingOfOrders(campaign, ordersBefore)];
+}
+
+function timingOfOrders(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
   const me = campaign.state.playerFactionId;
   return campaign.state.pendingOrders
     .filter((o) => o.factionId === me && !ordersBefore.has(o.id))
@@ -722,7 +765,7 @@ async function commitWithCorrection(
   actor?: string,
   /** Covert work: its notes are written for the actor alone, correction included. */
   secret = false,
-): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
+): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number; landed: unknown[] }> {
   // **A reaction has no check behind it**, so it cannot found a fixture. The rest
   // of an NPC's ops are unbounded on purpose — it is answering the turn, not
   // rolling for it — but a fixture is a thing a power sets out to build, and
@@ -733,22 +776,29 @@ async function commitWithCorrection(
   // Only reactions come through here: an NPC answering the turn (`OP_PATHS`).
   const first = campaign.commit(seal(ops), 'model', label, actor, 'reaction');
   if (first.rejections.length === 0) {
-    return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
+    return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0, landed: ops };
   }
 
   const revised = await reviseRejected(campaign, first.rejections, label, context, ops);
   if (!revised) {
-    return { rejections: first.rejections, notes: [...bound.notes, ...first.notes], costUsd: 0 };
+    return { rejections: first.rejections, notes: [...bound.notes, ...first.notes], costUsd: 0, landed: [] };
   }
 
   // The correction batch is filtered too: a retry that re-emitted the fixture
   // would otherwise be the hole, exactly as it is for an `onComplete` payload.
   const again = boundPayloadsToOutcome(revised.ops, 'success', undefined);
   const second = campaign.commit(seal(again.ops), 'model', `${label}:correction`, actor, 'reaction');
+  // The first batch's all-or-nothing note is dropped when the correction
+  // landed, as a declaration's is rewritten: the player was told "nothing in
+  // this batch was applied" about a reaction whose correction then did apply
+  // (bughunt 2026-10-28).
+  const corrected = second.rejections.length === 0;
+  const firstNotes = corrected ? first.notes.filter((n) => !n.startsWith('Nothing in this batch was applied')) : first.notes;
   return {
     rejections: second.rejections,
-    notes: [...bound.notes, ...first.notes, ...again.notes, ...second.notes],
+    notes: [...bound.notes, ...firstNotes, ...again.notes, ...second.notes],
     costUsd: revised.costUsd,
+    landed: corrected ? again.ops : [],
   };
 }
 
@@ -963,6 +1013,20 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     routed.notes.push('Goods handed to a creditor are a gift, not a payment: the cash paid beside them is left out. Settling a debt in goods needs the creditor to agree — open a channel.');
   }
 
+  // A fixture on a partial is unbuilt, and the model usually leaves its
+  // `found_fixture` out rather than having it stripped — so nothing said so,
+  // and the story told the player the exchange "stands" (bughunt 2026-10-28).
+  // Named here, which also sends the story to be reconciled.
+  if (resolution.check?.outcome === 'partial' && !routed.ops.some((o) => (o as { op?: string } | null)?.op === 'found_fixture')) {
+    const words = ` ${action.toLowerCase().replace(/[^a-z\s]/g, ' ')} `;
+    const named = ASSET_ARCHETYPES.find((a) => a.fixture && words.includes(` ${a.kind.replace(/_/g, ' ')} `));
+    if (named) {
+      routed.notes.push(
+        `A ${named.kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`,
+      );
+    }
+  }
+
   // Secret when the arbiter ruled it covert OR anything in it places an
   // operative. The ruling is the load-bearing half: a covert attempt that
   // FAILED places nobody, so it carries no `deploy_agent` to recognise it by,
@@ -974,7 +1038,12 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     routed.ops.some(isCovertOp);
 
   const creditsBefore = getFaction(campaign.state, campaign.state.playerFactionId)?.credits ?? 0;
-  const ordersBefore = new Set(campaign.state.pendingOrders.map((o) => o.id));
+  // Operatives too, keyed by where they were and what they were doing, so the
+  // timing check can tell which the act sent on the road.
+  const ordersBefore = new Set([
+    ...campaign.state.pendingOrders.map((o) => o.id),
+    ...(campaign.state.agents ?? []).map(agentKey),
+  ]);
   const staged = await stageWithCorrection(
     campaign,
     routed.ops,
@@ -1271,7 +1340,10 @@ export async function endTurn(
             factionName: faction.name,
             color: faction.displayColor,
             narrative: reaction.narrative,
-            ops: applied.rejections.length > 0 ? [] : lined.ops,
+            // What landed: the correction's ops when the first try was
+            // refused, never the first try's — the card showed a raid on
+            // Sarsuma that the correction had dropped (bughunt 2026-10-28).
+            ops: applied.rejections.length > 0 ? [] : (applied.landed as typeof lined.ops),
             heldBack: heldBack > 0 ? heldBack : null,
             // An invitation to talk, if this power wants something. Passed
             // through rather than acted on: the player opens the channel.
@@ -1609,7 +1681,18 @@ export function transfersFromRecord(
   const sum = (by: string, f: (c: Concession) => number) =>
     agreed.filter((c) => c.by === by).reduce((n, c) => n + f(c), 0);
   const credits = new Map([player, other].map((p) => [p, sum(p, (c) => c.credits)] as [string, number]));
-  const assetsOf = (by: string) => [...new Set(agreed.filter((c) => c.by === by).flatMap((c) => c.assets))];
+  // A person on a roster written where a thing goes is not handed over by
+  // `transfer_asset`: a notable goes to a court by the marriage's terms, and an
+  // officer or operative of one's own is not held. The persona put Joran
+  // Dustborn's id there, the transfer was refused, and the whole marriage
+  // failed (bughunt 2026-10-29).
+  const people = new Set([
+    ...(state.notables ?? []).map((n) => n.id),
+    ...(state.commanders ?? []).map((c) => c.id),
+    ...state.agents.map((a) => a.id),
+  ]);
+  const assetsOf = (by: string) =>
+    [...new Set(agreed.filter((c) => c.by === by).flatMap((c) => c.assets))].filter((id) => !people.has(id));
   const assetsGiven = new Map([player, other].map((p) => [p, assetsOf(p)] as [string, string[]]));
 
   for (const ceder of [player, other]) {
@@ -1646,6 +1729,10 @@ export function transfersFromRecord(
     const to = otherOf(c.by);
     for (const id of c.obligations) {
       const owed = (state.obligations ?? []).find((o) => o.id === id);
+      // A debt written where a favour goes is extraction's to sell or forgive
+      // (`assign_debt`, `forgive_debt`), not a missing favour: the note told
+      // the player a sale that landed had failed (bughunt 2026-10-28).
+      if (!owed && (state.debts ?? []).some((d) => d.id === id)) continue;
       if (!owed) {
         notes.push(`No favour "${id}" to give up; ${c.text}`);
         continue;
@@ -1655,6 +1742,20 @@ export function transfersFromRecord(
           ? { op: 'release_obligation', obligationId: id, reason: c.text.slice(0, 240) }
           : { op: 'assign_obligation', obligationId: id, toHolderFactionId: to, reason: c.text.slice(0, 240) },
       );
+    }
+  }
+  // A treaty a power agreed to end: only its own, and only one still in force.
+  const ending = new Set<string>();
+  for (const c of agreed) {
+    for (const id of c.ends ?? []) {
+      const treaty = state.treaties.find((t) => t.id === id);
+      if (!treaty || !treaty.parties.includes(c.by) || (treaty.status !== 'active' && treaty.status !== 'pending')) {
+        notes.push(`No treaty "${id}" of ${getFaction(state, c.by)?.name ?? c.by}'s in force to end; ${c.text}`);
+        continue;
+      }
+      if (ending.has(id)) continue;
+      ending.add(id);
+      ops.push({ op: 'break_treaty', treatyId: id, factionId: c.by, reason: c.text.slice(0, 240) });
     }
   }
   for (const by of [player, other]) {
@@ -1783,7 +1884,16 @@ export function accordActs(
  */
 function isCovertOp(raw: unknown): boolean {
   const op = raw as { op?: unknown; dark?: unknown } | null;
-  return op?.op === 'deploy_agent' || op?.op === 'lay_groundwork' || (orderFor(op) as { dark?: unknown } | null)?.dark === true;
+  // Signing an operative on, or calling one home, is as much the power's own
+  // business as sending one: the Vigil's reaction was told a Meridian ghost
+  // had come off the Lists at Torrek Anchorage (bughunt 2026-10-29).
+  return (
+    op?.op === 'deploy_agent' ||
+    op?.op === 'lay_groundwork' ||
+    op?.op === 'recruit_agent' ||
+    op?.op === 'recall_agent' ||
+    (orderFor(op) as { dark?: unknown } | null)?.dark === true
+  );
 }
 
 export async function closeChannel(
@@ -1826,6 +1936,33 @@ export async function closeChannel(
   const unknownTerms = [...accepted].filter((k) => !conceded.some((c) => `${c.by}:${c.kind}` === k));
   const built = transfersFromRecord(campaign.state, agreed, player, factionId);
   const stripped = withoutRecordTransfers(extraction.output.ops);
+  // A treaty the record ends is ended once: extraction's own break of it would
+  // be refused as already void, and sink the accord. And only the record names
+  // another power as the breaker: extraction may not break on its behalf.
+  // A payment against a debt is one payment. Extraction writes the
+  // `settle_debt` that applies it, the record builds the `pay` that moves it,
+  // and the reducer charged both: a 120 paydown cost the Confederacy 240
+  // (bughunt 2026-10-28). What a settlement moves comes off the record's pay.
+  for (const raw of stripped.ops) {
+    const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+    if (o?.op !== 'settle_debt') continue;
+    const debt = (campaign.state.debts ?? []).find((d) => d.id === o.debtId);
+    if (!debt) continue;
+    let left = Number(o.amount ?? 0);
+    for (const pay of built.ops) {
+      if (left <= 0) break;
+      if (pay.op !== 'pay' || pay.factionId !== debt.debtorFactionId || pay.to !== debt.creditorFactionId) continue;
+      const take = Math.min(left, Number(pay.amount ?? 0));
+      pay.amount = Number(pay.amount) - take;
+      left -= take;
+    }
+  }
+  built.ops = built.ops.filter((o) => !(o.op === 'pay' && Number(o.amount) <= 0));
+  const recordEnds = new Set(built.ops.filter((o) => o.op === 'break_treaty').map((o) => String(o.treatyId)));
+  stripped.ops = stripped.ops.filter((raw) => {
+    const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+    return !(o?.op === 'break_treaty' && (recordEnds.has(String(o.treatyId)) || (o.factionId !== undefined && o.factionId !== player)));
+  });
   const recordNotes = [
     ...built.notes,
     ...unknownTerms.map((k) => `"${k}" is not on the record, so nothing was built for it.`),
@@ -1891,9 +2028,16 @@ export async function closeChannel(
   // dissent charged for "no raid under way" while a raid was staged and a fleet
   // was in transit. Checked before the paid call, so a contradiction costs
   // nothing to catch.
-  if (
+  // A line code reads off the acts is crossed when the accord's acts cross it
+  // (`staged.crossed`, read below), never on a reading of the narrative: the
+  // Confederacy's "a truce or a letter of marque … is the most it signs" refused
+  // the letter of marque it names as allowed (bughunt 2026-10-28).
+  if (firstPass && lineReadByCode(campaign.state, campaign.state.playerFactionId, firstPass.principle)) {
+    breach = null;
+  } else if (
     firstPass?.kind === 'compulsion' &&
-    breachContradictsState(campaign.state, campaign.state.playerFactionId, firstPass.principle)
+    (breachContradictsState(campaign.state, campaign.state.playerFactionId, firstPass.principle) ||
+      enforcedByDrift(campaign.state, campaign.state.playerFactionId, firstPass.principle))
   ) {
     breach = null;
   } else if (firstPass) {
@@ -2100,7 +2244,15 @@ export async function closeChannel(
       counterpartyCost = theirRuling?.costUsd ?? 0;
       const theirNamed = theirRuling?.appraisal.breach?.principles ?? [];
       theirBreach = other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
-      if (theirBreach?.kind === 'compulsion' && breachContradictsState(stateBefore, factionId, theirBreach.principle)) {
+      // A line code reads off the acts is crossed when the acts cross it —
+      // `theirLine` below — and a reading of the concessions alone, which never
+      // sees what the other power received, does not overrule it.
+      if (theirBreach && lineReadByCode(stateBefore, factionId, theirBreach.principle)) {
+        theirBreach = null;
+      } else if (
+        theirBreach?.kind === 'compulsion' &&
+        (breachContradictsState(stateBefore, factionId, theirBreach.principle) || enforcedByDrift(stateBefore, factionId, theirBreach.principle))
+      ) {
         theirBreach = null;
       } else if (theirBreach) {
         const check = await verifyBreachRelevance(theirText, theirBreach.principle, theirBreach.kind);

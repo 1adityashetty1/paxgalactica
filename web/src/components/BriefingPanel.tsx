@@ -165,6 +165,20 @@ export function BriefingPanel({
             </div>
           )}
 
+          {/* Ultimatums: a deadline that ends in war is the first thing to read. */}
+          {(briefing.ultimatums ?? []).length > 0 && (
+            <div className="brief-group">
+              <h4>Ultimatums</h4>
+              <ul>
+                {briefing.ultimatums.map((u, i) => (
+                  <li key={`ult:${i}`} className={u.tone === 'bad' ? 'bad' : u.tone === 'good' ? 'mine' : ''}>
+                    {u.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* The court: estates in or out of favour, seats costing you, people held. */}
           {(briefing.court ?? []).length > 0 && (
             <div className="brief-group">

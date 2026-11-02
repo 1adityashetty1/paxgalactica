@@ -143,3 +143,66 @@ describe('L5: the tense of work that has only begun', () => {
     expect(outcome.narrative).toBe('Work begins on new walls at Brannix.');
   });
 });
+
+describe('a story told ahead of its time (bughunt 2026-10-28)', () => {
+  it('keeps the timing beside the draft when the rewrite fails', async () => {
+    const campaign = Campaign.start('meridian', 'reconcile-timing');
+    queue = {
+      appraisal: [{ admissible: true, reason: '', stat: 'might', difficulty: 2 }],
+      resolution: [
+        {
+          narrative: 'The squadron makes Torrek Anchorage days ahead of any worry.',
+          ops: [{ op: 'move', factionId: 'meridian', originId: 'sek-1', targetId: 'sek-6', force: { battleship: 2 }, land: false, label: 'to Neth' }],
+        },
+      ],
+      reconcile: [{ narrative: 'It arrives in 9999 turns.' }],
+    };
+    const outcome = await submitAction(campaign, 'Sail two battleships from Sekkar Gate to Neth without landing.');
+    expect(calls.map((c) => c.kind)).toContain('reconcile');
+    expect(outcome.narrative).toMatch(/\n\nNot as told: .*"Operating Group \d+: to Neth" at Neth has only begun; it arrives in 1 turn, not now\./);
+  });
+});
+
+describe('an operative sent on the road (bughunt 2026-10-28)', () => {
+  it('is timed: at work from the turn they arrive, not now', async () => {
+    const { timingOf, agentKey } = await import('../src/engine/turn.js');
+    const campaign = Campaign.start('freeworlds', 'timing-agent');
+    campaign.stage([{ op: 'recruit_agent', systemId: 'ark-3', agentClass: 'agitator' }], 'recruit', '', 'model', 'freeworlds');
+    const before = new Set([...campaign.state.pendingOrders.map((o) => o.id), ...campaign.state.agents.map(agentKey)]);
+    campaign.stage(
+      [{ op: 'deploy_agent', systemId: 'tor-6', mission: 'incitement', effect: { kind: 'incite', perTurn: 3 } }],
+      'send',
+      '',
+      'model',
+      'freeworlds',
+    );
+    const lines = timingOf(campaign, before);
+    expect(lines.some((l) => /on the road to Threx and is at work from turn \d+, not now/.test(l))).toBe(true);
+  });
+});
+
+describe('calling in a favour (bughunt 2026-10-28)', () => {
+  it('is put back once when ruled a negotiation with the debtor', async () => {
+    const campaign = Campaign.start('ojjul', 'call-in');
+    campaign.commit(
+      [{ op: 'establish_obligation', debtorFactionId: 'drajk', holderFactionId: 'ojjul', text: 'we owe you one' }],
+      'extraction',
+      'ojjul',
+      'accord',
+    );
+    const id = campaign.state.obligations.at(-1)!.id;
+    queue = {
+      appraisal: [
+        { admissible: true, reason: '', negotiation: { withFactionIds: ['drajk'], what: 'back us', supported: true } },
+        { admissible: true, reason: '', stat: 'influence', difficulty: 5, rationale: 'a favour owed' },
+      ],
+      resolution: [{ narrative: 'Drajk is reminded what it owes.', ops: [{ op: 'call_obligation', obligationId: id, call: 'sign', treatyType: 'trade_accord' }] }],
+    };
+    const outcome = await submitAction(campaign, 'Call in the hook we hold over Drajk for a trade accord.');
+    expect(calls.filter((c) => c.kind === 'appraisal')).toHaveLength(2);
+    expect(calls.find((c, i) => c.kind === 'appraisal' && i > 0)?.user).toMatch(/Calling in a favour is not a negotiation/);
+    expect(outcome.negotiation ?? null).toBeNull();
+    // And the call itself is not left out for an unnamed reach.
+    expect((outcome.ops as { op: string }[]).some((o) => o.op === 'call_obligation')).toBe(true);
+  });
+});

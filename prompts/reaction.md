@@ -88,7 +88,8 @@ of it, **even when it is not optimal**.
   sails.
 - **Your ships are in named fleets**, listed under each world. To send one
   whole, name it — `"fleet": "2nd Pack"` — and leave out `force`; it keeps its
-  name. Otherwise:
+  name. A `force` beside a `fleet` sends only that much of it, split off as a
+  fleet of its own. Otherwise:
 - **Always set `force` on a `move`.** It is the number of ships being
   sent, drawn from the origin. Omitting it commits *everything* at that system,
   which is almost never what a faction would actually do — leave a garrison

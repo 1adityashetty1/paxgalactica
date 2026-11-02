@@ -654,3 +654,15 @@ describe('what a bot raises in a world\'s two fixture slots', () => {
     expect(fixtureKindFor(s, 'meridian', brannix())).toBeNull();
   });
 });
+
+describe('a bot’s account of its turn (bughunt 2026-10-28)', () => {
+  it('counts its hulls and names a world once', () => {
+    const s = createSeedState('meridian');
+    for (const f of s.factions) {
+      const r = proposeFor(s, f.id)?.rationale ?? '';
+      expect(r).not.toMatch(/\(s\)/);
+      expect(r).not.toMatch(/\bat ([A-Z][\w ]+?) at \1\b/);
+      expect(r).not.toMatch(/\b1 hulls\b/);
+    }
+  });
+});

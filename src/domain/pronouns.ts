@@ -47,6 +47,18 @@ const NOT_A_NOUN = new Set([
   'when', 'if', 'once', 'now', 'then', 'yet', 'until', 'before', 'after', 'about', 'through', 'home', 'free',
   'go', 'here', 'there', 'where', 'while', 'because', 'since', 'unless', 'is', 'was', 'a', 'an', 'the',
 ]);
+/**
+ * Words in -ly that are a noun or an adjective after a possessive "her" — her
+ * family, her only son. Any other -ly word is an adverb, so "her" before it is
+ * an object: "takes to her immediately" (bughunt 2026-10-28).
+ */
+const LY_NOT_ADVERBS = new Set([
+  'only', 'early', 'family', 'ally', 'supply', 'assembly', 'monopoly', 'elderly', 'lovely', 'friendly', 'holy',
+  'likely', 'lonely', 'daily', 'nightly', 'weekly', 'yearly', 'rally', 'reply', 'folly', 'anomaly', 'homily',
+  'melancholy', 'belly', 'jolly', 'ugly', 'surly', 'burly', 'curly', 'kindly', 'deadly', 'costly', 'orderly',
+  'stately', 'unruly', 'unlikely', 'comely', 'homely', 'sickly', 'worldly', 'scholarly', 'motherly', 'fatherly',
+  'brotherly', 'sisterly', 'courtly', 'goodly', 'manly', 'womanly', 'saintly', 'princely', 'queenly', 'kingly',
+]);
 const ADVERBS = new Set(['always', 'never', 'still', 'also', 'now', 'then', 'only', 'just', 'already', 'not', 'often', 'rarely', 'soon']);
 const AGREE: Record<string, string> = {
   is: 'are', was: 'were', has: 'have', does: 'do', "doesn't": "don't", "isn't": "aren't", "wasn't": "weren't",
@@ -89,7 +101,8 @@ function rewriteSentence(sentence: string): string {
   s = s.replace(/\bhis\b/gi, (m) => caseLike(m, 'their'));
   s = s.replace(/\bhim\b/gi, (m) => caseLike(m, 'them'));
   s = s.replace(/\bher\b(?=(\s*)([\w’']*))/gi, (m, _sp: string, next: string) => {
-    const object = next === '' || NOT_A_NOUN.has(next.toLowerCase());
+    const word = next.toLowerCase();
+    const object = word === '' || NOT_A_NOUN.has(word) || (/ly$/.test(word) && !LY_NOT_ADVERBS.has(word));
     return caseLike(m, object ? 'them' : 'their');
   });
   return s;

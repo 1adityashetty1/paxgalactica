@@ -300,3 +300,32 @@ describe('a charter declared through the API (§7)', () => {
     replaysExactly(session);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* A tagged line, approached in a channel (bughunt 2026-10-29)          */
+/* ------------------------------------------------------------------ */
+
+describe('a concession the arbiter reads against a line code owns', () => {
+  it('raises no blocker, so the accord is not refused at the close', async () => {
+    // The Vigil hiring Meridian's hulls was flagged against "will not accept
+    // payment to stand down" — the Vigil was the one PAYING — and the whole
+    // accord was refused. That line is read off its acts on an accord
+    // (`lineReadByCode`); the per-message blocker never asked.
+    let session = await start('vigil');
+    const line = 'will not accept payment to stand down; being bought is the insult, not the price';
+    queue = {
+      diplomacy: [
+        {
+          reply: 'Forty a turn for five turns. That we can put to the board.',
+          concessions: [{ by: 'vigil', kind: 'hull_rent', text: 'The Vigil pays 40 a turn for five turns for the four hulls.', perTurn: 40 }],
+        },
+      ],
+      appraisal: [{ ...appraisalClean, breach: { kind: 'red_line', principles: [line], how: 'payment', by: 'the fleet', reason: 'Paying is being bought.' } }],
+      breach_relevance: [{ relevant: true, why: '' }],
+    };
+    const talked = await post(ROUTES.talk('meridian'), session, { text: 'Forty a turn.' });
+    session = talked.session;
+    expect(talked.body.blockers).toEqual([]);
+    expect((await view(session)).channelBlockers).toEqual([]);
+  });
+});

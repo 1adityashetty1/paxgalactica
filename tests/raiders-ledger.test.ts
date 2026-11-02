@@ -220,3 +220,23 @@ describe('the bots', () => {
     expect(ops.find((o) => o.op === 'post_bounty')).toMatchObject({ targetFactionId: 'vigil' });
   });
 });
+
+describe('a raid on a power it cannot land on (bughunt 2026-10-28)', () => {
+  it('says so when it is ordered: only other cargo through the world is taken', () => {
+    let s = createSeedState('drajk');
+    s = applyOps(
+      s,
+      [
+        {
+          op: 'form_treaty', parties: ['ojjul', 'drajk'], treatyType: 'contract',
+          terms: { incomePerTurn: { ojjul: -15, drajk: 15 }, commission: { raider: 'drajk', against: ['vigil'], share: 0 } },
+          durationTurns: 10, summary: 'a letter of marque',
+        } as OpInput,
+      ],
+      'engine',
+    ).state;
+    const out = applyOps(s, [{ op: 'raid', factionId: 'drajk', systemId: 'ilv-5', originId: 'ilv-6', label: 'raid Oridin' } as OpInput], 'model', 'drajk');
+    expect(out.rejections).toEqual([]);
+    expect(out.notes.some((n) => /takes only other powers' cargo/.test(n))).toBe(true);
+  });
+});

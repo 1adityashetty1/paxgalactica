@@ -10,6 +10,7 @@ import {
   systemsOf,
   type WorldState,
 } from '../domain/state.js';
+import { possessive } from '../domain/words.js';
 
 /**
  * How a campaign ends, and why the facts are computed before anything is
@@ -285,7 +286,7 @@ export function fallbackEpilogue(outcome: CampaignOutcome): { closing: string; s
     ? `${me.name} finished ${me.arc}, level with every other power at ${worlds(me.systems)}`
     : me.factionId === first.factionId
       ? `${me.name} finished ${me.arc} and foremost, with ${worlds(me.systems)}`
-      : `${me.name} finished ${me.arc}, with ${worlds(me.systems)} against the ${first.name}'s ${first.systems}`;
+      : `${me.name} finished ${me.arc}, with ${worlds(me.systems)} against the ${possessive(first.name)} ${first.systems}`;
 
   const closing =
     `After ${outcome.turn} turns the Rim settled into the shape you left it. ` +

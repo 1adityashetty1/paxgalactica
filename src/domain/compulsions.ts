@@ -243,6 +243,11 @@ function incursions(state: WorldState, factionId: string): string[] {
  * "at war with vigil and no fleet under way" is something a player can act on,
  * where "compulsion violated" is not.
  */
+/** A power's name, for a reason a player reads: ids are machinery. */
+function nameOf(state: WorldState, id: string): string {
+  return state.factions.find((f) => f.id === id)?.name ?? id;
+}
+
 function evaluate(
   state: WorldState,
   factionId: string,
@@ -258,7 +263,7 @@ function evaluate(
       const enemies = warsFor(state, factionId);
       if (enemies.length === 0) return null;
       if (hasFleetUnderWay(state, factionId)) return null;
-      return `at war with ${enemies.join(', ')} and no fleet under way`;
+      return `at war with ${enemies.map((id) => nameOf(state, id)).join(', ')} and no fleet under way`;
     }
 
     case 'unanswered_incursion': {
@@ -309,7 +314,7 @@ function evaluate(
       });
 
       return unpursued.length > 0
-        ? `${unpursued.join(', ')} owe you and have defaulted, and nothing has been sent`
+        ? `${unpursued.map((id) => nameOf(state, id)).join(', ')} owe you and have defaulted, and nothing has been sent`
         : null;
     }
   }
@@ -369,4 +374,18 @@ export function breachContradictsState(
   if (!line?.trigger) return false;
 
   return evaluate(state, factionId, line.trigger) === null;
+}
+
+/**
+ * Whether a line is a compulsion enforced by drift — one carrying a trigger.
+ *
+ * Its trigger charges `COMPULSION_DRIFT_DISSENT` every turn the board shows the
+ * neglect, and an act can only answer it, never breach it: a declared raid was
+ * charged 15 dissent for breaching "the captains require plunder", the line
+ * that demands raids (bughunt 2026-10-28). `breachContradictsState` caught that
+ * only once the raid was on the board, and a declaration is ruled before it is.
+ */
+export function enforcedByDrift(state: WorldState, factionId: string, principle: string): boolean {
+  const faction = state.factions.find((f) => f.id === factionId);
+  return !!faction?.compulsions.find((c) => matches(principle, c.text))?.trigger;
 }

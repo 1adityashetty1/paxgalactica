@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, DISSENT_DECAY } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
-  breachContradictsState, driftingCompulsions } from '../src/domain/compulsions.js';
+  breachContradictsState, driftingCompulsions, enforcedByDrift } from '../src/domain/compulsions.js';
 import { serializeCharacter } from '../src/model/serialize.js';
 import {
   hullsAt,
@@ -418,5 +418,15 @@ describe('a breach ruling is checked against the board where the board can answe
   it('says nothing about a line that is not on the sheet', () => {
     const s = createSeedState('drajk');
     expect(breachContradictsState(s, 'drajk', 'a principle nobody holds')).toBe(false);
+  });
+
+  // A declared raid was charged for breaching the line that demands raids:
+  // ruled before the raid was on the board, where the predicate still fired
+  // (bughunt 2026-10-28). A triggered compulsion is drift's to charge.
+  it('is drift’s to charge when it carries a trigger, whatever the board shows', () => {
+    const s = createSeedState('drajk');
+    expect(enforcedByDrift(s, 'drajk', drajkPlunder())).toBe(true);
+    const untriggered = s.factions.find((f) => f.id === 'vigil')!.compulsions.find((c) => !c.trigger)!;
+    expect(enforcedByDrift(s, 'vigil', untriggered.text)).toBe(false);
   });
 });

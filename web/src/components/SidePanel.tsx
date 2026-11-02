@@ -2016,7 +2016,7 @@ function Standing({
                     <strong style={{ color: colourOf(state, d.fromFactionId) }}>
                       {name(d.fromFactionId)} → {name(d.toFactionId)}
                     </strong>
-                    <span className="eta soon">{Math.max(0, d.deadlineTurn - state.turn)} turns left</span>
+                    <span className="eta soon">{d.deadlineTurn - state.turn <= 1 ? 'due this turn' : `${d.deadlineTurn - state.turn} turns left`}</span>
                   </div>
                   <p className="treaty-summary">{d.text}</p>
                   <p className="muted">

@@ -182,6 +182,34 @@ describe('a defence pact calls its ally to war', () => {
     expect(honoured(after)).toHaveLength(1);
   });
 
+  it('answers only for the worlds it names (bughunt 2026-10-29)', () => {
+    // Agreed as "a Vigil move against Sekkar Gate", the limit lived only in
+    // the trigger's prose and the pact answered for every world.
+    const elsewhere = board();
+    const limited = pact('coalition', ['meridian', 'ojjul'], { ojjul: 12 }, ['vigil']);
+    limited.terms.defends = ['sek-1'];
+    elsewhere.treaties.push(limited);
+    const after = untilArrived(attack(elsewhere, 'tor-3', 'tor-1')).state;
+    expect(honoured(after)).toHaveLength(0);
+    expect(warsFor(after, 'ojjul')).not.toContain('vigil');
+
+    const named = board();
+    const covering = pact('coalition', ['meridian', 'ojjul'], { ojjul: 12 }, ['vigil']);
+    covering.terms.defends = ['tor-1'];
+    named.treaties.push(covering);
+    expect(honoured(untilArrived(attack(named, 'tor-3', 'tor-1')).state)).toHaveLength(1);
+  });
+
+  it('is refused when it names a world neither party holds', () => {
+    const out = applyOps(
+      createSeedState('meridian'),
+      [{ op: 'form_treaty', treatyType: 'coalition', parties: ['meridian', 'freeworlds'], terms: { against: ['vigil'], defends: ['tor-3'] }, summary: 'pact' }],
+      'extraction',
+      'meridian',
+    );
+    expect(out.rejections[0]?.message).toMatch(/defends the parties' own worlds/);
+  });
+
   it('does not call an ally that has made its own peace with the attacker', () => {
     // How a coalition comes apart: a member that settles separately is not
     // dragged back in.

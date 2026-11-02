@@ -9,8 +9,9 @@ import type { WarEthic } from '../src/domain/state.js';
 // when it was chained behind three typechecks in one shell command, always
 // these two files and never with an assertion error. Raised rather than
 // shrunk, because the iteration counts are what make the measurements mean
-// anything.
-vi.setConfig({ testTimeout: 30_000 });
+// anything. 30s held until the suite grew: every full run of the 2026-10-28
+// hunts timed one of these out while it passed on its own.
+vi.setConfig({ testTimeout: 120_000 });
 
 
 /**

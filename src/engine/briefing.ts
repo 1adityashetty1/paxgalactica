@@ -11,6 +11,7 @@ import {
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
 import { envoyRefusal, holdAt, regardFor, regardRecorded } from '../domain/regard.js';
 import { courtLines } from '../ui/court.js';
+import { possessive } from '../domain/words.js';
 
 /**
  * What a world did, or is about to do, that the player should know: one of
@@ -242,8 +243,59 @@ export interface Briefing {
   worlds: BriefingWorld[];
   /** What the court is doing to you, standing — see `courtLines`. */
   court: { text: string; tone: 'good' | 'bad' | 'info' }[];
+  /** Open ultimatums you made, were made of you, or declared in — see `ultimatumLines`. */
+  ultimatums: { text: string; tone: 'good' | 'bad' | 'info' }[];
   /** Nothing completed, nothing running, nothing visible. */
   quiet: boolean;
+}
+
+/**
+ * Open ultimatums that touch a power: made of it, made by it, or declared in.
+ * A demand made of the player was in the log alone, so a war with a deadline
+ * arrived with no warning on the briefing (bughunt 2026-10-28).
+ */
+export function ultimatumLines(state: WorldState, me: string): { text: string; tone: 'good' | 'bad' | 'info' }[] {
+  const name = (id: string) => (id === me ? 'you' : (getFaction(state, id)?.name ?? id));
+  const lines: { text: string; tone: 'good' | 'bad' | 'info' }[] = [];
+  for (const d of state.demands ?? []) {
+    if (d.status !== 'open') continue;
+    const backing = (side: 'from' | 'to') => d.backers.filter((b) => b.side === side).map((b) => name(b.factionId));
+    const side = d.fromFactionId === me ? 'from' : d.toFactionId === me ? 'to' : d.backers.find((b) => b.factionId === me)?.side;
+    if (!side) continue;
+    const behind = (who: string[]) => (who.length > 0 ? `, backed by ${who.join(' and ')},` : '');
+    // It comes due on the tick that STARTS turn `deadlineTurn`, so "by turn 7"
+    // was read as having turn 7 to answer in, and the war began at the end of
+    // turn 6 (bughunt 2026-10-28).
+    const left = d.deadlineTurn - state.turn;
+    const due = left <= 1 ? 'before this turn ends' : `within ${left} turns`;
+    const what =
+      d.kind === 'tribute'
+        ? `${d.perTurn} a turn in tribute`
+        : d.kind === 'cession'
+          ? (state.systems.find((x) => x.id === d.systemId)?.name ?? 'a world')
+          : d.kind === 'basing_rights'
+            ? 'basing rights'
+            : d.kind === 'trade_accord'
+              ? 'a trade accord'
+              : 'that a treaty be broken';
+    if (d.toFactionId === me) {
+      lines.push({
+        text: `${name(d.fromFactionId)}${behind(backing('from'))} demands ${what} of you. Give way ${due}, or it is war.`,
+        tone: 'bad',
+      });
+    } else if (d.fromFactionId === me) {
+      lines.push({
+        text: `You demand ${what} of ${name(d.toFactionId)}${behind(backing('to')).replace(/,$/, '')}: answered ${due}, or it is war.`,
+        tone: 'info',
+      });
+    } else {
+      lines.push({
+        text: `You back ${name(side === 'from' ? d.fromFactionId : d.toFactionId)} in ${possessive(name(d.fromFactionId))} ultimatum to ${name(d.toFactionId)}, due ${due}.`,
+        tone: 'info',
+      });
+    }
+  }
+  return lines;
 }
 
 /** The events a player may know about that belong on this turn's briefing. */
@@ -436,6 +488,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
   ];
   const worlds = [...turnWorlds, ...worldsOnTheBoard(state)];
   const court = courtLines(state, me);
+  const ultimatums = ultimatumLines(state, me);
 
   return {
     turn: state.turn,
@@ -451,6 +504,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     events,
     worlds,
     court,
+    ultimatums,
     // A battle is never a quiet turn, even if nothing else moved; nor is one
     // the Rim filled on its own.
     quiet:
@@ -462,7 +516,8 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       report.battles.length === 0 &&
       events.length === 0 &&
       worlds.length === 0 &&
-      court.length === 0,
+      court.length === 0 &&
+      ultimatums.length === 0,
   };
 }
 
@@ -510,5 +565,6 @@ export function withCurrentIntel(briefing: Briefing, state: WorldState): Briefin
       ...worldsOnTheBoard(state),
     ],
     court: courtLines(state, state.playerFactionId),
+    ultimatums: ultimatumLines(state, state.playerFactionId),
   };
 }

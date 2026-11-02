@@ -92,6 +92,22 @@ describe('the deadline', () => {
     expect(regard(s, 'meridian', 'freeworlds')).toBeLessThanOrEqual(WAR_DISPOSITION_THRESHOLD);
   });
 
+  it('leaves out a backer that made peace with the other side since declaring (bughunt 2026-10-28)', () => {
+    let s = demand(createSeedState('freeworlds'), 'meridian', 'freeworlds').state;
+    s = applyOps(s, [{ op: 'back_ultimatum', demandId: s.demands.at(-1)!.id, side: 'from' } as OpInput], 'model', 'ojjul').state;
+    s = applyOps(
+      s,
+      [{ op: 'form_treaty', parties: ['ojjul', 'freeworlds'], treatyType: 'ceasefire', terms: {}, durationTurns: 8, summary: 'a ceasefire' } as OpInput],
+      'engine',
+    ).state;
+    const before = regard(s, 'ojjul', 'freeworlds');
+    const out = tickTurn(tick(s, 1), calm);
+    expect(out.state.demands.at(-1)!.status).toBe('war');
+    expect(warsFor(out.state, 'freeworlds')).toContain('meridian');
+    expect(regard(out.state, 'ojjul', 'freeworlds')).toBeGreaterThanOrEqual(before);
+    expect(out.notes.find((n) => n.includes('ultimatum run out'))).not.toMatch(/Ojjul/);
+  });
+
   it('is given way to by a bot-run power its issuer outguns', () => {
     let s = arm(createSeedState('freeworlds'), 'vigil', 60);
     s = demand(s, 'vigil', 'ojjul').state;
@@ -136,5 +152,18 @@ describe('the sides', () => {
     s = tick(s, 3);
     expect(s.demands.at(-1)!.status).toBe('withdrawn');
     expect(warsFor(s, 'meridian')).not.toContain('ojjul');
+  });
+});
+
+describe('the briefing', () => {
+  it('names a demand made of the player, its terms and its deadline (bughunt 2026-10-28)', async () => {
+    const { ultimatumLines } = await import('../src/engine/briefing.js');
+    let s = demand(createSeedState('vigil'), 'ojjul', 'vigil', { perTurn: 42 }).state;
+    s = applyOps(s, [{ op: 'back_ultimatum', demandId: s.demands.at(-1)!.id, side: 'from' } as OpInput], 'model', 'meridian').state;
+    const [line] = ultimatumLines(s, 'vigil');
+    expect(line!.tone).toBe('bad');
+    expect(line!.text).toMatch(/^Ojjul Nar Combine, backed by Meridian Trade Authority, demands 42 a turn in tribute of you\. Give way within 2 turns, or it is war\.$/);
+    expect(ultimatumLines(s, 'ojjul')[0]!.text).toMatch(/^You demand 42 a turn in tribute of Iron Vigil Remnant: answered within 2 turns/);
+    expect(ultimatumLines(s, 'freeworlds')).toEqual([]);
   });
 });
