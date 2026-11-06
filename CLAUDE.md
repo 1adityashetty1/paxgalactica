@@ -47,6 +47,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm trace <campaign> [other]` | where a played campaign's MODEL time went — per call kind and phase, from `saves/<name>.trace.jsonl`; two names compare runs; `--perfetto` draws a waterfall |
 | `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
+| `pnpm app:macos` | build `dist-app/Pax Galactica.app`: the packed game, the official Node runtime and the Claude binary in one Mac app that starts the server and opens the browser, and stops it on Quit. Saves go to `~/.paxgalactica/saves`, the log to `~/Library/Logs/Pax Galactica.log`. The icon is drawn by `scripts/draw-app-icon.mjs` from the game's own sprites |
 | `node scripts/bughunt-scan.mjs <campaign>` | the mechanical half of a bug hunt: replays a played campaign and lists raw ids, bad plurals, spliced sentences, rejections by code, double payments, drift charged on an act, failed model calls — each with its turn and evidence |
 | `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
