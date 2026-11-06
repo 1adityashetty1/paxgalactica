@@ -2,7 +2,7 @@
 /**
  * Draw the Mac app's icon from the game's own sprites: the earthnight world the
  * System panel draws, and the escort silhouette the order of battle uses,
- * on a 64-pixel grid inside the macOS rounded square. Writes
+ * on a 64-pixel grid, full bleed for macOS to mask. Writes
  * `assets/app-icon.png` (1024 px) and `assets/app-icon.icns`.
  *
  *   pnpm build && node scripts/draw-app-icon.mjs
@@ -32,10 +32,12 @@ const hash = (x, y, s) => {
   return (h >>> 0) / 4294967296;
 };
 
-// The body: Apple's icon grid puts it at 824 of 1024 with a ~185 px corner,
-// which is 6 grid pixels of margin and a 12-pixel corner here.
-const M = 6;
-const R = 12;
+// The body fills the square. macOS 26 masks a full-bleed icon to its own
+// rounded shape, and sets one drawn with Apple's older margin and corner (6
+// grid pixels and 12 here) on a grey plate as a legacy icon. The art sits where
+// it did inside that margin, so the mask takes only empty space.
+const M = 0;
+const R = 0;
 const inBody = (x, y) => {
   if (x < M || y < M || x >= G - M || y >= G - M) return false;
   const cx = x < M + R ? M + R : x >= G - M - R ? G - M - R - 1 : x;

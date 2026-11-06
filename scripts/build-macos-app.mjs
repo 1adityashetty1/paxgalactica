@@ -217,6 +217,14 @@ set('LSMinimumSystemVersion', 'string', '12.0');
 const icon = join(ROOT, 'assets', 'app-icon.icns');
 if (existsSync(icon)) {
   copyFileSync(icon, join(RES, 'applet.icns'));
+  // osacompile also writes its default icon into an asset catalog, which macOS
+  // reads before the .icns: without this the app shows the script icon.
+  rmSync(join(RES, 'Assets.car'), { force: true });
+  try {
+    run('/usr/libexec/PlistBuddy', ['-c', 'Delete :CFBundleIconName', plist], { stdio: 'ignore' });
+  } catch {
+    // Not there.
+  }
 }
 
 step('Signing (ad hoc)');
