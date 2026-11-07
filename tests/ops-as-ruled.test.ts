@@ -80,25 +80,27 @@ describe('a critical success’s bonus is priced in code', () => {
 });
 
 describe('a declaration spends what was put at stake (bughunt 2026-10-28)', () => {
-  const base = { covert: [], groundwork: [], stat: 'industry', outcome: 'critical_success', yields: [], sentOnly: false };
+  // The factory is ruled, so the engine writes it (`foundsAsRuled`).
+  const ruled = { factionId: 'meridian', systemId: 'sek-2', kind: 'factory', label: 'Factory at Corvid' };
+  const base = { covert: [], groundwork: [], stat: 'industry', outcome: 'critical_success', yields: [], sentOnly: false, founds: [ruled] };
   const held = [{ id: 'ast-0-0', kind: 'salvage' }, { id: 'ast-1-1', kind: 'ration_stores' }];
   const spend = (id: string) => ({ op: 'consume_asset', assetId: id, quantity: 120, reason: 'fed into the line' });
-  const work = { op: 'found_fixture', factionId: 'meridian', systemId: 'sek-2', kind: 'factory' };
+  const work = { op: 'found_fixture', ...ruled };
 
   it('leaves out a thing the player never named, and keeps one they did', () => {
     const out = holdToRuling([work, spend('ast-0-0')], { ...base, establishes: undefined, said: 'Found a factory at Corvid.', held });
     expect(out.ops).toEqual([work]);
     expect(out.notes.join(' ')).toMatch(/salvage, which you did not offer/);
     expect(holdToRuling([work, spend('ast-0-0')], { ...base, establishes: undefined, said: 'Found a factory at Corvid with our salvage.', held }).ops).toHaveLength(2);
-    expect(holdToRuling([spend('ast-1-1')], { ...base, establishes: undefined, said: 'Feed the garrison from the ration stores.', held }).ops).toHaveLength(1);
+    expect(holdToRuling([spend('ast-1-1')], { ...base, founds: [], establishes: undefined, said: 'Feed the garrison from the ration stores.', held }).ops).toHaveLength(1);
   });
 
   it('scuttles nothing the player did not order struck off', () => {
     const scuttle = { op: 'scuttle_ships', factionId: 'drajk', systemId: 'ilv-6', count: 1, hull: 'freighter', reason: 'the fire spread' };
-    const out = holdToRuling([scuttle], { ...base, outcome: 'critical_failure', establishes: undefined, said: 'Lay down 4 torpedo boats at Vergesse.', held });
+    const out = holdToRuling([scuttle], { ...base, founds: [], outcome: 'critical_failure', establishes: undefined, said: 'Lay down 4 torpedo boats at Vergesse.', held });
     expect(out.ops).toEqual([]);
     expect(out.notes.join(' ')).toMatch(/1 freighter struck off/);
-    expect(holdToRuling([scuttle], { ...base, establishes: undefined, said: 'Scuttle the freighter at Vergesse.', held }).ops).toHaveLength(1);
+    expect(holdToRuling([scuttle], { ...base, founds: [], establishes: undefined, said: 'Scuttle the freighter at Vergesse.', held }).ops).toHaveLength(1);
   });
 
   it('records no income charter beside work that pays for itself', () => {

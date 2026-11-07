@@ -2797,6 +2797,22 @@ else has built on raises nothing. The minted record goes through `AssetSchema`,
 because a spread put `id` last where a round-tripped save puts it first and
 `verifyReplay` failed on the same bytes in a different order.
 
+**A declared build is the ruling's, not resolution's** (playtest 2026-11-06).
+The arbiter names each fixture an overt part raises in `founds` — a catalogue
+kind and a world — or, when it names none, `foundsInWords` reads the one kind
+and the one held world the player's words name. `foundingRefusal` checks it on
+the board before the roll (held, the ground's stat, a free slot, the price), so
+a build that cannot land is turned away free; it is rolled on the kind's own
+attribute; and `foundsAsRuled`, first in `holdToRuling`, replaces whatever
+`found_fixture` resolution wrote with the ruling's. Before it, resolution had
+to remember to write the op, and a factory came back as an income charter and
+a defence contractor as nothing at all. A **partial** raises the fixture at
+`MAX_DURATION` rather than nothing, and a **failure** of a declaration that was
+only the build carries no `spend` beside it. No journal pin: all of it runs at
+declare time, and the journal records the ops that came out. The System tab
+draws a fixture under construction faint, beside the ones standing, and each
+kind that can be built there with a **build** button, faint when it cannot.
+
 **3. It is priced like a fleet: bought, then kept.** `FIXTURE_COST` (120) at
 issue, and a running bill — `fixtureUpkeep`, its own `Ledger` line and its own
 term in the briefing — that **rises with the count**: the Nth fixture costs N ×
@@ -8271,9 +8287,9 @@ component is logic nothing checks.
   the player's act and costs an action. Each kind goes where it can work:
   - **Declarations go on the command line** (`onDraft`): recruit an operative
     and give one orders (Agents); appoint an officer, and "sail with a fleet"
-    from where an officer stands (Command); build the best kind on each world
-    with a free slot (the System tab with no world chosen, `buildableWorlds`,
-    beside the full per-world builder); send an envoy.
+    from where an officer stands (Command); build a fixture (a **build**
+    button beside each kind a world's ground takes, faint and disabled with the
+    reason when it cannot go up); send an envoy.
   - **What needs the other side's consent opens a channel** with the line
     already in its box (`onOffer`, `ChannelPanel`'s `seed`):
     - **sell** a thing to its keenest buyer, at that buyer's price (Assets);

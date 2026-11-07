@@ -119,6 +119,16 @@ anything else — an envoy, an offer or talks about building something builds
 nothing, and its `buildsAt` is empty: the engine checks those worlds against
 the board before the roll.
 
+A **fixture** — a factory, a university, a hospital, an arsenal, any catalogue
+kind that stands on a world — is named in the overt part's `founds`: its
+catalogue `kind` and the `systemId` it rises on. Price it as the building
+it is; the engine checks the world is held, the ground suits the kind, a slot
+is free and the treasury can pay, rolls it on the kind's own attribute, and
+writes the work itself. Never refuse a build because of other work under way:
+a world holds two fixtures of different kinds, and the engine says so if it
+is full. `founds` is empty for anything that does not raise a fixture —
+repairing one, sabotaging one, or talking about one.
+
 Paying a debt in goods, or anything a creditor must accept in place of money,
 is a `negotiation` with the creditor: handing the goods over is a gift and
 `settle_debt` pays cash, so writing both paid twice (loop 13).

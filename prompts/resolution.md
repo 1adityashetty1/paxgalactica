@@ -183,29 +183,14 @@ risk exposure and are capped, and they are the only ones there is.
 
 **A commitment is an arrangement; a fixture is a programme.** If the thing
 built is a *physical installation standing on a world* — a factory, a
-university, a hospital, a power plant, an exchange floor — it is a
-`found_fixture` on that world, naming its `kind` from the catalogue. It is NOT
-`create_asset`, which refuses a fixture outright, and NOT an
-`establish_commitment` with `incomePerTurn`.
-
-The engine holds it to rules you should honour rather than discover:
-
-- **The ground decides what can stand on it.** The kind must name the
-  attribute the world's own type makes — an industrial moon or a gas giant
-  makes industry, arid ground might, a world that never sleeps guile, an
-  earthlike world influence, ice and ocean resolve. A hospital on an
-  industrial moon is refused; a `power_plant` (industry and resolve) is not.
-- **A world carries two, of different kinds**, standing or under way — a
-  `black_market` and a `research_lab` on the same guile world, never two
-  black markets.
-- **On ground the power holds**, not merely orbits.
-- **It is founded only when the player set out to build one, on its primary
-  attribute.** The check must be against `modifies[0]` — a `factory` takes
-  `industry`, a `university` `guile`, a `special_forces_command` leads with
-  `might`. Do not hand one out as a byproduct of an attempt that was about
-  something else: an influence check that charms a governor does not found a
-  foundry. A partial founds nothing either, because a fixture is one thing or
-  none, and neither does a failure: the work is never started.
+university, a hospital, a power plant, an exchange floor — it is a fixture,
+and **the engine writes it**: the arbiter named it before the roll, the board
+was checked, and the `found_fixture` is put in hand from that ruling. Do not
+write a `found_fixture` yourself (any you write is replaced by the ruling's),
+and never stand an `establish_commitment` or a `create_asset` in its place.
+Narrate the building as the band left it: a success breaks ground; a partial
+breaks ground but goes slowly, the longest a programme runs; a failure starts
+nothing and costs nothing beyond the attempt — no credits are lost on it.
 
 It costs 120 credits at issue and adds to a running bill every turn, and each
 one a power runs costs more to keep than the last. So a power with many is
