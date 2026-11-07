@@ -319,8 +319,8 @@ when it arrives. The reducer decides which; you only say where the ships go.
 **There is one way to build ships.** The yards lay down so many tons a turn,
 set by industry; a `build_ships` lays down what this turn's yards still have
 room for at once, and the rest is paid for now and waits in the yards' queue,
-delivered over the turns the run rate needs and aborted, refunded, if the world
-is lost first. Write the build the player asked for, however large: the engine
+delivered over the turns the run rate needs and aborted, its outlay lost, if the
+world is lost first. Write the build the player asked for, however large: the engine
 splits it, and tells you. Narrate what the notes say landed now and what waits.
 
 Ordering more than the treasury covers is not rejected — the order is trimmed

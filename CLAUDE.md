@@ -985,9 +985,10 @@ with no operative on the world. The bots never started one. Now there is one.
   turn, and re-times each order's turns left against what is ahead of it. Shown
   on the Orders tab, and on the Fleets tab as `Yards: … tons a turn · … free
   this turn · … queued` (`CampaignView.effective.yards`).
-- **Lose the world and its queue is aborted**, and the undelivered part is
-  refunded, since nothing was built with it. Cancelling refunds the same; a
-  rival with ships at the world can interrupt it as any order. A queue cannot
+- **Lose the world and its queue is aborted**, and what was paid for the
+  undelivered part is lost with it — the risk of queueing on ground you might
+  not keep. Cancelling it yourself refunds that part; a rival with ships at the
+  world can interrupt it as any order. A queue cannot
   be extended or hurried: industry is what speeds it.
 - **A queue needs ground.** A power building in an orbit it does not hold —
   the smuggler's yard — lays down what fits this turn and nothing queues.
@@ -7205,7 +7206,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `sway` | an influence check that worked moves how `whom` sees the actor, by `SWAY_BY_BAND` (3, 6, 10). The engine sizes it; nothing on another stat or a failure |
 | `regard` | a reacting power's own view, or either party's in an accord, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6). In an accord: once a direction, no warmth beside a treaty or without a deal, never aid |
 | `gift` | credits given, which buy the receiver's regard at `GIFT_RATE` (20 a point, 10 at most) |
-| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best): what this turn's yards have room for now, the rest paid now and queued at the run rate, aborted and refunded if the world is lost. Before journal version 36, `programme: true` made a hidden yard programme |
+| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best): what this turn's yards have room for now, the rest paid now and queued at the run rate, aborted with its outlay lost if the world is lost. Before journal version 36, `programme: true` made a hidden yard programme |
 | `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
 | `scuttle_ships` | strike off hulls of your own at a world; the named class first |
 | `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |

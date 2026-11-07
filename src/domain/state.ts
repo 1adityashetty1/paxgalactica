@@ -824,8 +824,8 @@ export const PendingOrderSchema = z.object({
    * Hulls waiting in the yards' queue: ordered past what the yards could lay
    * down that turn, paid for at issue, and delivered at the yards' run rate
    * each tick until done — see `deliverYardQueues`. `onComplete` carries what
-   * is still to come and `investedCredits` what it cost, so an abort refunds
-   * exactly the undelivered part. Optional, so no older order changes shape.
+   * is still to come and `investedCredits` what it cost, so a cancellation
+   * refunds exactly the undelivered part. Losing the world refunds nothing. Optional, so no older order changes shape.
    */
   queued: z.literal(true).optional(),
 });

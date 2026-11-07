@@ -3886,7 +3886,7 @@ function applyOpsUnderRules(
    * One way to build ships (journal version 36). What the yards still have
    * room for this turn is laid down now; the rest is paid for now and waits in
    * the yards' queue, delivered at the run rate each tick (`deliverYardQueues`)
-   * and aborted, refunded, if the world is lost first. Trimmed to what the
+   * and aborted, its outlay lost, if the world is lost first. Trimmed to what the
    * treasury covers, never rejected. A queue needs ground: an orbit is a yard
    * for what fits this turn and no more.
    */
@@ -10929,8 +10929,8 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
  * The yards' queue (journal version 36): each power's queued hulls are laid
  * down at its yards' run rate, oldest order first, and a new turn's capacity is
  * the queue's before anything declared in it. An order whose world its power no
- * longer holds is aborted and the undelivered part refunded, since nothing was
- * built with it. Each order still waiting is re-timed against what is ahead of
+ * longer holds is aborted, and what was paid for the undelivered part is lost
+ * with the world. Each order still waiting is re-timed against what is ahead of
  * it, so its turns left read true.
  */
 function deliverYardQueues(state: WorldState, report: TurnReport): string[] {
@@ -10952,8 +10952,9 @@ function deliverYardQueues(state: WorldState, report: TurnReport): string[] {
       const unit = tons * CREDITS_PER_TON;
       const site = getSystem(state, order.targetId);
       if (!site || site.controllerFactionId !== faction.id) {
-        faction.credits += order.investedCredits;
-        const note = `${order.label}: aborted, the world is lost and its yards with it; ${order.investedCredits} credits for the hulls not laid down come back.`;
+        // Nothing comes back: the materials were on the slips the world was
+        // lost with. That is the risk of queueing on ground you might not keep.
+        const note = `${order.label}: aborted, the world is lost and its yards with it, and the ${order.investedCredits} credits paid for the hulls not yet laid down with them.`;
         notes.push(note);
         logEvent(state, 'order', note, faction.id, [faction.id]);
         report.completed.push({ label: order.label, factionId: faction.id, where: site?.name ?? order.targetId, outcome: note, covert: true });

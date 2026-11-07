@@ -103,7 +103,7 @@ export function FleetsPanel({
       {yards && yards.capacity > 0 && (
         <p
           className="meta yards"
-          title="Your industry sets how many tons your yards lay down a turn. A build lays down what fits now; the rest is paid for and waits in the queue, which has the next turn's yards first. Lose the world and its queue is aborted and refunded."
+          title="Your industry sets how many tons your yards lay down a turn. A build lays down what fits now; the rest is paid for and waits in the queue, which has the next turn's yards first. Lose the world and its queue is aborted, and what was paid for it is lost."
         >
           <strong>Yards</strong> {yards.capacity} tons a turn ({Math.floor(yards.capacity / battleship)} battleships) ·{' '}
           {Math.max(0, yards.capacity - yards.used)} free this turn

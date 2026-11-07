@@ -141,7 +141,7 @@ export function shipClassLines(): string[] {
     `  ${capitalise(names(unarmed))} cannot fight. Losses fall on ${plural(first)}`,
     `  first and ${plural(last)} last, so a screen is what brings a convoy home.`,
     `  Your yards lay down ${YARD_TONS_BASE} tons a turn, ${YARD_TONS_PER_POINT} more a point of industry;`,
-    `  a bigger order is paid now and queued, and refunded if the world is lost.`,
+    `  a bigger order is paid now and queued, and lost if the world is lost.`,
   ];
 }
 

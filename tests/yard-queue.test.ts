@@ -63,16 +63,18 @@ describe('the yards lay down what fits and queue the rest', () => {
     expect(queue(t2)).toHaveLength(0);
   });
 
-  it('aborts the queue and refunds it when the world is lost', () => {
+  it('aborts the queue when the world is lost, and the outlay goes with it', () => {
     const s = rich();
     const ordered = build(s, 20).state;
     const left = queue(ordered)[0]!;
     ordered.systems.find((x) => x.id === 'sek-4')!.controllerFactionId = 'vigil';
-    const before = credits(ordered);
+    const control = structuredClone(ordered);
+    control.pendingOrders = control.pendingOrders.filter((o) => !o.queued);
     const t = tickTurn(ordered);
     expect(queue(t.state)).toHaveLength(0);
-    expect(credits(t.state) - before).toBeGreaterThanOrEqual(left.investedCredits);
-    expect(t.notes.join(' ')).toMatch(/aborted, the world is lost/);
+    // Exactly what the same tick pays without the queue: nothing comes back.
+    expect(credits(t.state)).toBe(credits(tickTurn(control).state));
+    expect(t.notes.join(' ')).toMatch(new RegExp(`aborted, the world is lost.*${left.investedCredits} credits`));
   });
 
   it('refunds what is not laid down when the player cancels it', () => {
