@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 35;
+export const JOURNAL_VERSION = 36;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -124,6 +124,7 @@ export const JournalVersionSchema = z.union([
   z.literal(33),
   z.literal(34),
   z.literal(35),
+  z.literal(36),
 ]);
 
 export const JournalSchema = z.object({
@@ -435,6 +436,10 @@ export function replay(
     // A force written smaller than a fleet sailed the whole fleet, and one
     // drawn from several sailed as a detachment that rejoined on arrival.
     adhocForcesAreFleets: parsed.version >= 35,
+    // Ships had two ways to be built: laid down at once and trimmed to one
+    // declaration's yards, or a hidden programme delivered later. One way now,
+    // and what the turn's yards cannot take waits in their queue.
+    yardQueue: parsed.version >= 36,
     // A backer at peace with the other side went to war at the deadline anyway.
     peaceHoldsAtDeadline: parsed.version >= 33,
     stealNamesARivalsThing: parsed.version >= 26,

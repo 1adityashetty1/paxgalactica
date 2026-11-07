@@ -13,6 +13,8 @@ import {
   stackAt,
   statFixturesAt,
   yardCapacityFor,
+  yardRoomFor,
+  yardQueueTons,
   type WorldState,
 } from './state.js';
 
@@ -39,11 +41,13 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
 
   // Yards.
   const berths = yardCapacityFor(state, me);
+  const room = yardRoomFor(state, me);
+  const queued = yardQueueTons(state, me);
   const afford = Math.floor(faction.credits / CREDITS_PER_TON);
   const bs = HULL_SPEC.battleship;
   out.push(
     held.length > 0
-      ? `Yards: ${berths} tons of hulls a declaration, laid down at a world you hold (${Math.floor(berths / bs.tonnage)} battleships at ${bs.tonnage * CREDITS_PER_TON} each). Your treasury pays for ${afford} tons now.`
+      ? `Yards: ${berths} tons of hulls a turn (${Math.floor(berths / bs.tonnage)} battleships at ${bs.tonnage * CREDITS_PER_TON} each), ${room} of them free this turn${queued > 0 ? `, ${queued} tons queued` : ''}. A larger order is paid now and queued at that rate. Your treasury pays for ${afford} tons now.`
       : 'Yards: none. You hold no world, so you cannot build hulls.',
   );
 

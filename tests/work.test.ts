@@ -99,7 +99,12 @@ describe('work is bounded by the attempt', () => {
   });
 });
 
-describe('a yard programme', () => {
+// Before journal version 36: from 36 a programme is an ordinary build, and
+// what the yards cannot take queues (`tests/yard-queue.test.ts`).
+describe('a yard programme, before the yards kept a queue', () => {
+  const declare = (s: WorldState, ops: OpInput[], actor = 'meridian') =>
+    applyOps(s, ops, 'model', actor, true, { yardQueue: false }, 'declared');
+
   it('is laid down at a named world', () => {
     const r = declare(seed(), [{ op: 'build_ships', factionId: 'meridian', hull: 'escort', count: 2, programme: true }]);
     expect(r.rejections.map((x) => x.code)).toEqual(['illegal_value']);

@@ -907,9 +907,10 @@ asset archetypes already assumed otherwise — `blueprints` are wanted by *"a
 power with the industry to use them and not the design"*.
 
 `yardCapacityFor` is `YARD_TONS_BASE + statModifier(industry) * YARD_TONS_PER_POINT`
-tons per declaration, scaled off the stat the way `maxAgentsFor` is off guile
-and read through `effectiveStats`, so terrain, dissent, a `gunnery` officer's
-passive and a captured factory all reach the slipways.
+tons a turn (per declaration before journal version 36), scaled off the stat
+the way `maxAgentsFor` is off guile and read through `effectiveStats`, so
+terrain, dissent, a `gunnery` officer's passive and a captured factory all reach
+the slipways.
 
 | power | industry | berths | battleships a turn |
 |---|---|---|---|
@@ -962,6 +963,40 @@ handing it more ships, since its ceiling was always its income.
 was moved off for the same reason. `YARD_TONS_PER_POINT` was swept on its own
 axis at base 24 — 4, 6 and 8 all give three or four trims and the same board,
 and 10 jumps to thirteen trims and a net of −19.
+
+### One way to build ships, and a queue for what does not fit
+
+Journal version 36 (`LegacyRules.yardQueue`). There were two: `build_ships`
+laid hulls down at once, trimmed to one declaration's capacity, and
+`programme: true` made a hidden yard programme delivered five turns later at
+the same price from the same capacity — slower, and secret only from a rival
+with no operative on the world. The bots never started one. Now there is one.
+
+- **Capacity is a cap per turn.** `WorldState.yardTons` counts what each
+  power's yards have laid down this turn; the tick clears it.
+  `yardRoomFor` is capacity less that.
+- **A build lays down what this turn's room takes, now** (`layDown` in the
+  reducer), at the named world or the power's best one, and pays for itself.
+  `billConstruction` neither bills nor counts those tons again (`builtByOrder`).
+- **The rest is paid for now and waits in the yards' queue**: a
+  `PendingOrder` with `queued: true`, its `commission_ships` payload what is
+  still to come and `investedCredits` what that cost. `deliverYardQueues` lays
+  it down each tick, oldest order first, before anything declared the next
+  turn, and re-times each order's turns left against what is ahead of it. Shown
+  on the Orders tab, and on the Fleets tab as `Yards: … tons a turn · … free
+  this turn · … queued` (`CampaignView.effective.yards`).
+- **Lose the world and its queue is aborted**, and the undelivered part is
+  refunded, since nothing was built with it. Cancelling refunds the same; a
+  rival with ships at the world can interrupt it as any order. A queue cannot
+  be extended or hurried: industry is what speeds it.
+- **A queue needs ground.** A power building in an orbit it does not hold —
+  the smuggler's yard — lays down what fits this turn and nothing queues.
+- Trimmed to the treasury, never rejected, and one order queues at most
+  `MAX_QUEUED_HULLS` (99).
+- `programme: true` is an ordinary build from 36, and the model's build op
+  (`ModelBuildShipsOp`) carries no programme and no timing at all.
+- **The bots build only what fits this turn**, which is what the trim made of
+  a larger order before: `pnpm balance 30` is unchanged.
 
 ### No ground, no yards
 
@@ -7170,7 +7205,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `sway` | an influence check that worked moves how `whom` sees the actor, by `SWAY_BY_BAND` (3, 6, 10). The engine sizes it; nothing on another stat or a failure |
 | `regard` | a reacting power's own view, or either party's in an accord, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6). In an accord: once a direction, no warmth beside a treaty or without a deal, never aid |
 | `gift` | credits given, which buy the receiver's regard at `GIFT_RATE` (20 a point, 10 at most) |
-| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity. `programme: true` makes it a hidden yard programme at a named world, delivered on completion, counted against the same berths |
+| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best): what this turn's yards have room for now, the rest paid now and queued at the run rate, aborted and refunded if the world is lost. Before journal version 36, `programme: true` made a hidden yard programme |
 | `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
 | `scuttle_ships` | strike off hulls of your own at a world; the named class first |
 | `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |
@@ -7321,7 +7356,8 @@ fleet movement nobody asked for and a stipend.
 
 So a model writes the work, and the reducer files it. `move`, `fortify`,
 `raise_garrison`, `develop`, `found_fixture`, `repair_fixture`, `send_envoy`,
-`blockade`, `raid`, `sweep`, and `build_ships` with `programme: true`. **One
+`blockade`, `raid`, `sweep`, and before journal version 36 `build_ships` with
+`programme: true`. **One
 conversion, `orderFor` in `ops.ts`**, turns each into the order it means — the
 category, the payload, the default duration — and the reducer runs that through
 the `issue_order` case unchanged, so every bound on an order (the floors, the
@@ -7349,7 +7385,8 @@ bots write work too.
   bypassed `yardCapacityFor` entirely — twelve hulls a programme, delivered in
   the tick outside `billConstruction`, any number at once. A programme now takes
   its tonnage from the declaration's berths when it starts, trimmed to what
-  fits, and an open build in the same declaration gets what is left.
+  fits, and an open build in the same declaration gets what is left. From
+  journal version 36 there are no programmes: see *"One way to build ships"*.
 
 Measured: all saves replay byte-identically, the four harness boards do not
 move, and the bots' twelve order shapes are work ops.

@@ -347,6 +347,9 @@ import {
   fleetBases,
   holdsGround,
   yardCapacityFor,
+  yardRoomFor,
+  yardQueueTons,
+  MAX_QUEUED_HULLS,
   livesOffTheLanes,
   isGuestOf,
   fleetStrengthOf,
@@ -3389,6 +3392,13 @@ export interface LegacyRules {
    */
   adhocForcesAreFleets?: boolean;
   /**
+   * One way to build ships (journal version 36). Yard capacity is a cap per
+   * turn rather than per declaration, a build lays down what this turn's yards
+   * still have room for, and the rest is paid for and waits in the yards'
+   * queue, delivered at the run rate. A yard programme is an ordinary build.
+   */
+  yardQueue?: boolean;
+  /**
    * An ultimatum running out puts nobody at war with a power it is bound to
    * peace with — a backer that signed a ceasefire with the issuer after
    * declaring for the target stays out (journal version 33).
@@ -3692,6 +3702,7 @@ function applyOpsUnderRules(
     guardNeedsBasing = true,
     marqueStipendToRaider = true,
     adhocForcesAreFleets = true,
+    yardQueue = true,
     stealNamesARivalsThing = true,
     fleetsMeetInBattle = true,
     counterpartyTolls = true,
@@ -3863,6 +3874,92 @@ function applyOpsUnderRules(
   const changedFlag = new Map<string, number>();
   /** Berths taken this batch by yard programmes, so open builds get what is left. */
   const programmeTons = new Map<string, number>();
+  /**
+   * Tons `build_ships` laid down and paid for itself this batch (journal
+   * version 36), which `billConstruction` neither bills nor counts again.
+   */
+  const builtByOrder = new Map<string, number>();
+  /** Factions `build_ships` charged, for the duplicate-charge pass. */
+  const chargedForHulls = new Set<string>();
+
+  /**
+   * One way to build ships (journal version 36). What the yards still have
+   * room for this turn is laid down now; the rest is paid for now and waits in
+   * the yards' queue, delivered at the run rate each tick (`deliverYardQueues`)
+   * and aborted, refunded, if the world is lost first. Trimmed to what the
+   * treasury covers, never rejected. A queue needs ground: an orbit is a yard
+   * for what fits this turn and no more.
+   */
+  const layDown = (yard: StarSystem, factionId: string, hull: Exclude<HullClass, 'courier'>, asked: number): void => {
+    const faction = state.factions.find((f) => f.id === factionId)!;
+    const tons = HULL_SPEC[hull].tonnage;
+    const unit = tons * CREDITS_PER_TON;
+    const label = HULL_SPEC[hull].label;
+    const plural = (n: number): string => `${n} ${label}${n === 1 ? '' : 's'}`;
+    const affordable = Math.floor(faction.credits / unit);
+    let count = Math.min(asked, affordable);
+    if (count < asked) {
+      const note = `${faction.name} can pay for ${plural(count)} of the ${asked} ordered (${unit} credits each, ${faction.credits} in hand).`;
+      notes.push(note);
+      logEvent(state, 'clamp', note, factionId);
+    }
+    if (count <= 0) return;
+    const capacity = yardCapacityFor(state, factionId);
+    const now = Math.min(count, Math.floor(yardRoomFor(state, factionId) / tons));
+    let later = count - now;
+    if (later > 0 && yard.controllerFactionId !== factionId) {
+      const note = `${possessive(faction.name)} yards over ${yard.name} are an orbit, not ground it holds: ${plural(now)} laid down this turn, and the other ${later} not begun.`;
+      notes.push(note);
+      logEvent(state, 'clamp', note, factionId);
+      later = 0;
+    }
+    if (later > MAX_QUEUED_HULLS) {
+      const note = `One order can queue at most ${MAX_QUEUED_HULLS} hulls; ${later - MAX_QUEUED_HULLS} ${label}s were not ordered.`;
+      notes.push(note);
+      logEvent(state, 'clamp', note, factionId);
+      later = MAX_QUEUED_HULLS;
+    }
+    count = now + later;
+    faction.credits -= count * unit;
+    chargedForHulls.add(factionId);
+    if (now > 0) {
+      addShipsAt(yard, factionId, now, hull);
+      (state.yardTons ??= {})[factionId] = (state.yardTons[factionId] ?? 0) + now * tons;
+      builtByOrder.set(factionId, (builtByOrder.get(factionId) ?? 0) + now * tons);
+    }
+    let queued = '';
+    if (later > 0) {
+      const ahead = yardQueueTons(state, factionId);
+      const turns = Math.max(1, Math.ceil((ahead + later * tons) / capacity));
+      // Through the schema, so the record has the key order a replayed one has.
+      state.pendingOrders.push(PendingOrderSchema.parse({
+        id: mintOrderId(state),
+        factionId,
+        type: commissionCategory(hull, 'capital_ship_construction'),
+        originId: yard.id,
+        targetId: yard.id,
+        durationTurns: turns,
+        progress: 0,
+        interruptible: true,
+        officers: [],
+        onInterrupt: 'partial',
+        visibility: [],
+        label: `${plural(later)} at ${yard.name}`,
+        durationRationale: `the yards lay down ${capacity} tons a turn`,
+        path: [],
+        force: {},
+        onComplete: { kind: 'commission_ships', magnitude: later, hull },
+        investedCredits: later * unit,
+        queued: true,
+      }));
+      queued = `; ${plural(later)} wait in the yards' queue, ${later * unit} credits paid, ready in ${turns} turn${turns === 1 ? '' : 's'}`;
+    }
+    const note = now > 0
+      ? `${faction.name} lays down ${plural(now)} at ${yard.name} for ${now * unit} credits${queued}.`
+      : `${possessive(faction.name)} yards are full this turn (${capacity} tons)${queued}.`;
+    notes.push(note);
+    logEvent(state, 'system', note, factionId);
+  };
 
   const uprooted = new Map<string, ShipStack>();
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
@@ -4085,6 +4182,9 @@ function applyOpsUnderRules(
     // category, and the `issue_order` case below does the rest: the floor, the
     // price, the presence it needs, the fog (intent-ops §1).
     if (op.op !== 'issue_order') {
+      // One way to build ships (journal version 36): a programme is an
+      // ordinary build, and what the yards cannot take this turn queues.
+      if (yardQueue && op.op === 'build_ships' && op.programme) op = { ...op, programme: false };
       if (op.op === 'build_ships' && op.programme && op.systemId === undefined) {
         reject(raw, 'illegal_value', 'A yard programme is laid down at a named world: give `systemId`.');
         continue;
@@ -4616,9 +4716,13 @@ function applyOpsUnderRules(
             break;
           }
         }
-        // Billed, and held to yard capacity, by `billConstruction` after the
-        // batch: what is charged is what actually landed.
-        addShipsAt(yard, op.factionId, op.count, op.hull);
+        if (!yardQueue) {
+          // Billed, and held to yard capacity, by `billConstruction` after the
+          // batch: what is charged is what actually landed.
+          addShipsAt(yard, op.factionId, op.count, op.hull);
+          break;
+        }
+        layDown(yard, op.factionId, op.hull, op.count);
         break;
       }
 
@@ -7414,7 +7518,10 @@ function applyOpsUnderRules(
         let recovered = 0;
         if (removed!.investedCredits > 0) {
           const left = Math.max(0, removed!.durationTurns - removed!.progress);
-          recovered = Math.round(removed!.investedCredits * (left / removed!.durationTurns));
+          // A queue's outlay is already only what it has not laid down.
+          recovered = removed!.queued
+            ? removed!.investedCredits
+            : Math.round(removed!.investedCredits * (left / removed!.durationTurns));
           const owner = state.factions.find((f) => f.id === removed!.factionId);
           if (owner) owner.credits += recovered;
         }
@@ -7502,6 +7609,10 @@ function applyOpsUnderRules(
           );
           break;
         }
+        if (order.queued) {
+          reject(raw, 'illegal_value', `The yards' queue is laid down at their run rate and cannot be extended; more industry is what speeds it.`);
+          break;
+        }
         // Clamped to the documented ceiling. This was a bare `+=`, so an order
         // could be extended without limit — a playtest inherited one at 10
         // turns against `MAX_DURATION` 5 and "Nothing takes longer than 5
@@ -7536,6 +7647,10 @@ function applyOpsUnderRules(
             'illegal_value',
             `Movement cannot be accelerated; a jump takes a turn regardless of spending.`,
           );
+          break;
+        }
+        if (order.queued) {
+          reject(raw, 'illegal_value', `The yards' queue is laid down at their run rate and cannot be accelerated; more industry is what speeds it.`);
           break;
         }
         const faction = state.factions.find((f) => f.id === order.factionId);
@@ -10243,12 +10358,13 @@ function applyOpsUnderRules(
     notes.push(`No lifters sail to ${getSystem(state, l.targetId)?.name ?? l.targetId}: the fleet can win the orbit there, but nobody lands.`);
   }
   notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
-  const pricedByYards = new Set<string>();
+  const pricedByYards = new Set<string>(chargedForHulls);
   billConstruction(
     state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
     movesNotBuilt ? navyBefore : undefined,
     programmeTons,
     honestYardNote,
+    yardQueue ? builtByOrder : undefined,
   );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
   }
@@ -10545,12 +10661,19 @@ function billConstruction(
   programmeTons: Map<string, number> = new Map(),
   /** Journal version 26: tonnage the yards could not take is not reported as unaffordable. */
   honestNote = true,
+  /**
+   * Journal version 36: tons `build_ships` already laid down and paid for, so
+   * not billed again, and yard capacity read per turn from `state.yardTons`.
+   * Absent for an older journal.
+   */
+  builtByOrder?: Map<string, number>,
 ): void {
   for (const faction of state.factions) {
     // Billed in TONS, so a class costs what it displaces and nothing has to
     // agree separately about the price of an escort. Comparing the whole
     // faction's tonnage before and after is what keeps repositioning free.
-    const gained = fleetTonsOf(state, faction.id) - (before.get(faction.id) ?? 0);
+    const gained =
+      fleetTonsOf(state, faction.id) - (before.get(faction.id) ?? 0) - (builtByOrder?.get(faction.id) ?? 0);
     if (gained <= 0) continue;
 
     const affordable = Math.floor(faction.credits / CREDITS_PER_TON);
@@ -10562,9 +10685,11 @@ function billConstruction(
     // the yards are asked for is the gain minus whatever merely changed flag.
     const swapped = changedFlag.get(faction.id) ?? 0;
     const laidDown = Math.max(0, gained - swapped);
-    const berths = capped
-      ? Math.max(0, yardCapacityFor(state, faction.id) - (programmeTons.get(faction.id) ?? 0))
-      : Number.POSITIVE_INFINITY;
+    const berths = !capped
+      ? Number.POSITIVE_INFINITY
+      : builtByOrder
+        ? yardRoomFor(state, faction.id)
+        : Math.max(0, yardCapacityFor(state, faction.id) - (programmeTons.get(faction.id) ?? 0));
     const overYard = Math.max(0, laidDown - berths);
     const deliverable = gained - overYard;
     if (overYard > 0) {
@@ -10602,6 +10727,9 @@ function billConstruction(
     const delivered = Math.min(gained - trimmed, affordable);
     faction.credits -= delivered * CREDITS_PER_TON;
     if (delivered > 0) charged.add(faction.id);
+    if (builtByOrder && delivered > swapped) {
+      (state.yardTons ??= {})[faction.id] = (state.yardTons[faction.id] ?? 0) + delivered - swapped;
+    }
 
     // When the yards were the limit and the treasury was not, the yard note
     // above has said so; this one is the bill. It read "could only pay for 28
@@ -10786,13 +10914,78 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
   // `extend_order` (which had no ceiling) inflated `remaining`. A refund that
   // can exceed the outlay is not a refund.
   const refund =
-    order.investedCredits > 0
-      ? Math.round(order.investedCredits * (remaining / order.durationTurns))
-      : 0;
+    order.investedCredits <= 0
+      ? 0
+      : order.queued
+        ? order.investedCredits
+        : Math.round(order.investedCredits * (remaining / order.durationTurns));
   if (faction) faction.credits += refund;
   const note = `${order.label} suspended at ${order.progress}/${order.durationTurns}; ${refund} credits recovered. ${reason}`.trim();
   logEvent(state, 'order', note, order.factionId, audience);
   return note;
+}
+
+/**
+ * The yards' queue (journal version 36): each power's queued hulls are laid
+ * down at its yards' run rate, oldest order first, and a new turn's capacity is
+ * the queue's before anything declared in it. An order whose world its power no
+ * longer holds is aborted and the undelivered part refunded, since nothing was
+ * built with it. Each order still waiting is re-timed against what is ahead of
+ * it, so its turns left read true.
+ */
+function deliverYardQueues(state: WorldState, report: TurnReport): string[] {
+  const notes: string[] = [];
+  const queues = state.pendingOrders.filter((o) => o.queued && o.onComplete?.kind === 'commission_ships');
+  delete state.yardTons;
+  if (queues.length === 0) return notes;
+  const done = new Set<string>();
+  for (const faction of [...state.factions].sort((a, b) => a.id.localeCompare(b.id))) {
+    const mine = queues.filter((o) => o.factionId === faction.id);
+    if (mine.length === 0) continue;
+    const capacity = yardCapacityFor(state, faction.id);
+    let used = 0;
+    let ahead = 0;
+    for (const order of mine) {
+      const effect = order.onComplete!;
+      const hull = effect.hull;
+      const tons = HULL_SPEC[hull].tonnage;
+      const unit = tons * CREDITS_PER_TON;
+      const site = getSystem(state, order.targetId);
+      if (!site || site.controllerFactionId !== faction.id) {
+        faction.credits += order.investedCredits;
+        const note = `${order.label}: aborted, the world is lost and its yards with it; ${order.investedCredits} credits for the hulls not laid down come back.`;
+        notes.push(note);
+        logEvent(state, 'order', note, faction.id, [faction.id]);
+        report.completed.push({ label: order.label, factionId: faction.id, where: site?.name ?? order.targetId, outcome: note, covert: true });
+        done.add(order.id);
+        continue;
+      }
+      const n = Math.min(effect.magnitude, Math.floor((capacity - used) / tons));
+      if (n > 0) {
+        addShipsAt(site, faction.id, n, hull);
+        used += n * tons;
+        order.investedCredits = Math.max(0, order.investedCredits - n * unit);
+        order.onComplete = { ...effect, magnitude: effect.magnitude - n };
+      }
+      const left = order.onComplete!.magnitude;
+      if (left === 0) {
+        const note = `${order.label}: the last laid down.`;
+        notes.push(note);
+        logEvent(state, 'order', note, faction.id, [faction.id]);
+        report.completed.push({ label: order.label, factionId: faction.id, where: site.name, outcome: note, covert: true });
+        done.add(order.id);
+        continue;
+      }
+      if (n > 0) {
+        logEvent(state, 'order', `${order.label}: ${n} laid down, ${left} to come.`, faction.id, [faction.id]);
+      }
+      ahead += left * tons;
+      order.durationTurns = order.progress + Math.max(1, Math.ceil(ahead / capacity));
+    }
+    if (used > 0) (state.yardTons ??= {})[faction.id] = used;
+  }
+  state.pendingOrders = state.pendingOrders.filter((o) => !done.has(o.id));
+  return notes;
 }
 
 /** Everything the turn produced, structured so the UI never has to re-derive it. */
@@ -12347,7 +12540,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
 
   for (const order of state.pendingOrders) {
     const next = { ...order, progress: order.progress + 1 };
-    if (next.progress >= next.durationTurns) completed.push(next);
+    // The yards' queue ends when its last hull is laid down, not on a count of
+    // turns: `deliverYardQueues` below decides.
+    if (next.progress >= next.durationTurns && !next.queued) completed.push(next);
     else survivors.push(next);
   }
   state.pendingOrders = survivors;
@@ -12603,6 +12798,11 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(order.targetId), outcome: note, covert: true });
     }
   }
+
+  /* --- The yards lay down what is queued ------------------------------- */
+  // After the battles and the risings, so a world lost this turn takes its
+  // queue with it. A new turn's yards start empty, and the queue has them first.
+  notes.push(...deliverYardQueues(state, report));
 
   /* --- Garrisons regrow, last, and only where it is quiet -------------- */
   // Levies are raised between fights, not during one. A world regrows only if
