@@ -42,7 +42,7 @@ import {
   hullsAt,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples, enforcedByDrift } from '../domain/compulsions.js';
-import { checkGround, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
+import { checkGround, foundingRefusal, foundsInWords, ruledFixture, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { ASSET_ARCHETYPES, serializeArchetypes } from '../domain/assets.js';
@@ -934,6 +934,30 @@ export async function resolveAction(
   // `buildsAt`, turning two envoys away (loop 13).
   // Only on industry, which is what works are: a landing named the world it
   // was sailing for and was turned away too (loop 14).
+  // The fixtures this act raises: as the arbiter ruled them, or as the words
+  // name them when it named none. Checked against the board now, so a build
+  // that cannot land is turned away free; rolled on the fixture's own
+  // attribute; written by the engine after the roll (`foundsAsRuled`).
+  const founds =
+    priced.appraisal.admissible && !priced.appraisal.negotiation && priced.appraisal.overt !== false
+      ? (priced.appraisal.founds?.length ? priced.appraisal.founds : foundsInWords(state, action))
+      : [];
+  const cannotFound = founds.map((f) => foundingRefusal(state, state.playerFactionId, f)).find((r) => r !== null);
+  if (cannotFound) {
+    return {
+      output: { narrative: cannotFound, ops: [], inadmissible: cannotFound },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd + relevanceCost,
+      ruling,
+      notes,
+    };
+  }
+  if (founds.length === 1 && priced.appraisal.stat) {
+    const primary = ASSET_ARCHETYPES.find((a) => a.kind === founds[0]!.kind)?.modifies?.[0];
+    if (primary && primary !== priced.appraisal.stat) priced = { ...priced, appraisal: { ...priced.appraisal, stat: primary } };
+  }
   const builds = priced.appraisal.stat === 'industry' ? (priced.appraisal.buildsAt ?? []) : [];
   const nowhere = builds.filter((id) => {
     const world = state.systems.find((x) => x.id === id);
@@ -1291,6 +1315,7 @@ export async function resolveAction(
     foreignOrders: state.pendingOrders.filter((o) => o.factionId !== state.playerFactionId).map((o) => o.id),
     said: action,
     held: (state.assets ?? []).filter((a) => a.heldBy === state.playerFactionId).map((a) => ({ id: a.id, kind: a.kind })),
+    founds: founds.map((f) => ruledFixture(state, state.playerFactionId, f)),
   };
   const withCheck = (o: ResolutionOutput): ResolutionOutput => {
     // Sends, sways, commitments and prizes are the ruling's (intent-ops §3–5),
@@ -1366,7 +1391,7 @@ const OUTCOME_GUIDANCE: Record<CheckResult['outcome'], string> = {
   success:
     'It worked as intended. Emit the ops for exactly what was attempted; no windfall, no complication.',
   partial:
-    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success. A fixture is the exception: it is one thing or nothing, so a partial raises none — write its `found_fixture` anyway and narrate the ground broken and nothing standing yet.',
+    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success. A fixture is the exception: the engine writes it, and a partial raises it whole but slowly — narrate the ground broken and the work going slowly.',
   failure:
     'It did not work. Emit the ops for what the attempt COST — spent credits, wasted turns, a rival forewarned — and NOT the ops for the thing the player wanted. Nothing they were reaching for changes hands.',
   critical_failure:

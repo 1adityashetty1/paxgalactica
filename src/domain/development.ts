@@ -1,5 +1,5 @@
 import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMission, type Asset, type Method, type MethodAxis } from './diplomacy.js';
-import type { DurationCategory } from './duration.js';
+import { MAX_DURATION, type DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { doneAt } from './words.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
@@ -391,15 +391,25 @@ export function boundPayloadsToOutcome(
     if (o !== null && o.op === 'found_fixture') {
       const kind = String(o.kind ?? '');
       const wrong = fixtureBuilt(kind, stat);
-      const reason =
-        wrong ??
-        (outcome === 'partial'
-          ? `A ${kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`
-          : null);
-      if (reason !== null) {
-        builtNotes.push(reason);
+      if (wrong !== null) {
+        builtNotes.push(wrong);
         changed = true;
         continue;
+      }
+      // A partial is "yes, but": a fixture is one thing, so it cannot be half
+      // built, and it goes up slower instead — the longest a programme runs.
+      // Leaving it unbuilt made a partial a failure that cost the action, and
+      // building looked like a coin toss (playtest 2026-11-06).
+      if (outcome === 'partial') {
+        const had = Number(o.durationTurns ?? 0);
+        if (had < MAX_DURATION) {
+          builtNotes.push(
+            `A partial result: the ${kind.replace(/_/g, ' ')} goes up, slower — ${MAX_DURATION} turns${had > 0 ? ` rather than ${had}` : ''}.`,
+          );
+          kept.push({ ...o, durationTurns: MAX_DURATION });
+          changed = true;
+          continue;
+        }
       }
     }
     kept.push(boundFixtureOrder(o, op));
@@ -410,14 +420,15 @@ export function boundPayloadsToOutcome(
     if (!effect || effect.kind !== 'found_fixture') return op;
     const kind = String(effect.fixtureKind ?? '');
     const wrong = fixtureBuilt(kind, stat);
-    // A fixture is atomic, so a partial cannot deliver a smaller one — and
-    // halving a magnitude of one would floor back to one and deliver it whole,
-    // the 100%-discount-wearing-a-50%-label shape.
-    const halfBuilt =
-      wrong === null && outcome === 'partial'
-        ? `A ${kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`
-        : null;
-    const reason = wrong ?? halfBuilt;
+    // A fixture is atomic, so a partial cannot deliver a smaller one — halving
+    // a magnitude of one floors back to one, the 100%-discount-wearing-a-50%-
+    // label shape. It goes up slower instead.
+    if (wrong === null && outcome === 'partial') {
+      changed = true;
+      builtNotes.push(`A partial result: the ${kind.replace(/_/g, ' ')} goes up, slower — ${MAX_DURATION} turns.`);
+      return { ...o, durationTurns: Math.max(Number(o.durationTurns ?? 0), MAX_DURATION) };
+    }
+    const reason = wrong;
     if (reason === null) return op;
     builtNotes.push(reason);
     changed = true;
@@ -536,6 +547,7 @@ export function boundPayloadsToOutcome(
   // move, a blockade, a raid and a sweep carry no payload and still go out: a
   // failed attack must still be issued.
   const workBounded: unknown[] = [];
+  let strippedWork = false;
   for (const op of withoutFailedAgents) {
     const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
     const programme = o?.op === 'build_ships' && o.programme === true;
@@ -547,6 +559,7 @@ export function boundPayloadsToOutcome(
     const what = o.label ? `"${String(o.label)}"` : `the ${String(o.op).replace(/_/g, ' ')}`;
     if (failed) {
       notes.push(`The attempt failed, so ${what} was never started and nothing was paid for it.`);
+      strippedWork = true;
       continue;
     }
     const field = programme ? 'count' : 'magnitude';
@@ -556,7 +569,16 @@ export function boundPayloadsToOutcome(
     workBounded.push(reduced === had ? op : { ...o, [field]: reduced });
   }
 
-  const bounded = workBounded.map((op) => {
+  // Nor is it paid for by a charge written beside it. A failed arsenal was
+  // narrated as "the 120 credits committed are lost" and written as a spend of
+  // the fixture's price (playtest 2026-11-06): when the declaration was
+  // nothing but the work, a failure costs the action and nothing more.
+  const opName = (op: unknown) => String((op as { op?: unknown } | null)?.op ?? '');
+  const onlySpendsLeft =
+    strippedWork && workBounded.some((op) => opName(op) === 'spend') && workBounded.every((op) => ['spend', 'log_narrative'].includes(opName(op)));
+  const unpaid = onlySpendsLeft ? workBounded.filter((op) => opName(op) !== 'spend') : workBounded;
+
+  const bounded = unpaid.map((op) => {
     if (!op || typeof op !== 'object') return op;
     const o = op as Record<string, unknown>;
     if (o.op !== 'issue_order') return op;

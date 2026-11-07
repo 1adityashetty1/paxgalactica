@@ -171,7 +171,7 @@ export function SidePanel({
   effective: EffectiveStats;
   selectedId: string | null;
   briefing: Briefing | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onTalk: (factionId: string) => void;
   /** Puts a sentence on the command line for the player to send. */
   onDraft: (text: string) => void;
@@ -454,7 +454,7 @@ function SystemTab({
 }: {
   state: WorldState;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onDraft: (text: string) => void;
   onOffer: (factionId: string, text: string) => void;
   activeChannel: string | null;
@@ -495,6 +495,14 @@ function SystemTab({
    * world is worth.
    */
   const fixtures = fixturesAt(state, sys.id);
+  /**
+   * Fixtures under construction here, drawn beside the standing ones and
+   * fainter, so a build put in hand does not vanish until it lands. Only what
+   * the fog shows: a rival's programme is a rumour and names no fixture.
+   */
+  const building = state.pendingOrders.filter(
+    (o) => o.targetId === sys.id && o.onComplete?.kind === 'found_fixture' && o.onComplete.fixtureKind,
+  );
   /**
    * What the player could still build here, when they hold it. The ground rule
    * is the whole mechanism — a fixture must name the attribute the world's type
@@ -619,9 +627,20 @@ function SystemTab({
           surface: `system.ships` is not redacted either. The holder is named
           rather than assumed, since a fixture pays whoever stands over the world
           and that need not be the power that built it. */}
-      {(fixtures.length > 0 || options) && <h4>Fixtures here</h4>}
-      {options && fixtures.length === 0 && <p className="empty">Nothing built yet.</p>}
-      {fixtures.length > 0 && (
+      {(fixtures.length > 0 || building.length > 0 || options) && (
+        <>
+          {/* Every world of yours with a free slot, which is the System tab
+              with no world chosen: easy to miss, so named here. */}
+          <p className="meta">
+            <button className="link" onClick={() => onSelect(null)}>
+              Room to build on your worlds
+            </button>
+          </p>
+          <h4>Fixtures here</h4>
+        </>
+      )}
+      {options && fixtures.length === 0 && building.length === 0 && <p className="empty">Nothing built yet.</p>}
+      {(fixtures.length > 0 || building.length > 0) && (
         <>
           <ul className="ship-list">
             {fixtures.map((w) => {
@@ -653,6 +672,26 @@ function SystemTab({
                       damaged {fixtureIntegrity(w) - hit}/{fixtureIntegrity(w)}
                     </span>
                   )}
+                </li>
+              );
+            })}
+            {building.map((o) => {
+              const left = o.durationTurns - o.progress;
+              return (
+                <li
+                  key={o.id}
+                  className="agent-row fixture-building"
+                  title={`Under construction: stands in ${left} turn${left === 1 ? '' : 's'}, for whoever holds ${sys.name} then.`}
+                >
+                  <span className="swatch" style={{ background: colourOf(state, o.factionId) }} />
+                  <span style={{ color: colourOf(state, o.factionId) }}>
+                    {fixtureName(o.onComplete!.fixtureKind!)}
+                    {' · '}
+                    {getFaction(state, o.factionId)?.name ?? o.factionId}
+                  </span>
+                  <span className="count">
+                    building · {left} turn{left === 1 ? '' : 's'} left
+                  </span>
                 </li>
               );
             })}

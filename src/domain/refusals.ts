@@ -1,9 +1,11 @@
 import { familyOf, resolvePerson } from './command.js';
 import { SWAY_BY_BAND } from './acts.js';
-import type { Reach, RefusalGround } from './ops.js';
-import { hullsAt, isMovementType, type WorldState } from './state.js';
+import type { Founds, Reach, RefusalGround } from './ops.js';
+import { fixtureSlotRefusal, hullsAt, isMovementType, WORLD_TYPE_STAT, type WorldState } from './state.js';
 import { fleetName, resolveFleet } from './fleets.js';
 import { hullsIn } from './hulls.js';
+import { ASSET_ARCHETYPES } from './assets.js';
+import { FIXTURE_COST } from './diplomacy.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -241,6 +243,86 @@ export interface RulingBounds {
   /** The player's own words, and the things the actor holds: a thing is spent only when named. */
   said?: string;
   held?: readonly { id: string; kind: string }[];
+  /**
+   * The fixtures the ruling raises (`OvertPartSchema.founds`), already checked
+   * against the board. The engine writes them; see `foundsAsRuled`.
+   */
+  founds?: readonly RuledFixture[];
+}
+
+/** A fixture the ruling raises, ready to write. */
+export interface RuledFixture {
+  factionId: string;
+  systemId: string;
+  kind: string;
+  label: string;
+}
+
+/**
+ * The fixture a declaration's words name, on the one world of the actor's they
+ * name — what the arbiter should have put in `founds` and did not. Only a
+ * build: "repair the factory" and "sabotage the arsenal" name one too.
+ */
+export function foundsInWords(state: WorldState, action: string): Founds[] {
+  const actor = state.playerFactionId;
+  if (!/\b(?:build|builds|building|raise|raising|found|founding|construct\w*|establish\w*|erect\w*|stand up|put up|set up|open)\b/i.test(action)) return [];
+  if (/\b(?:repair\w*|mend\w*|restor\w*|sabotag\w*|destroy\w*|demolish\w*|wreck\w*|attack\w*|steal\w*)\b/i.test(action)) return [];
+  const kinds = ASSET_ARCHETYPES.filter(
+    (a) => a.fixture && a.modifies?.[0] && new RegExp(`\\b${a.kind.replace(/_/g, '[ _-]')}s?\\b`, 'i').test(action),
+  );
+  const worlds = state.systems.filter(
+    (x) => x.controllerFactionId === actor && new RegExp(`\\b${x.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(action),
+  );
+  if (kinds.length !== 1 || worlds.length !== 1) return [];
+  return [{ kind: kinds[0]!.kind, systemId: worlds[0]!.id }];
+}
+
+/**
+ * Why a power cannot raise this fixture on this world now, or null: the
+ * board's answer, read before the roll so an act that cannot land is turned
+ * away free rather than rolled and spent.
+ */
+export function foundingRefusal(state: WorldState, actor: string, found: Founds): string | null {
+  const shape = ASSET_ARCHETYPES.find((a) => a.kind === found.kind);
+  const name = found.kind.replace(/_/g, ' ');
+  if (!shape?.fixture || !shape.modifies) return `There is no fixture called a ${name}.`;
+  const world = state.systems.find((x) => x.id === found.systemId);
+  if (!world) return `There is no world "${found.systemId}".`;
+  if (world.controllerFactionId !== actor) return `A fixture is raised on a world you hold, and ${world.name} is not yours.`;
+  const ground = WORLD_TYPE_STAT[world.worldType];
+  if (!shape.modifies.includes(ground)) {
+    return `${world.name} is ${world.worldType} ground, which makes ${ground}; a ${name} works ${shape.modifies.join(' and ')}, so it cannot stand there.`;
+  }
+  const slot = fixtureSlotRefusal(state, world, found.kind);
+  if (slot) return slot;
+  const credits = state.factions.find((f) => f.id === actor)?.credits ?? 0;
+  if (credits < FIXTURE_COST) return `A ${name} costs ${FIXTURE_COST} credits, and the treasury holds ${credits}.`;
+  return null;
+}
+
+/** The ruled fixture, labelled for the order it becomes. */
+export function ruledFixture(state: WorldState, actor: string, found: Founds): RuledFixture {
+  const name = found.kind.replace(/_/g, ' ');
+  const world = state.systems.find((x) => x.id === found.systemId)?.name ?? found.systemId;
+  return { factionId: actor, systemId: found.systemId, kind: found.kind, label: `${name[0]!.toUpperCase()}${name.slice(1)} at ${world}` };
+}
+
+/**
+ * A fixture is founded as it was ruled, and only as it was ruled — the shape
+ * `sendsAsRuled` gives operatives. Whatever `found_fixture` resolution wrote is
+ * replaced by the ruling's, so a building cannot go missing from a success, be
+ * swapped for a charter, or appear from an act that founded nothing.
+ */
+export function foundsAsRuled(ops: readonly unknown[], founds: readonly RuledFixture[]): { ops: unknown[]; added: RuledFixture[]; dropped: number } {
+  const isFounding = (op: unknown) => {
+    const o = op as { op?: string; onComplete?: { kind?: string } } | null;
+    return o?.op === 'found_fixture' || (o?.op === 'issue_order' && o.onComplete?.kind === 'found_fixture');
+  };
+  const kept = ops.filter((op) => !isFounding(op));
+  const written = ops.length - kept.length;
+  const fresh = founds.map((f) => ({ op: 'found_fixture', factionId: f.factionId, systemId: f.systemId, kind: f.kind, label: f.label }));
+  const matched = founds.length > 0 ? Math.min(written, founds.length) : 0;
+  return { ops: [...kept, ...fresh], added: founds.slice(matched), dropped: Math.max(0, written - founds.length) };
 }
 
 /**
@@ -365,7 +447,11 @@ export function opsAsRuled(
  */
 export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { ops: unknown[]; notes: string[] } {
   const notes: string[] = [];
-  const sends = sendsAsRuled(ops, bounds.covert, bounds.groundwork);
+  // Before the commitments: a charter written in place of the building is a
+  // second payment beside it, and is dropped as one.
+  const built = bounds.sentOnly ? { ops: [...ops], added: [], dropped: 0 } : foundsAsRuled(ops, bounds.founds ?? []);
+  if (built.dropped > 0) notes.push('A fixture is raised only when the arbiter ruled one: left out a fixture the order did not name.');
+  const sends = sendsAsRuled(built.ops, bounds.covert, bounds.groundwork);
   if (sends.dropped.length > 0) {
     notes.push(
       `An operative is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
@@ -517,6 +603,25 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
         const named = mine.find((f) => lower(action).includes(lower(fleetName(actor, f))));
         if (named && voyage.fleet?.id !== named.id) {
           return `"${id}" is ${voyage.fleet ? fleetName(actor, voyage.fleet) : 'another voyage'}, not ${fleetName(actor, named)}, which stands at ${state.systems.find((x) => (x.fleets ?? []).includes(named))?.name} with no order.`;
+        }
+      }
+      // Work under way makes an order already so only where it is, and only if
+      // it is that work: a power plant raised at Var Hollow refused a factory
+      // at Torrek Anchorage (playtest 2026-11-06).
+      const work = state.pendingOrders.find((o) => o.id === id && !isMovementType(o.type));
+      if (work) {
+        const said = lower(action);
+        const worlds = [work.targetId, work.originId]
+          .map((w) => state.systems.find((x) => x.id === w))
+          .filter((x): x is NonNullable<typeof x> => !!x);
+        const elsewhere = state.systems.filter((x) => said.includes(lower(x.name)) && !worlds.includes(x));
+        if (elsewhere.length > 0 && !worlds.some((x) => said.includes(lower(x.name)))) {
+          return `"${id}" (${work.label}) is at ${worlds[0]?.name ?? 'another world'}, not at ${elsewhere[0]!.name}.`;
+        }
+        const building = work.onComplete?.kind === 'found_fixture' ? work.onComplete.fixtureKind : null;
+        const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(k.kind.replace(/_/g, ' ')));
+        if (building && asked && asked.kind !== building) {
+          return `"${id}" raises a ${building.replace(/_/g, ' ')}, not a ${asked.kind.replace(/_/g, ' ')}.`;
         }
       }
       const exists = [

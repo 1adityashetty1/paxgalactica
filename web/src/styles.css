@@ -807,6 +807,9 @@ svg.outcome-art {
    here and is no longer is worth as much as knowing it is. */
 .agent-row.burned { opacity: 0.55; text-decoration: line-through; }
 .agent-row.refused { opacity: 0.45; }
+/* A fixture under construction: faint until it stands. */
+.agent-row.fixture-building { opacity: 0.5; }
+.agent-row.fixture-building .count { font-style: italic; }
 .fixture-terms { margin: 2px 0 6px; line-height: 1.45; }
 .fixture-pick { background: none; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-align: left; }
 .fixture-pick:hover:not(:disabled) { text-decoration: underline; }

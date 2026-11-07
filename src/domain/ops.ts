@@ -2409,6 +2409,8 @@ export const AppraisalSchema = z.object({
   reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).optional(),
   /** Worlds the overt part builds on, named before the roll. See `OvertPartSchema.buildsAt`. */
   buildsAt: z.array(z.string()).optional(),
+  /** The fixtures the overt part raises, named before the roll. See `OvertPartSchema.founds`. */
+  founds: z.array(z.object({ kind: z.string(), systemId: z.string() })).optional(),
   /**
    * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
    * (which is rolled), which of the actor's operatives that part involves, and
@@ -2451,6 +2453,13 @@ export const DeclaredAppraisalSchema = AppraisalSchema.superRefine((a, ctx) => {
  * could simply omit — a retried ruling that dropped `covert` sent an
  * assassination down the rolled path (playtest 2026-10-16).
  */
+/** A fixture an overt part raises: see `OvertPartSchema.founds`. */
+export const FoundsSchema = z.object({
+  kind: z.string().regex(/^[a-z][a-z_]*$/),
+  systemId: z.string().min(1),
+});
+export type Founds = z.infer<typeof FoundsSchema>;
+
 export const OvertPartSchema = z.object({
   kind: z.literal('overt'),
   /** What this part does, in a clause. */
@@ -2484,6 +2493,16 @@ export const OvertPartSchema = z.object({
    * already turned away (playtest 2026-10-19, loop 12).
    */
   buildsAt: z.array(z.string().min(1)).max(4).default([]),
+  /**
+   * The fixtures this part raises — a catalogue `kind` on a world, by id —
+   * named BEFORE the roll; empty for anything else. The engine checks each
+   * against the board before the roll (held, ground, a free slot, the price),
+   * rolls it on the fixture's own attribute, and writes the `found_fixture`
+   * itself; resolution narrates. Building was the one programme whose op a
+   * model had to remember to write, and it wrote an income charter, or nothing,
+   * in its place (playtest 2026-11-06).
+   */
+  founds: z.array(FoundsSchema).max(2).default([]),
 });
 /** How a declaration may reach into another power's business — see `OvertPartSchema.reaches`. */
 export type Reach = 'their_orders' | 'their_ships' | 'their_paper' | 'coercion';
@@ -2667,7 +2686,10 @@ export function rulingToAppraisal(value: unknown): Appraisal {
     ...(overt?.establishes ? { establishes: overt.establishes } : {}),
     ...(overt?.yields && overt.yields.length > 0 ? { yields: overt.yields } : {}),
     ...(overt?.reaches && overt.reaches.length > 0 ? { reaches: overt.reaches } : {}),
-    ...(overt?.buildsAt && overt.buildsAt.length > 0 ? { buildsAt: overt.buildsAt } : {}),
+    ...(overt && ((overt.buildsAt ?? []).length > 0 || (overt.founds ?? []).length > 0)
+      ? { buildsAt: [...new Set([...(overt.buildsAt ?? []), ...(overt.founds ?? []).map((f) => f.systemId)])] }
+      : {}),
+    ...(overt && (overt.founds ?? []).length > 0 ? { founds: overt.founds } : {}),
     ...(covert.length > 0
       ? {
           covert: covert.map((c) => ({

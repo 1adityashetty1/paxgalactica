@@ -1007,12 +1007,21 @@ describe('a fixture is built on purpose, by the attribute it is made of', () => 
     expect(out.notes.join(' ')).toMatch(/built, not come by/);
   });
 
-  it('will not half-build one on a partial', () => {
-    // A fixture is quantity 1 and atomic, so halving it delivers a whole one —
-    // the shape that shipped a 100% discount wearing a 50% label.
+  it('builds one slower on a partial, never half of one', () => {
+    // A fixture is atomic, so a partial cannot deliver a smaller one; it goes
+    // up at the longest a programme runs (playtest 2026-11-06).
     const out = boundPayloadsToOutcome([found('factory')], 'partial', 'industry');
-    expect(kinds(out)).toEqual(['issue_order']);
-    expect(out.notes.join(' ')).toMatch(/one thing or nothing/);
+    expect(kinds(out)).toEqual(['factory']);
+    expect((out.ops[0] as { durationTurns: number }).durationTurns).toBe(5);
+    expect(out.notes.join(' ')).toMatch(/slower/);
+  });
+
+  it('as work, goes up slower on a partial and is not charged on a failure', () => {
+    const work = { op: 'found_fixture', factionId: 'meridian', systemId: 'tor-1', kind: 'factory', durationTurns: 3 };
+    const partial = boundPayloadsToOutcome([work], 'partial', 'industry');
+    expect((partial.ops[0] as { durationTurns: number }).durationTurns).toBe(5);
+    const failed = boundPayloadsToOutcome([work, { op: 'spend', factionId: 'meridian', amount: 120, for: 'the arsenal' }], 'failure', 'industry');
+    expect(failed.ops).toEqual([]);
   });
 
   it('leaves an ordinary prize alone, on any check', () => {
