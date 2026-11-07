@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 36;
+export const JOURNAL_VERSION = 37;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -125,6 +125,7 @@ export const JournalVersionSchema = z.union([
   z.literal(34),
   z.literal(35),
   z.literal(36),
+  z.literal(37),
 ]);
 
 export const JournalSchema = z.object({
@@ -440,6 +441,8 @@ export function replay(
     // declaration's yards, or a hidden programme delivered later. One way now,
     // and what the turn's yards cannot take waits in their queue.
     yardQueue: parsed.version >= 36,
+    // An operative's dice were salted with its id alone.
+    operativeRollsReadTheLog: parsed.version >= 37,
     // A backer at peace with the other side went to war at the deadline anyway.
     peaceHoldsAtDeadline: parsed.version >= 33,
     stealNamesARivalsThing: parsed.version >= 26,

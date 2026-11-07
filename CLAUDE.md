@@ -4459,6 +4459,17 @@ once".
 resolve, never chosen by a model. Agents resolve each tick against the same
 seeded d20 as everything else.
 
+**An operative's dice read the log** (journal version 37,
+`LegacyRules.operativeRollsReadTheLog`). Its mission roll, the knife and the
+dig for a secret were salted `<kind>:<operative id>` and nothing else, so an
+operative's whole career was a function of its id and the turn. The salt is
+now `<kind>:<id>:<last word in the event log>` (`lastLogWord`, bare of
+punctuation): whatever the turn has done by the time that operative acts. The
+log is state, so replay reads the same word, and the d20 stays uniform over it
+(chi-square 10–16 on 19 df). It moves the harness: 30 turns read 5/6/6/5/3
+against 5/5/6/5/4, the Vigil taking one Confederacy world — a reseed of every
+operative's dice, the shape the faction rename's combat salt had.
+
 **Exposure is read off the top of the die** — `roll >= 21 - exposureRisk` — and
 that is not a detail. It was written as `roll <= exposureRisk` inside the
 failure branch, which looks right and fired essentially never: a roll succeeds

@@ -735,6 +735,26 @@ function heatUp(state: WorldState, factionId: string | null | undefined, amount:
 let breachTable: Record<BreachKind, BreachPrice> = BREACH_PRICES;
 /** `LegacyRules.secretsAreHidden`, scoped the way `breachTable` is: two sites read it. */
 let hideSeenSecrets = true;
+/** `LegacyRules.operativeRollsReadTheLog`, scoped the way `breachTable` is. */
+let saltWithLog = true;
+
+/**
+ * The last word in the event log, bare of punctuation: what an operative's
+ * roll is salted with beside its id (journal version 37). The id alone made an
+ * operative's dice a function of the turn and nothing it could not know in
+ * advance; the log is whatever this turn has done so far. State, so replay
+ * reads the same word.
+ */
+export function lastLogWord(state: WorldState): string {
+  const text = state.eventLog.at(-1)?.text ?? '';
+  const word = text.trim().split(/\s+/).at(-1) ?? '';
+  return word.replace(/[^\p{L}\p{N}'-]/gu, '');
+}
+
+/** An operative's d20: its id, and from journal version 37 the last word in the log. */
+function operativeRoll(state: WorldState, kind: string, agentId: string): number {
+  return rollD20(state.turn, saltWithLog ? `${kind}:${agentId}:${lastLogWord(state)}` : `${kind}:${agentId}`);
+}
 
 /** Why an op cannot come by this path, in words a correction pass can act on. */
 function wrongPathReason(op: string, path: OpPath): string {
@@ -1631,7 +1651,7 @@ function workOnNotable(
   const shamed = mark.systemId === null ? notablesPower(mark) : holder;
   switch (agent.mission) {
     case 'assassination': {
-      const knife = rollD20(state.turn, `assassinate:${agent.id}`);
+      const knife = operativeRoll(state, 'assassinate', agent.id);
       if (knife < ASSASSINATION_KILL_ROLL) return `came close to ${mark.name} on ${host.name} and no closer.`;
       const said = killNotable(state, mark, host, holder);
       logEvent(state, 'narrative', said, holder);
@@ -3398,6 +3418,12 @@ export interface LegacyRules {
    * queue, delivered at the run rate. A yard programme is an ordinary build.
    */
   yardQueue?: boolean;
+  /**
+   * An operative's rolls — its mission, the knife, digging up a secret — are
+   * salted with the last word in the event log as well as its id (journal
+   * version 37), so the dice turn on what the turn has done so far.
+   */
+  operativeRollsReadTheLog?: boolean;
   /**
    * An ultimatum running out puts nobody at war with a power it is bound to
    * peace with — a backer that signed a ceasefire with the issuer after
@@ -11053,11 +11079,13 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   const outerHeat = runHeat;
   const outerBreaches = breachTable;
   const outerSecrets = hideSeenSecrets;
+  const outerSalt = saltWithLog;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
   hideSeenSecrets = legacy.secretsAreHidden ?? true;
+  saltWithLog = legacy.operativeRollsReadTheLog ?? true;
   const outerActs = actsOut;
   actsOut = null;
   try {
@@ -11076,6 +11104,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     runHeat = outerHeat;
     breachTable = outerBreaches;
     hideSeenSecrets = outerSecrets;
+    saltWithLog = outerSalt;
   }
 }
 
@@ -12012,7 +12041,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // notable can be courted or killed.
     const notableMark = agent.targetNotableId ? notableById(state, agent.targetNotableId) : undefined;
     if (host && !target && agent.targetNotableId) {
-      const roll = rollD20(state.turn, `agent:${agent.id}`);
+      const roll = operativeRoll(state, 'agent', agent.id);
       const profile = MISSION_PROFILE[agent.mission];
       if (profile.oneShot) spentAgents.push(agent.id);
       if (roll * 5 > agent.successChance) {
@@ -12057,7 +12086,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
 
     const profile = MISSION_PROFILE[agent.mission];
     const owner = state.factions.find((f) => f.id === agent.ownerFactionId);
-    const roll = rollD20(state.turn, `agent:${agent.id}`);
+    const roll = operativeRoll(state, 'agent', agent.id);
     const succeeded = roll * 5 <= agent.successChance;
 
     // A one-shot mission is spent whether or not it worked.
@@ -12154,7 +12183,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         // A roll of its OWN, which is forced rather than careless: the success
         // test above reads the bottom of the d20 and this reads the top, so one
         // roll cannot carry both.
-        const knife = rollD20(state.turn, `assassinate:${agent.id}`);
+        const knife = operativeRoll(state, 'assassinate', agent.id);
         if (knife >= ASSASSINATION_KILL_ROLL) {
           mark.status = 'lost';
           mark.atSystemId = null;
@@ -12438,7 +12467,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       // of. See `SecretSchema`.
       const digAt =
         SECRET_DISCOVERY_ROLL - (intelOn(state, agent.ownerFactionId, target.id) >= INTEL_DIG ? INTEL_DIG_BONUS : 0);
-      if (diggingSecrets && rollD20(state.turn, `secret:${agent.id}`) >= digAt) {
+      if (diggingSecrets && operativeRoll(state, 'secret', agent.id) >= digAt) {
         // Nor one it already holds a hook on: proof of the same thing twice
         // would be published while the hook still rested on it.
         const filed = new Set([
