@@ -740,7 +740,9 @@ function timingOfOrders(campaign: Campaign, ordersBefore: ReadonlySet<string>): 
     .map((o) => {
       const left = o.durationTurns - o.progress;
       const where = campaign.state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId;
-      return `- TIMING: "${o.label}" at ${where} has only begun; it ${isMovementType(o.type) ? 'arrives' : 'completes'} in ${left} turn${left === 1 ? '' : 's'}, not now.`;
+      // A label that already names the world is not given it again.
+      const at = o.label.toLowerCase().includes(where.toLowerCase()) ? '' : ` at ${where}`;
+      return `- TIMING: "${o.label}"${at} has only begun; it ${isMovementType(o.type) ? 'arrives' : 'completes'} in ${left} turn${left === 1 ? '' : 's'}, not now.`;
     });
 }
 

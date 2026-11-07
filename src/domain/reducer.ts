@@ -3956,7 +3956,7 @@ function applyOpsUnderRules(
     }
     const note = now > 0
       ? `${faction.name} lays down ${plural(now)} at ${yard.name} for ${now * unit} credits${queued}.`
-      : `${possessive(faction.name)} yards are full this turn (${capacity} tons)${queued}.`;
+      : `${possessive(faction.name)} yards have no room left this turn for a ${label} (${yardRoomFor(state, factionId)} of ${capacity} tons free)${queued}.`;
     notes.push(note);
     logEvent(state, 'system', note, factionId);
   };
