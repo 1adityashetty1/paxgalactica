@@ -514,6 +514,9 @@ export function ownOperativeNamed(
   return null;
 }
 
+/** Words in a refusal's name that say nothing about which thing it is. */
+const GROUND_FILLER = new Set(['that', 'there', 'this', 'with', 'your', 'their', 'from', 'here', 'world', 'system']);
+
 /**
  * Whether a refusal's ground is true on the board: null when it holds, or what
  * is wrong with it. A model names the fact; code looks it up — the split
@@ -524,6 +527,23 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
   switch (ground.kind) {
     case 'no_such_entity': {
       const name = ground.name.trim();
+      // A missing thing is a ground only when the act names it. "Lay down four
+      // battleships at Brannix" names no factory, so "there is no factory at
+      // Brannix" is a requirement the arbiter invented, not a fact about the
+      // order: the absence was true and checking it proved nothing (playtest
+      // 2026-11-06).
+      if (ground.entity === 'thing' && action.trim() !== '') {
+        const said = lower(action);
+        // "a factory at Brannix": the world is named, the factory is not.
+        const places = new Set(
+          [...state.systems.map((x) => x.name), ...state.factions.map((f) => f.name)].flatMap((n) => lower(n).split(/[^a-z]+/)),
+        );
+        const named = lower(name)
+          .split(/[^a-z]+/)
+          .filter((w) => w.length > 3 && !GROUND_FILLER.has(w) && !places.has(w))
+          .some((w) => said.includes(w.slice(0, 5)));
+        if (!named) return `the order names no "${name}"; it does not ask for one, so its absence is no reason to refuse.`;
+      }
       const found = (() => {
         if (ground.entity === 'person') {
           const people = [
