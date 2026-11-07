@@ -75,7 +75,6 @@ import {
 } from '../../../src/domain/regard.js';
 import {
   fixtureName,
-  buildableWorlds,
   fixtureOptions,
   foundingLine,
   type FixtureOptions,
@@ -462,7 +461,7 @@ function SystemTab({
   holding: number;
 }) {
   const sys = selectedId ? getSystem(state, selectedId) : null;
-  if (!sys) return <RoomToBuild state={state} onSelect={onSelect} onDraft={onDraft} />;
+  if (!sys) return <p className="empty">Click a system on the map.</p>;
 
   const controller = sys.controllerFactionId ? getFaction(state, sys.controllerFactionId) : null;
   const color = controller ? ansi256ToHex(controller.displayColor) : NEUTRAL;
@@ -627,18 +626,7 @@ function SystemTab({
           surface: `system.ships` is not redacted either. The holder is named
           rather than assumed, since a fixture pays whoever stands over the world
           and that need not be the power that built it. */}
-      {(fixtures.length > 0 || building.length > 0 || options) && (
-        <>
-          {/* Every world of yours with a free slot, which is the System tab
-              with no world chosen: easy to miss, so named here. */}
-          <p className="meta">
-            <button className="link" onClick={() => onSelect(null)}>
-              Room to build on your worlds
-            </button>
-          </p>
-          <h4>Fixtures here</h4>
-        </>
-      )}
+      {(fixtures.length > 0 || building.length > 0 || options) && <h4>Fixtures here</h4>}
       {options && fixtures.length === 0 && building.length === 0 && <p className="empty">Nothing built yet.</p>}
       {(fixtures.length > 0 || building.length > 0) && (
         <>
@@ -981,61 +969,6 @@ function Command({
 }
 
 /**
- * The System tab with no world chosen: where you could build a fixture now.
- * The per-world builder is the full list; this is so its buttons are not
- * hidden behind finding the right world on the map first.
- */
-function RoomToBuild({
-  state,
-  onSelect,
-  onDraft,
-}: {
-  state: WorldState;
-  onSelect: (id: string) => void;
-  onDraft: (text: string) => void;
-}) {
-  const worlds = buildableWorlds(state);
-  const first = worlds[0]?.options;
-  return (
-    <div>
-      <p className="empty">Click a system on the map.</p>
-      <h4>Room to build</h4>
-      {worlds.length === 0 ? (
-        <p className="empty">No world of yours has a free slot for anything that would help.</p>
-      ) : (
-        <>
-          {first && (
-            <p className="muted">
-              A fixture costs {first.cost} and at least {first.turns} turns; your next adds {first.upkeepAdded} a
-              turn to upkeep. Choose a world for every kind its ground takes.
-            </p>
-          )}
-          <ul className="ship-list">
-            {worlds.map((w) => (
-              <li key={w.systemId} className="agent-row">
-                <button className="link" onClick={() => onSelect(w.systemId)}>
-                  {w.name}
-                </button>
-                <span className="count">
-                  {w.options.room} free · {w.options.ground}
-                </span>
-                <button
-                  className="chip"
-                  title={`Write "${foundingLine(w.suggest.kind, w.name)}" on the command line`}
-                  onClick={() => onDraft(foundingLine(w.suggest.kind, w.name))}
-                >
-                  build {w.suggest.name.toLowerCase()}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
  * An officer goes where a fleet takes them: this writes the start of that
  * order — from where they stand, with them aboard — for the player to finish
  * with a destination. A fleet movement is the one order a channel cannot make.
@@ -1244,15 +1177,18 @@ function FixtureBuilder({
       <ul className="ship-list fixture-options">
         {kinds.map((k) => (
           <li key={k.kind} className={k.refusal ? 'agent-row refused' : 'agent-row'}>
+            {/* The row is faint when it cannot go up, as a building under way
+                is; the button says why. */}
             <button
               type="button"
-              className="fixture-pick"
+              className="chip"
               disabled={k.refusal !== null}
               title={k.refusal ?? `Write "${foundingLine(k.kind, worldName)}" on the command line`}
               onClick={() => onDraft(foundingLine(k.kind, worldName))}
             >
-              {k.name}
+              build
             </button>
+            <span>{k.name}</span>
             <span className="count">
               {k.spread.map((x) => `+${x.points} ${x.stat}`).join(' · ')}
             </span>

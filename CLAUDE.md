@@ -2810,7 +2810,8 @@ a defence contractor as nothing at all. A **partial** raises the fixture at
 `MAX_DURATION` rather than nothing, and a **failure** of a declaration that was
 only the build carries no `spend` beside it. No journal pin: all of it runs at
 declare time, and the journal records the ops that came out. The System tab
-draws a fixture under construction faint, beside the ones standing.
+draws a fixture under construction faint, beside the ones standing, and each
+kind that can be built there with a **build** button, faint when it cannot.
 
 **3. It is priced like a fleet: bought, then kept.** `FIXTURE_COST` (120) at
 issue, and a running bill — `fixtureUpkeep`, its own `Ledger` line and its own
@@ -8286,9 +8287,9 @@ component is logic nothing checks.
   the player's act and costs an action. Each kind goes where it can work:
   - **Declarations go on the command line** (`onDraft`): recruit an operative
     and give one orders (Agents); appoint an officer, and "sail with a fleet"
-    from where an officer stands (Command); build the best kind on each world
-    with a free slot (the System tab with no world chosen, `buildableWorlds`,
-    beside the full per-world builder); send an envoy.
+    from where an officer stands (Command); build a fixture (a **build**
+    button beside each kind a world's ground takes, faint and disabled with the
+    reason when it cannot go up); send an envoy.
   - **What needs the other side's consent opens a channel** with the line
     already in its box (`onOffer`, `ChannelPanel`'s `seed`):
     - **sell** a thing to its keenest buyer, at that buyer's price (Assets);
