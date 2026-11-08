@@ -452,7 +452,7 @@ describe('profiteer: paid for wars it stays out of', () => {
   it('pays nobody else, whatever the galaxy is doing', () => {
     const state = fresh();
     makeWar(state, 'vigil', 'freeworlds');
-    for (const id of ['meridian', 'vigil', 'freeworlds']) {
+    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
       expect(ledgerFor(state, id).warProfit, id).toBe(0);
     }
   });

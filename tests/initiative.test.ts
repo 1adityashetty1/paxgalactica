@@ -328,7 +328,7 @@ describe('initiative is fog-clean', () => {
       },
     ], 'model').state;
 
-    for (const id of ['meridian', 'vigil', 'freeworlds']) {
+    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
       expect(
         JSON.stringify(proposeFor(withSecret, id)?.ops ?? null),
         `${id} reacted to work it cannot see`,

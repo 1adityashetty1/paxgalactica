@@ -1231,7 +1231,7 @@ describe('tolls are charged by policy', () => {
     }
     const earnings = routeEarnings(s);
     expect(earnings.tolls.ojjul ?? 0).toBeGreaterThan(0);
-    for (const id of ['meridian', 'vigil', 'freeworlds']) {
+    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
       expect(earnings.tolls[id] ?? 0).toBe(0);
     }
   });
