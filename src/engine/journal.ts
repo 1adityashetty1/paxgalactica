@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 37;
+export const JOURNAL_VERSION = 38;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -126,6 +126,7 @@ export const JournalVersionSchema = z.union([
   z.literal(35),
   z.literal(36),
   z.literal(37),
+  z.literal(38),
 ]);
 
 export const JournalSchema = z.object({
@@ -279,6 +280,9 @@ export function replay(
     lineActs: parsed.version >= 27,
     // Ships were bare counts on each world, with no fleets, before version 31.
     fleets: parsed.version >= 31,
+    // A toll was a cut of a crossed world's slice of a lane, not of the cargo,
+    // before version 38.
+    cargoTolls: parsed.version >= 38,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's

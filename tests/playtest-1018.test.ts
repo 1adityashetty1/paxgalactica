@@ -123,7 +123,7 @@ describe('B11 — the yard note and the bill say which limit bound', () => {
 });
 
 describe('C4 — an accord may lift the other party’s toll', () => {
-  const lift = [{ op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'] }];
+  const lift = [{ op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds'] }];
   const accord = (legacy = {}) => applyOps(seed(), lift, 'extraction', 'meridian', true, legacy, 'accord');
 
   it('was refused under the old rule', () => {

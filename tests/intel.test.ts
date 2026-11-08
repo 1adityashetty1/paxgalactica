@@ -411,9 +411,9 @@ describe('operatives report every turn', () => {
   });
 
   it('says so when the posting has nobody to work against', () => {
-    // ilv-4 is unaligned in the seed: nobody to watch.
+    // sek-6 is unaligned in the seed: nobody to watch.
     const s = tickTurn(
-      deploy(seed(), 'surveillance', { kind: 'intel', revealsOrders: true }, 'ilv-4'),
+      deploy(seed(), 'surveillance', { kind: 'intel', revealsOrders: true }, 'sek-6'),
     ).state;
     expect(intelLines(s)[0]).toMatch(/answers to nobody/i);
   });

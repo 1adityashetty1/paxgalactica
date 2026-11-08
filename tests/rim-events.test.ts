@@ -1,3 +1,4 @@
+import { setShipsAt } from '../src/domain/state.js';
 import { describe, expect, it, vi } from 'vitest';
 
 /**
@@ -133,6 +134,12 @@ describe('the pulse: one turn in two, one event at most', () => {
 describe('the six hazards', () => {
   it('an ion storm closes a lane for its turns, and the smuggler still runs it', () => {
     const s = fresh();
+    // Vosk Marker unaligned, as before journal version 38: Drajk's transit hop
+    // there on a lane whose ends are both the Combine's closes with the lane,
+    // which is not the rule under test.
+    const vosk = s.systems.find((x) => x.id === 'ilv-4')!;
+    vosk.controllerFactionId = null;
+    setShipsAt(vosk, 'drajk', 0);
     // The busiest junction on the map, and the Combine's.
     const { state, event } = resolveRimEvent(s, { kind: 'ion_storm', systemId: 'ilv-2', turns: 2 });
     expect(event.visibleTo).toBeNull();

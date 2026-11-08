@@ -663,8 +663,8 @@ Four decisions, each against a way it could have gone wrong:
 
 - **Measured against a power's own home ground, not its size.**
   `homeFactionId` already records who held each world at turn 0 and every power
-  opens with four, so the deficit moves in equal quarters for everyone and needs
-  no new state. An absolute measure would buff Drajk (small by design) and the
+  opens with four — the Confederacy with five from journal version 38 — so the
+  deficit moves in quarters (fifths for Drajk) and needs no new state. An absolute measure would buff Drajk (small by design) and the
   Combine (few worlds, much paper) forever for being what they are.
 - **Resolve sizes it and is excluded from it**, so it cannot feed itself. The
   Vigil at 17 reaches the cap at half its homeland gone; Meridian at 9 needs two
@@ -1838,9 +1838,9 @@ Three rules decide what is collected:
   it the Combine collects on both halves of most lanes it touches, measured at
   884 tolls over 30 harness turns against 567 with the rule, and a sixth system
   it does not otherwise take.
-- **At what rate.** `TOLL_RATE` (0.25) for an extortionist's **transit**;
-  `BASE_TOLL_RATE` (0.12) for everyone else, and for **every** terminus tariff
-  including the extortionist's. *"Commerce owes you for passing through"* is a
+- **At what rate.** `TOLL_RATE` (0.5) for an extortionist's **transit**;
+  `BASE_TOLL_RATE` (0.25) for everyone else, and for **every** terminus tariff
+  including the extortionist's — of the payer's cargo, below. *"Commerce owes you for passing through"* is a
   claim about chokepoints, not about tariffs at your own markets, so that is
   where the doctrine keeps its premium.
 
@@ -1852,10 +1852,45 @@ bleeding every turn, against a disposition that has no decay, so the galaxy
 floors out and never recovers. `RouteEarnings.tollsPaid` is the mirror of
 `tolls`, and a power now resents whoever charged **it**.
 
-The seed gives the Combine all four targets and everyone else none, so the
-opening galaxy is the one every campaign to date was played in — the balance
-harness reads 3/6/5/4/4 and a 58/42 income mix, both unchanged. The other four
-powers now *have* the lever; they have simply not pulled it.
+The seed gave the Combine all four targets and everyone else none, so the
+opening galaxy was the one every campaign to date was played in — the balance
+harness read 3/6/5/4/4 and a 58/42 income mix, both unchanged. The other four
+powers now *have* the lever; they have simply not pulled it. From journal
+version 38 the Combine spares the Confederacy (below).
+
+### A toll is a cut of the cargo
+
+Journal version 38 (`WorldState.tollBasis`, written by the seed, `hop` for
+anything older). A transit toll was a share of **the crossed world's slice**
+of a lane — the 40% transit pot, divided across every world on the path,
+halved between the two ends — so crossing one world of a three-world corridor
+cost each payer about 1.7% of the lane, and the Combine collected **12 a turn**
+on the opening board against a net of 265. A toll is now a cut of **what each
+paying end of the lane received**: `TOLL_RATE` where an extortionist's space is
+crossed, `BASE_TOLL_RATE` otherwise and at a terminus, once per lane per
+collector, read off what each end received before any toll so two collectors on
+one lane do not depend on the order they are visited in. The old rates are kept
+as `HOP_TOLL_RATE` and `HOP_BASE_TOLL_RATE` for replay.
+
+**Swept, and the Confederacy was the problem, not the rate.** Rebased on the
+cargo and swept from 0.15 to 0.60 (the terminus rate at half), over 30 and 100
+bot turns with events and without: the Combine's lanes wrap Drajk's western
+worlds, the tolls bled it, and at every rate the Vigil took it down to two
+worlds by turn 100 (hop basis: three). Two opening changes fix that, and only
+together:
+
+- **Vosk Marker opens as Drajk's** (`CARGO_TOLL_OPENING`): the unaligned ice
+  world among the Combine's, a smuggler's port its paymaster would keep.
+- **The Combine does not toll the Confederacy**: the power it hires as its
+  proxy, on terms with it from turn 0.
+
+Either alone left the Confederacy on two at 100 turns somewhere in the grid.
+Together, 0.45–0.55 keep every power on three worlds or more and nobody past
+seven; **0.50 is the middle**, and the boards read **5/5/5/5/5** at 30 turns with
+and without events, 5/5/5/5/5 at 100 with events and 5/6/5/5/4 without. On the
+opening board the Combine collects **39** a turn, Meridian pays 16, the Vigil 18
+and Arkane 5, and the Confederacy opens on a net of 110 where it had 76. Four
+worlds open unaligned rather than five, and the Confederacy's homeland is five.
 
 ### Interdiction: attacking an economy without a battle
 

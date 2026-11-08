@@ -1,3 +1,4 @@
+import { BASE_TOLL_RATE, TOLL_RATE } from '../domain/trade.js';
 import { STAT_MEANINGS, STAT_NAMES } from '../domain/checks.js';
 import { neighboursOf, shortestPath } from '../domain/graph.js';
 import { hullsAt, type WorldState } from '../domain/state.js';
@@ -154,7 +155,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         [
           'MONEY',
           '  Territory pays, and so does the lane network. You may charge any power',
-          '  for crossing your space, and lifting that toll is a real concession to',
+          `  for crossing your space — ${Math.round(BASE_TOLL_RATE * 100)}% of its cargo on the lane, ${Math.round(TOLL_RATE * 100)}% for`,
+          '  an extortionist — and lifting that toll is a real concession to',
           '  offer — for good, for a number of turns, or for as long as a treaty',
           '  between you holds, and then it comes back. Blockades sever lanes;',
           '  commerce raiding takes the cargo, and both need a fleet already there.',

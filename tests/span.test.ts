@@ -34,8 +34,10 @@ describe('a span of control', () => {
     for (const f of s.factions) {
       const span = spanOfControl(s, f.id);
       expect(span.over, f.id).toBe(0);
-      expect(span.held, f.id).toBe(4);
-      expect(span.span, f.id).toBeGreaterThanOrEqual(4);
+      // The Confederacy opens on five from journal version 38 (Vosk Marker).
+      const home = f.id === 'drajk' ? 5 : 4;
+      expect(span.held, f.id).toBe(home);
+      expect(span.span, f.id).toBeGreaterThanOrEqual(home);
     }
     // Meridian's influence buys it room the Vigil's does not.
     expect(spanOfControl(s, 'meridian').span).toBeGreaterThan(spanOfControl(s, 'vigil').span);

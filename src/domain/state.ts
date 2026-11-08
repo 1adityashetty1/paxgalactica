@@ -993,6 +993,15 @@ export const WorldStateSchema = z.object({
    */
   routeTies: z.enum(['first', 'split']).default('first'),
   /**
+   * What a toll is a cut of: `hop`, the crossed world's slice of a lane's
+   * transit value, as before journal version 38 — which made a toll 1–4% of
+   * what a payer earned on the lane — or `cargo`, what the paying end of the
+   * lane received. On the world for `routeTies`' reason: route income is
+   * computed from the world alone. The seed writes `cargo`; an older journal
+   * is rebuilt with `hop`, and a save that predates the field parses to it.
+   */
+  tollBasis: z.enum(['hop', 'cargo']).default('hop'),
+  /**
    * What each power has seen in full of another's secret work, kept after the
    * sight is lost — see `recordSightings` in `intel.ts`. Never shipped: the
    * viewer's own rows reach the browser as `CampaignView.remembered`, without

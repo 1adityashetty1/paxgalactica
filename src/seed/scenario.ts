@@ -797,14 +797,24 @@ function openingSquadron(controller: string, tons: number, auxiliaries = true): 
   return normaliseStack(stack);
 }
 
-function buildSystems(auxiliaries = true): StarSystem[] {
+/**
+ * Worlds that open under a different flag from journal version 38, when a toll
+ * became a cut of the cargo. Tolls at that weight drained the Confederacy —
+ * the Combine's lanes wrap its western worlds — and the Vigil took it down to
+ * two worlds at 100 bot turns. Vosk Marker, an unaligned ice world among the
+ * Combine's, opens as Drajk's: a smuggler's port inside the extortionist's
+ * space, which its proxy would keep. Swept with the rate — see `TOLL_RATE`.
+ */
+const CARGO_TOLL_OPENING: Record<string, string> = { 'ilv-4': 'drajk' };
+
+function buildSystems(auxiliaries = true, cargoTolls = true): StarSystem[] {
   const edges = new Map<string, Set<string>>();
   for (const s of SEED_SYSTEMS) edges.set(s.id, new Set());
   for (const [a, b] of LANES) {
     edges.get(a)?.add(b);
     edges.get(b)?.add(a);
   }
-  return SEED_SYSTEMS.map((s) => ({
+  return SEED_SYSTEMS.map((seeded) => ({ ...seeded, controller: (cargoTolls ? CARGO_TOLL_OPENING[seeded.id] : undefined) ?? seeded.controller })).map((s) => ({
     id: s.id,
     name: s.name,
     sector: s.sector,
@@ -834,7 +844,7 @@ function buildSystems(auxiliaries = true): StarSystem[] {
   }));
 }
 
-function buildFactions(luck = true, commodities = true, lineActs = true): Faction[] {
+function buildFactions(luck = true, commodities = true, lineActs = true, cargoTolls = true): Faction[] {
   const textOf = (line: string | SeedLine): string =>
     typeof line === 'string' ? line : lineActs ? line.text : (line.was ?? line.text);
   const tagsOf = (f: SeedFaction) =>
@@ -881,9 +891,13 @@ function buildFactions(luck = true, commodities = true, lineActs = true): Factio
     // tolling all four at the unchanged `TOLL_RATE` makes the opening galaxy
     // byte-identical to the one before tolling became a policy. The other four
     // now HAVE the lever; they have simply not pulled it.
+    //
+    // From journal version 38 it spares the Confederacy: the power it hires as
+    // its proxy, on terms with it from turn 0, and the one a cut of the cargo
+    // would otherwise have bled to two worlds.
     tollTargets:
       f.tradeEthic === 'extortionist'
-        ? SEED_FACTIONS.filter((o) => o.id !== f.id).map((o) => o.id)
+        ? SEED_FACTIONS.filter((o) => o.id !== f.id && !(cargoTolls && o.id === 'drajk')).map((o) => o.id)
         : [],
     // Absent before journal version 12, so an older journal rebuilds a galaxy
     // that made no goods.
@@ -956,6 +970,8 @@ export function playableFactions(): { id: string; name: string; color: number; d
  * pure function of the seed and replays identically.
  */
 function seedBase(factionId: string): string {
+  // Vosk Marker (`CARGO_TOLL_OPENING`) is worth 3 and never a power's best, so
+  // reading the original roster gives the same base either way.
   return [...SEED_SYSTEMS]
     .filter((s) => s.controller === factionId)
     .sort((a, b) => b.value - a.value || a.id.localeCompare(b.id))[0]!.id;
@@ -1014,6 +1030,9 @@ function buildSeedState(
    * wording each line had before it was reworded, as before version 27.
    * `fleets: false` keeps no fleets: ships are bare counts on each world, as
    * before version 31.
+   * `cargoTolls: false` levies a toll on a crossed world's slice of a lane
+   * rather than on the cargo, leaves Vosk Marker unaligned and has the
+   * Combine toll the Confederacy, as before version 38.
    */
   {
     fourSchools = true,
@@ -1029,6 +1048,7 @@ function buildSeedState(
     agentLists = true,
     lineActs = true,
     fleets = true,
+    cargoTolls = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -1044,6 +1064,7 @@ function buildSeedState(
     widerNames?: boolean;
     lineActs?: boolean;
     fleets?: boolean;
+    cargoTolls?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -1052,9 +1073,9 @@ function buildSeedState(
     );
   }
 
-  const systems = buildSystems(auxiliaries);
+  const systems = buildSystems(auxiliaries, cargoTolls);
   applyOpeningFloors(systems, auxiliaries);
-  const factions = buildFactions(luck, commodities, lineActs);
+  const factions = buildFactions(luck, commodities, lineActs, cargoTolls);
   // Every world opens on its baseline: its own power at `HOME_REGARD`, and
   // nobody else anything. See `regard.ts`.
   if (regard) {
@@ -1065,6 +1086,7 @@ function buildSeedState(
     systems,
     pendingOrders: [],
     routeTies: splitTies ? 'split' : 'first',
+    tollBasis: cargoTolls ? 'cargo' : 'hop',
     sightings: [],
     notables: [],
     listedAgents: [],

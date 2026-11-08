@@ -1014,10 +1014,11 @@ rather than a change in what your power believes. Your own faction only.
 
 You collect where a lane you charge either **crosses** your space or **ends** at
 a hub you hold — once per lane, so holding both the hop and the terminus does
-not charge the same cargo twice. An `extortionist` charges a premium rate on
-transit; everyone charges the ordinary rate at a terminus, because "commerce
-owes you for passing through" is a claim about chokepoints, not about tariffs at
-your own markets.
+not charge the same cargo twice. A toll is a cut of the paying power's cargo on
+that lane: **half** where an `extortionist` charges it crossing its space, **a
+quarter** everywhere else, terminus included, because "commerce owes you for
+passing through" is a claim about chokepoints, not about tariffs at your own
+markets.
 
 **It is a lever to bargain with, not just an income line.** Every power you
 charge loses standing with you every turn it pays, and disposition never decays

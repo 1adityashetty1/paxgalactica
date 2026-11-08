@@ -33,6 +33,17 @@ import type { Treaty, TreatyType } from '../src/domain/diplomacy.js';
 const fresh = (player = 'freeworlds'): WorldState => createSeedState(player);
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
 const fac = (s: WorldState, id: string) => s.factions.find((x) => x.id === id)!;
+/**
+ * Vosk Marker as it was before journal version 38: unaligned, and nobody's
+ * ships over it. From 38 the Confederacy opens holding it, a jump from Riqel
+ * and Shalka, which puts Drajk in reach of the Combine's core — and these
+ * tests are about a power that is not.
+ */
+const voskUnaligned = (s: WorldState): WorldState => {
+  sys(s, 'ilv-4').controllerFactionId = null;
+  setShipsAt(sys(s, 'ilv-4'), 'drajk', 0);
+  return s;
+};
 
 function pact(type: TreatyType, parties: [string, string], pledged: Record<string, number> = {}): Treaty {
   return {
@@ -310,8 +321,11 @@ describe('blockade', () => {
     // Resolved per beneficiary, not per lane. Deciding it once for the whole
     // route meant the smuggler only kept its trade when every other party
     // could also run the blockade — so the doctrine never fired.
-    const state = blockading('vigil', 'ilv-2', 'tor-3');
-    const before = routeEarnings(fresh()).shares;
+    // Vosk Marker unaligned: a transit hop of Drajk's on a lane whose two ends
+    // are both the Combine's is closed with the lane, and that is not the rule
+    // under test.
+    const state = voskUnaligned(blockading('vigil', 'ilv-2', 'tor-3'));
+    const before = routeEarnings(voskUnaligned(fresh())).shares;
     const during = routeEarnings(state).shares;
     expect(fac(state, 'drajk').tradeEthic).toBe('smuggler');
     expect(during['drajk'] ?? 0).toBeGreaterThanOrEqual(before['drajk'] ?? 0);
@@ -360,7 +374,7 @@ describe('commerce raiding', () => {
     // A raid must not require beating the defenders first: that would make
     // commerce raiding something only the strong could do to the weak, which
     // is the exact inversion of what it is for.
-    const far = applyOps(fresh('drajk'), [
+    const far = applyOps(voskUnaligned(fresh('drajk')), [
       {
         op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
         originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 2, label: 'by decree',
@@ -483,7 +497,7 @@ describe('commerce raiding', () => {
   });
 
   it('ends when the raiding squadron is destroyed', () => {
-    const state = raiding();
+    const state = voskUnaligned(raiding());
     setShipsAt(sys(state, 'ilv-3'), 'drajk', 0);
     expect(tickTurn(state).state.pendingOrders.filter((o) => o.type === 'commerce_raiding')).toHaveLength(0);
   });
@@ -773,7 +787,7 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
 
   it('refuses a faction with no ships and no agent there', () => {
     // The original hole: this moved thirty hulls from across the galaxy.
-    const res = suborn(fresh('drajk'), 'ilv-2', 'ojjul', 30);
+    const res = suborn(voskUnaligned(fresh('drajk')), 'ilv-2', 'ojjul', 30);
     expect(res.rejections.map((r) => r.code)).toContain('no_presence');
     expect(totalShips(res.state, 'ojjul')).toBe(totalShips(fresh(), 'ojjul'));
   });
@@ -1068,7 +1082,7 @@ describe('suborning is statecraft, not combat', () => {
   });
 
   it('is still refused from two jumps away', () => {
-    const state = fresh('drajk');
+    const state = voskUnaligned(fresh('drajk'));
     setShipsAt(sys(state, 'ilv-6'), 'drajk', 20); // ilv-6 is not adjacent to ilv-2
     const res = applyOps(
       state,
@@ -1202,12 +1216,13 @@ describe('a freighter takes more of a lawless junction', () => {
 
 describe('tolls are charged by policy', () => {
   it('opens the seed exactly as it always was', () => {
-    // The Combine seeds tolling all four at the unchanged `TOLL_RATE`, and it
-    // is the only power tolling anyone, so the opening galaxy is the one every
-    // campaign to date was played in.
+    // The Combine is the only power tolling anyone, and from journal version
+    // 38 it spares its proxy, the Confederacy, and tolls on the cargo.
     const s = createSeedState('drajk');
+    expect(s.tollBasis).toBe('cargo');
     const combine = s.factions.find((f) => f.id === 'ojjul')!;
-    expect(combine.tollTargets.sort()).toEqual(
+    expect(combine.tollTargets.sort()).toEqual(['freeworlds', 'meridian', 'vigil']);
+    expect(createSeedState('drajk', { cargoTolls: false }).factions.find((f) => f.id === 'ojjul')!.tollTargets.sort()).toEqual(
       ['drajk', 'freeworlds', 'meridian', 'vigil'],
     );
     for (const f of s.factions) {
@@ -1216,7 +1231,7 @@ describe('tolls are charged by policy', () => {
     }
     const earnings = routeEarnings(s);
     expect(earnings.tolls.ojjul ?? 0).toBeGreaterThan(0);
-    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
+    for (const id of ['meridian', 'vigil', 'freeworlds']) {
       expect(earnings.tolls[id] ?? 0).toBe(0);
     }
   });
@@ -1355,7 +1370,7 @@ describe('tolls are charged by policy', () => {
     );
     // Opening a rival's borders for them would be a free strike at its treasury.
     expect(res.rejections[0]?.code).toBe('illegal_value');
-    expect(res.state.factions.find((f) => f.id === 'ojjul')!.tollTargets).toHaveLength(4);
+    expect(res.state.factions.find((f) => f.id === 'ojjul')!.tollTargets).toHaveLength(3);
   });
 
   it('resents the power that charged it, and nobody else', () => {

@@ -140,7 +140,7 @@ describe('narrated regard is capped over the whole batch, and a treaty pays its 
 
 describe('a toll lifted for a term comes back (B12)', () => {
   const lift = (s: WorldState, extra: Record<string, unknown>) =>
-    applyOps(s, [{ op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'], ...extra } as OpInput], 'extraction', 'ojjul').state;
+    applyOps(s, [{ op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds'], ...extra } as OpInput], 'extraction', 'ojjul').state;
   const charged = (s: WorldState) => s.factions.find((f) => f.id === 'ojjul')!.tollTargets;
 
   it('after the turns named', () => {
@@ -159,7 +159,7 @@ describe('a toll lifted for a term comes back (B12)', () => {
       s,
       [
         { op: 'form_treaty', treatyType: 'trade_accord', parties: ['ojjul', 'meridian'], terms: {}, summary: 'x', durationTurns: 2 } as OpInput,
-        { op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'], whileTreaty: 'trade_accord' } as OpInput,
+        { op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds'], whileTreaty: 'trade_accord' } as OpInput,
       ],
       'extraction',
       'ojjul',
