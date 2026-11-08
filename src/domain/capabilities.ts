@@ -142,5 +142,10 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   if (open.size > 0) {
     out.push(`Worlds that answer to nobody within reach — an envoy can court them, a landing can take them: ${[...open.values()].join('; ')}.`);
   }
+  // The envoy's reach, said as the reducer enforces it (`envoyRefusal`): the
+  // counsellor urged one at a rival's world, which no order can send.
+  out.push(
+    `An envoy goes only to a world you hold or to one that answers to nobody${open.size > 0 ? ' listed above' : ', and none is within your reach'}. A world another power holds cannot be courted; turning it against its holder is an operative's work (incitement).`,
+  );
   return out;
 }

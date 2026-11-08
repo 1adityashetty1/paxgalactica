@@ -49,6 +49,7 @@ import { ASSET_ARCHETYPES, serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import { paperOf, pressuresOn } from '../domain/pressures.js';
 import { capabilitiesOf } from '../domain/capabilities.js';
+import { envoyRefusal, regardRecorded } from '../domain/regard.js';
 import { ACT_WORDS } from '../domain/acts.js';
 import { lineCrossable } from '../domain/line-reach.js';
 import {
@@ -1645,6 +1646,31 @@ export function sendingIsTheAct(state: WorldState, action: string, ground: { kin
   return `the act sends ships there, and ${getFaction(state, me)?.name ?? me} has ships at ${ships.map((x) => x.name).slice(0, 3).join(', ')} to send. Going there is the act; rule it as a move.`;
 }
 
+/**
+ * The worlds counsel sends an envoy to that no envoy may go to — another
+ * power's, or an independent one out of reach — each with the reducer's own
+ * refusal (`envoyRefusal`). A world counts when it is named after "envoy" in
+ * the same sentence, behind "to", "at" or "into". The counsellor urged an
+ * envoy at a rival's world, which the order then refused; the rule is the
+ * reducer's, so the check reads it rather than restating it.
+ */
+export function envoysRefused(state: WorldState, viewerId: string, counsel: string): string[] {
+  if (!regardRecorded(state)) return [];
+  const out: string[] = [];
+  for (const sentence of counsel.split(/(?<=[.;!?])\s+/)) {
+    if (!/\b(?:envoys?|emissar(?:y|ies))\b/i.test(sentence)) continue;
+    const after = sentence.slice(sentence.search(/\b(?:envoys?|emissar(?:y|ies))\b/i));
+    for (const m of after.matchAll(/\b(?:to|at|into|toward|towards|over)\s+(?:the\s+)?([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*)/g)) {
+      const named = m[1]!.toLowerCase();
+      const world = state.systems.find((x) => named === x.name.toLowerCase() || named.startsWith(`${x.name.toLowerCase()} `));
+      if (!world) continue;
+      const refusal = envoyRefusal(state, world, viewerId);
+      if (refusal && !out.includes(refusal)) out.push(refusal);
+    }
+  }
+  return out;
+}
+
 export const AdvisorReplySchema = z.object({
   /**
    * What the counsellor actually says, out loud, to their leader.
@@ -1788,7 +1814,17 @@ export async function askAdvisor(
             `Speak to the ${faction.title}. Lead with what matters most on the board and what you would do about it, in your own voice — checked against what your power will and will not do.`,
           ]),
     ].join('\n'),
-    schema: AdvisorReplySchema,
+    // Held to the board as well as to its shape: an envoy the order would
+    // refuse is sent back with the reducer's reason.
+    schema: AdvisorReplySchema.superRefine((reply, ctx) => {
+      const refused = envoysRefused(state, viewerId, reply.counsel);
+      if (refused.length > 0)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['counsel'],
+          message: `You urged an envoy no order can send: ${refused.join(' ')} Recommend something your power can do there, or an envoy to a world listed as within reach.`,
+        });
+    }),
   });
   return { counsel: res.value.counsel, attempts: res.attempts, costUsd: res.costUsd };
 }

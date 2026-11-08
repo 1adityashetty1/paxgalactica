@@ -8667,6 +8667,12 @@ lift stand, and the unaligned worlds in reach. Its commonest bad
 recommendation in the playtest loops was an act with no means behind it, and
 each of these is arithmetic the engine already does.
 
+**An envoy it urges must be one the order would send.** It recommended an
+envoy to a world another power holds, which `envoyRefusal` turns away. The
+capabilities say where an envoy can go, and `envoysRefused` sends back counsel
+naming a world after "envoy" that the reducer would refuse, with the reducer's
+own reason — the rule is read, not restated.
+
 `AdvisorReplySchema` is **one field, the counsel**. A one-line
 `recommendation` sat under it from loop 2 of the 2026-10-19 playtest, when the
 counsel named problems and left the move implicit; once the counsel was asked
