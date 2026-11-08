@@ -8,7 +8,7 @@ describe('an unlabelled order', () => {
       createSeedState('ojjul'),
       [
         { op: 'send_envoy', factionId: 'ojjul', systemId: 'sek-5' },
-        { op: 'send_envoy', factionId: 'ojjul', systemId: 'ilv-4' },
+        { op: 'send_envoy', factionId: 'ojjul', systemId: 'sek-6' },
         { op: 'fortify', factionId: 'ojjul', systemId: 'ilv-2', magnitude: 1 },
       ],
       'model',
@@ -20,7 +20,7 @@ describe('an unlabelled order', () => {
     expect(out.rejections).toEqual([]);
     expect(out.state.pendingOrders.filter((o) => o.factionId === 'ojjul').map((o) => o.label)).toEqual([
       'envoy to Var Hollow',
-      'envoy to Vosk Marker',
+      'envoy to Neth',
       'fortification at Shalka',
     ]);
   });

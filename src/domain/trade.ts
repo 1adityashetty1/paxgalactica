@@ -56,23 +56,36 @@ export const DISTANCE_DECAY = 0.45;
 export const ENDPOINT_SHARE = 0.6;
 
 /**
- * What an extortionist takes off the top of foreign traffic crossing its
- * space, charged against the route's other beneficiaries.
+ * What an extortionist takes of the cargo crossing its space: half of what each
+ * foreign end of the lane receives, once per lane (journal version 38).
+ *
+ * **Swept.** A toll was a cut of the crossed world's slice of a lane until
+ * then, which made it 1–4% of what a payer earned there and 12 a turn to the
+ * Combine on the opening board, against a net of 265. Rebased on the cargo and
+ * swept from 0.15 to 0.60 (the terminus rate at half), over 30 and 100 bot
+ * turns with and without events, the Confederacy — which the Combine's lanes
+ * wrap — fell to two worlds at 100 turns at every rate; with Vosk Marker
+ * opening as its own and the Combine not tolling it (see the seed), 0.45–0.55
+ * keep every power on three worlds or more and nobody past seven, and 0.50 is
+ * the middle: the Combine opens on 39 a turn in tolls, and Meridian and the
+ * Vigil pay 16 and 18.
  */
-export const TOLL_RATE = 0.25;
+export const TOLL_RATE = 0.5;
 
 /**
- * What a power that is not an extortionist takes, when it chooses to charge.
+ * What a power that is not an extortionist takes, when it chooses to charge,
+ * and what anyone takes at a terminus: half the extortionist's rate.
  *
- * Roughly half the extortionist's rate, and the split is what keeps the
- * Combine's doctrine meaning something once everybody can toll. A multiplier
- * alone would be the weak form — "a difference expressed only as a number gets
- * solved once and then ignored" — so the extortionist keeps `TOLL_RATE`
- * *unchanged*, which is also why opening the mechanic to everyone moves the
- * seed's balance not at all: the only faction tolling on turn 0 is the one that
- * was already tolling, at the rate it always had.
+ * The split is what keeps the Combine's doctrine meaning something once
+ * everybody can toll. A multiplier alone would be the weak form — "a
+ * difference expressed only as a number gets solved once and then ignored" —
+ * so the extortionist's premium is where commerce crosses its space.
  */
-export const BASE_TOLL_RATE = 0.12;
+export const BASE_TOLL_RATE = 0.25;
+
+/** The two rates before journal version 38, when a toll was a cut of a crossed world's slice. */
+export const HOP_TOLL_RATE = 0.25;
+export const HOP_BASE_TOLL_RATE = 0.12;
 
 /**
  * Whether `holder` charges `payer` for passage.
@@ -521,6 +534,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     add((raidedFrom[raider] ??= {}), victim, amount);
   };
   const monopolyPremium: Record<string, number> = {};
+  const cargoTolls = state.tollBasis === 'cargo';
   let uncollected = 0;
   let live = 0;
 
@@ -598,10 +612,44 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       // it is a tariff either way. It comes out of the far end's OWN endpoint
       // share, so the pot stays conserved and nobody is taxed on money they did
       // not receive.
-      for (const [holder, other] of [
+      if (cargoTolls) {
+        // **A toll is a cut of the cargo** (journal version 38). Charged on
+        // what each paying end of the lane actually received, once per lane
+        // per collector: at `TOLL_RATE` or `BASE_TOLL_RATE` by ethic where the
+        // lane crosses the collector's space, and at `BASE_TOLL_RATE` where it
+        // only ends at the collector's hub. Read off what each end received
+        // BEFORE any toll, so two collectors on one lane do not depend on the
+        // order they are visited in, and never more than is left.
+        const before: Record<string, number> = { ...received };
+        const collectors = [...new Set([...middle.map(holderOf), holderA, holderB])].filter(
+          (c): c is string => c !== null && carries(c),
+        );
+        for (const collector of collectors) {
+          const crossing = middle.find((id) => holderOf(id) === collector);
+          const atHub = holderA === collector ? aId : holderB === collector ? bId : undefined;
+          const where = crossing ?? atHub;
+          if (where === undefined) continue;
+          const rate =
+            crossing !== undefined && ethicOf(collector) === 'extortionist' ? TOLL_RATE : BASE_TOLL_RATE;
+          for (const payer of new Set([holderA, holderB])) {
+            if (payer === null || payer === collector) continue;
+            if (!tollsOn(state, collector, payer)) continue;
+            const toll = Math.min(received[payer] ?? 0, (before[payer] ?? 0) * rate);
+            if (toll <= 0) continue;
+            add(shares, payer, -toll);
+            add(tollsPaid, payer, toll);
+            add(received, payer, -toll);
+            add(shares, collector, toll);
+            add(tolls, collector, toll);
+            add(received, collector, toll);
+            levy(collector, payer, where, toll);
+          }
+        }
+      }
+      for (const [holder, other] of cargoTolls ? [] : ([
         [holderA, holderB],
         [holderB, holderA],
-      ] as const) {
+      ] as const)) {
         if (holder === null || other === null) continue;
         if (!carries(holder) || !carries(other)) continue;
         if (!tollsOn(state, holder, other)) continue;
@@ -624,7 +672,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         // about transit, not about tariffs charged at your own markets. So the
         // extortionist's premium rate applies where it crosses your space, and a
         // terminus charges the ordinary rate whoever holds it.
-        const toll = (endpointPot / 2) * BASE_TOLL_RATE;
+        const toll = (endpointPot / 2) * HOP_BASE_TOLL_RATE;
         add(shares, other, -toll);
         add(tollsPaid, other, toll);
         add(received, other, -toll);
@@ -706,9 +754,9 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         // Charged only to the powers this holder has actually decided to charge.
         // A junction is a fact about the map; whether commerce pays to cross it
         // is a policy, and it is the one a neighbour comes to the table about.
-        const charged = payers.filter((id) => tollsOn(state, holder, id));
+        const charged = cargoTolls ? [] : payers.filter((id) => tollsOn(state, holder, id));
         if (charged.length > 0) {
-          const rate = ethicOf(holder) === 'extortionist' ? TOLL_RATE : BASE_TOLL_RATE;
+          const rate = ethicOf(holder) === 'extortionist' ? HOP_TOLL_RATE : HOP_BASE_TOLL_RATE;
           // Still divided by the number of ENDPOINTS, not by how many of them are
           // being charged: the toll is a share of what crosses this hop, and
           // waiving one power's half must not double the other's.

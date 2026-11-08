@@ -23,9 +23,9 @@ import type { WorldType } from '../domain/state.js';
  * to say something true about a specific power's relationship to a specific
  * kind of ground. Twenty-two pairs is a table somebody can read and fix.
  *
- * Variants exist only where one pair covers several worlds: the seed has three
- * unaligned ice worlds, and three identical paragraphs in a panel read as a
- * bug. Picked by a hash of the system id, so the same world always says the
+ * Variants exist only where one pair covers several worlds: the seed has two
+ * unaligned ice worlds and two of the Confederacy's, and identical paragraphs
+ * in a panel read as a bug. Picked by a hash of the system id, so the same world always says the
  * same thing and a replay cannot disagree with the campaign.
  */
 
@@ -95,11 +95,11 @@ const FLAVOUR: Partial<Record<Key, string[]>> = {
   /* --- ice / oceanic: resolve. Hard to live on, hard to break. --------- */
   'ice|drajk': [
     'Frozen through and honeycombed with holds. Drajk crews waylay here because nothing follows them in and nothing profitable comes out.',
+    'A frozen waystation in the middle of Nar space, kept by the Confederacy because the Combine finds it useful that somebody does.',
   ],
   'ice|unaligned': [
     'Ice, and a settlement that has outlasted three flags by never flying one.',
     'A cold anchorage with a town under it. It has been asked to submit twice in living memory and the answer did not change.',
-    'Nine metres of ice over everything that matters. Whatever you bring, it has already been colder.',
   ],
   'oceanic|freeworlds': [
     'Deep water and floating townships, fed by what it can catch. The Arkane cannot be starved off Vashka, and they will drown those who try.',
@@ -137,7 +137,15 @@ function pick(systemId: string, count: number): number {
     h ^= systemId.charCodeAt(i);
     h = Math.imul(h, 16777619) >>> 0;
   }
-  return h % count;
+  // A murmur3 finalizer, for the reason `rollD20` has one: FNV-1a's low bits
+  // follow the input's, so ids differing only in a digit landed on one variant
+  // — Sennex and Var Hollow, Threx and Vosk Marker.
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return (h >>> 0) % count;
 }
 
 /** One line about a world, given what it is and who built on it. */

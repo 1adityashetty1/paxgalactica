@@ -86,7 +86,7 @@ leaves a faction with nobody following it.
 | `sweep` | counter-intelligence on a world of your own |
 | `sway` | an influence attempt moves how another power sees you (`whom`). The roll sizes it; it does nothing unless the check was influence and it worked |
 | `gift` | credits given to another power (`to`, `amount`), which buy its regard at 20 credits a point, ten at most |
-| `build_ships` | lay down new hulls of your own, now, at a world you hold — or, with `programme: true`, as a hidden yard programme delivered later |
+| `build_ships` | lay down new hulls of your own at a world you hold: what this turn's yards can take now, the rest queued |
 | `pay` | your credits to another power (`to`, `amount`, `for`) |
 | `spend` | your credits to nobody on the board — a bribe, a hire, materials (`amount`, `for`) |
 | `suborn_crews` | another power's crews change sides where they stand — see Suborning |
@@ -316,15 +316,16 @@ one jump between two worlds the power holds, with no rival's ships over the
 target, lands at once, and anything else sails a turn a jump and is settled
 when it arrives. The reducer decides which; you only say where the ships go.
 
-**A yard programme is a `build_ships` with `programme: true`** and a named
-`systemId`: the hulls are paid for now, built out of sight, and delivered when
-it completes — a battleship in 5 turns, a lighter hull in 2. It counts against
-the same yards as an open build, and a world lost before it completes takes the
-hulls with it.
+**There is one way to build ships.** The yards lay down so many tons a turn,
+set by industry; a `build_ships` lays down what this turn's yards still have
+room for at once, and the rest is paid for now and waits in the yards' queue,
+delivered over the turns the run rate needs and aborted, its outlay lost, if the
+world is lost first. Write the build the player asked for, however large: the engine
+splits it, and tells you. Narrate what the notes say landed now and what waits.
 
-Ordering more than the treasury covers is not rejected — the yards deliver what
-was paid for and the rest is trimmed, and you are told. A power that cannot
-meet upkeep lays ships up.
+Ordering more than the treasury covers is not rejected — the order is trimmed
+to what it can pay for, and you are told. A power that cannot meet upkeep lays
+ships up.
 
 ### Officers sail with the fleet
 
@@ -638,7 +639,6 @@ on a partial, so a magnitude or a count you halve yourself is halved twice.
 | `found_fixture` | a fixture raised on the world — name it with `kind` | always one |
 | `repair_fixture` | sabotage damage taken off a fixture on a world you hold — name it with `kind`, or leave it out for the most damaged | 1..2 |
 | `send_envoy` | the world's standing with the sender up by 5 a point plus its influence modifier; on a world the sender holds, or one that answers to nobody that it holds a neighbour of or has ships over | 2 |
-| `build_ships` with `programme: true` | hulls of a `hull` class delivered at `systemId` on completion | `count` |
 
 Prices: hulls by displacement at 15 a ton (60 for a battleship, 45 for a
 lifter, freighter or listener, 30 for an escort or torpedo boat), 45 a point of
@@ -1014,10 +1014,11 @@ rather than a change in what your power believes. Your own faction only.
 
 You collect where a lane you charge either **crosses** your space or **ends** at
 a hub you hold — once per lane, so holding both the hop and the terminus does
-not charge the same cargo twice. An `extortionist` charges a premium rate on
-transit; everyone charges the ordinary rate at a terminus, because "commerce
-owes you for passing through" is a claim about chokepoints, not about tariffs at
-your own markets.
+not charge the same cargo twice. A toll is a cut of the paying power's cargo on
+that lane: **half** where an `extortionist` charges it crossing its space, **a
+quarter** everywhere else, terminus included, because "commerce owes you for
+passing through" is a claim about chokepoints, not about tariffs at your own
+markets.
 
 **It is a lever to bargain with, not just an income line.** Every power you
 charge loses standing with you every turn it pays, and disposition never decays

@@ -119,6 +119,13 @@ anything else — an envoy, an offer or talks about building something builds
 nothing, and its `buildsAt` is empty: the engine checks those worlds against
 the board before the roll.
 
+**Ships need no yard.** Hulls are laid down at any world the power holds or
+has ships over; no shipyard, factory, arsenal or other fixture is needed, and
+an order larger than one turn's yards is not refused: what does not fit waits
+in the yards' queue. Never refuse a ship build, or
+make it wait, for a building the world does not have. A `no_such_entity` names
+a thing the act itself names; a thing the act never asked for is not missing.
+
 A **fixture** — a factory, a university, a hospital, an arsenal, any catalogue
 kind that stands on a world — is named in the overt part's `founds`: its
 catalogue `kind` and the `systemId` it rises on. Price it as the building

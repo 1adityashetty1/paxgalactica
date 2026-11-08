@@ -119,6 +119,8 @@ weight spends both lines and buys nothing.
   development, fixtures) need a world you hold or a fleet over it; a governor
   or chancellor is seated only on a world you hold. A world that answers to
   nobody is won by an envoy, a marriage or a fleet, never by appointing to it.
+  An envoy goes only to a world your power holds or to one that answers to
+  nobody within reach; a world another power holds cannot be courted at all.
 - **Not reading your own reports.** What your listeners and operatives see is
   already in the state block; acting on it is an act, reading it is not.
 - **Answer terms already on the table.** When the other power named its price

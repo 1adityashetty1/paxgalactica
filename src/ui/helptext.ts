@@ -48,6 +48,7 @@ import {
 } from '../domain/intel-levels.js';
 import { ASSET_ARCHETYPES } from '../domain/assets.js';
 import { MAX_DEBT_PRINCIPAL } from '../domain/debt.js';
+import { YARD_TONS_BASE, YARD_TONS_PER_POINT } from '../domain/state.js';
 import { EMISSION_RANGE } from '../domain/intel.js';
 import { CONTENT_REGARD, JOIN_LEAD, JOIN_REGARD, WANT_MEANS, WANT_OF_STAT } from '../domain/regard.js';
 import { fixtureKindFor } from '../domain/initiative.js';
@@ -139,6 +140,8 @@ export function shipClassLines(): string[] {
     }),
     `  ${capitalise(names(unarmed))} cannot fight. Losses fall on ${plural(first)}`,
     `  first and ${plural(last)} last, so a screen is what brings a convoy home.`,
+    `  Your yards lay down ${YARD_TONS_BASE} tons a turn, ${YARD_TONS_PER_POINT} more a point of industry;`,
+    `  a bigger order is paid now and queued, and lost if the world is lost.`,
   ];
 }
 

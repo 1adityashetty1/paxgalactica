@@ -1425,16 +1425,31 @@ export const BuildShipsOp = z.object({
   factionId: z.string().min(1),
   hull: NavyClassSchema,
   count: z.number().int().min(1),
-  /** A world you hold; omitted, your best one. A programme needs one named. */
+  /** A world you hold; omitted, your best one. */
   systemId: z.string().min(1).optional(),
   reason: z.string().default(''),
   /**
-   * Built out of sight instead of laid down now: a hidden, interruptible yard
-   * programme, paid at issue and delivered on completion. Counted against the
-   * same berths as an open build.
+   * Before journal version 36, built out of sight instead of laid down now: a
+   * hidden yard programme delivered on completion. Kept so older journals
+   * replay; a model is never shown it, and from 36 it is an ordinary build.
    */
   programme: z.boolean().default(false),
   ...WorkFields,
+});
+
+/**
+ * A ship build as a model writes it: hulls, a class, a world. What fits this
+ * turn's yards is laid down at once and the rest waits in their queue, so
+ * there is nothing about time or secrecy to say.
+ */
+export const ModelBuildShipsOp = BuildShipsOp.omit({
+  programme: true,
+  label: true,
+  durationTurns: true,
+  durationRationale: true,
+  interruptible: true,
+  onInterrupt: true,
+  visibility: true,
 });
 
 /**
@@ -1755,7 +1770,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SwayOp,
   RegardOp,
   GiftOp,
-  BuildShipsOp,
+  ModelBuildShipsOp,
   MoveOp,
   RenameFleetOp,
   SplitFleetOp,

@@ -54,13 +54,13 @@ const PAIRINGS = [
 ] as const;
 
 /** Place `mission` agents on the target's worlds and run the tick for `turns`. */
-function run(mission: AgentMission, turns: number): { placed: number; exposed: number; alive: number } {
+function run(mission: AgentMission, turns: number, startTurn = 0): { placed: number; exposed: number; alive: number } {
   let placed = 0;
   let exposed = 0;
   let aliveTurns = 0;
 
   for (const [owner, target] of PAIRINGS) {
-    let st: WorldState = createSeedState(owner);
+    let st: WorldState = { ...createSeedState(owner), turn: startTurn };
     const worlds = st.systems.filter((x) => x.controllerFactionId === target).slice(0, 4);
     st.factions.find((f) => f.id === owner)!.credits = 99_999;
     // 'engine' source: the cap and the cost are not what is under test here.
@@ -126,13 +126,20 @@ describe('an operative can actually be caught', () => {
 
   it('exposes an assassin roughly as often as the profile claims', () => {
     // One-shot, so every placement resolves in a single tick: attempts and
-    // exposures are directly comparable.
-    const { placed, exposed } = run('assassination', 1);
+    // exposures are directly comparable. Over forty starting turns, because every
+    // pairing mints the same operative ids, so one turn is four distinct rolls.
+    let placed = 0;
+    let exposed = 0;
+    for (let start = 0; start < 40; start += 1) {
+      const r = run('assassination', 1, start);
+      placed += r.placed;
+      exposed += r.exposed;
+    }
     const rate = exposed / placed;
     const claimed = MISSION_PROFILE.assassination.exposureRisk / 20;
     expect(rate).toBeGreaterThan(claimed - 0.2);
     expect(rate).toBeLessThan(claimed + 0.2);
-  });
+  }, 30_000);
 
   it('leaves competence protecting the operative', () => {
     // Exposure reads the top of the die, so an agent good enough to succeed on

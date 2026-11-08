@@ -42,12 +42,18 @@ describe('a world says what it is', () => {
     // Three unaligned ice worlds reading identically is the failure the variant
     // lists exist for, and it is the one a reader would call a bug.
     const s = seed();
-    const ice = s.systems.filter(
-      (x) => x.worldType === 'ice' && x.homeFactionId === null,
-    );
-    expect(ice.length).toBeGreaterThan(1);
-    const lines = ice.map((x) => worldFlavour(x.id, x.worldType, x.homeFactionId));
-    expect(new Set(lines).size).toBeGreaterThan(1);
+    // Every pair the seed gives more than one world reads differently on each.
+    const by = new Map<string, typeof s.systems>();
+    for (const x of s.systems) {
+      const key = `${x.worldType}|${x.homeFactionId}`;
+      by.set(key, [...(by.get(key) ?? []), x]);
+    }
+    const shared = [...by.values()].filter((xs) => xs.length > 1);
+    expect(shared.length).toBeGreaterThan(1);
+    for (const xs of shared) {
+      const lines = xs.map((x) => worldFlavour(x.id, x.worldType, x.homeFactionId));
+      expect(new Set(lines).size, xs.map((x) => x.name).join(', ')).toBe(xs.length);
+    }
   });
 
   it('keeps its line after the world changes hands', () => {

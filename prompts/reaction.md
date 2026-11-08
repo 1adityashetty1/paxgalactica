@@ -119,8 +119,8 @@ Same op vocabulary and duration rules as resolution:
 - `transfer_control` is unavailable. Take systems by moving fleets to them.
 - Work is written as its own op — `move`, `fortify`, `raise_garrison`,
   `develop`, `found_fixture`, `repair_fixture`, `send_envoy`, `blockade`,
-  `raid`, `sweep`, or `build_ships` with `programme: true` — and the reducer
-  files it and times it. A `move` takes a turn a jump; other work takes its
+  `raid` or `sweep` — and the reducer files it and times it. `build_ships`
+  lays down what this turn's yards can take and queues the rest. A `move` takes a turn a jump; other work takes its
   kind's own time unless you set `durationTurns` (1, 2, 3 or 5).
 - Only use faction and system ids that appear in the state you were given.
 - A faction cannot spend credits or fleet strength it does not have.

@@ -1,3 +1,4 @@
+import { BASE_TOLL_RATE, TOLL_RATE } from '../src/domain/trade.js';
 import { FIXTURE_COST } from '../src/domain/diplomacy.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -125,4 +126,14 @@ describe('prompts do not quote ship prices the yards do not charge', () => {
       }
     });
   }
+});
+
+describe('the toll rates the prompts quote are the ones charged', () => {
+  it('half for an extortionist crossing, a quarter otherwise', () => {
+    const text = readFileSync(join(PROMPTS, 'resolution.md'), 'utf8');
+    expect(TOLL_RATE).toBe(0.5);
+    expect(BASE_TOLL_RATE).toBe(0.25);
+    expect(text).toMatch(/\*\*half\*\* where an `extortionist`/);
+    expect(text).toMatch(/\*\*a\s+quarter\*\* everywhere else/);
+  });
 });

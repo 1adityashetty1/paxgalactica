@@ -663,8 +663,8 @@ Four decisions, each against a way it could have gone wrong:
 
 - **Measured against a power's own home ground, not its size.**
   `homeFactionId` already records who held each world at turn 0 and every power
-  opens with four, so the deficit moves in equal quarters for everyone and needs
-  no new state. An absolute measure would buff Drajk (small by design) and the
+  opens with four — the Confederacy with five from journal version 38 — so the
+  deficit moves in quarters (fifths for Drajk) and needs no new state. An absolute measure would buff Drajk (small by design) and the
   Combine (few worlds, much paper) forever for being what they are.
 - **Resolve sizes it and is excluded from it**, so it cannot feed itself. The
   Vigil at 17 reaches the cap at half its homeland gone; Meridian at 9 needs two
@@ -907,9 +907,10 @@ asset archetypes already assumed otherwise — `blueprints` are wanted by *"a
 power with the industry to use them and not the design"*.
 
 `yardCapacityFor` is `YARD_TONS_BASE + statModifier(industry) * YARD_TONS_PER_POINT`
-tons per declaration, scaled off the stat the way `maxAgentsFor` is off guile
-and read through `effectiveStats`, so terrain, dissent, a `gunnery` officer's
-passive and a captured factory all reach the slipways.
+tons a turn (per declaration before journal version 36), scaled off the stat
+the way `maxAgentsFor` is off guile and read through `effectiveStats`, so
+terrain, dissent, a `gunnery` officer's passive and a captured factory all reach
+the slipways.
 
 | power | industry | berths | battleships a turn |
 |---|---|---|---|
@@ -962,6 +963,41 @@ handing it more ships, since its ceiling was always its income.
 was moved off for the same reason. `YARD_TONS_PER_POINT` was swept on its own
 axis at base 24 — 4, 6 and 8 all give three or four trims and the same board,
 and 10 jumps to thirteen trims and a net of −19.
+
+### One way to build ships, and a queue for what does not fit
+
+Journal version 36 (`LegacyRules.yardQueue`). There were two: `build_ships`
+laid hulls down at once, trimmed to one declaration's capacity, and
+`programme: true` made a hidden yard programme delivered five turns later at
+the same price from the same capacity — slower, and secret only from a rival
+with no operative on the world. The bots never started one. Now there is one.
+
+- **Capacity is a cap per turn.** `WorldState.yardTons` counts what each
+  power's yards have laid down this turn; the tick clears it.
+  `yardRoomFor` is capacity less that.
+- **A build lays down what this turn's room takes, now** (`layDown` in the
+  reducer), at the named world or the power's best one, and pays for itself.
+  `billConstruction` neither bills nor counts those tons again (`builtByOrder`).
+- **The rest is paid for now and waits in the yards' queue**: a
+  `PendingOrder` with `queued: true`, its `commission_ships` payload what is
+  still to come and `investedCredits` what that cost. `deliverYardQueues` lays
+  it down each tick, oldest order first, before anything declared the next
+  turn, and re-times each order's turns left against what is ahead of it. Shown
+  on the Orders tab, and on the Fleets tab as `Yards: … tons a turn · … free
+  this turn · … queued` (`CampaignView.effective.yards`).
+- **Lose the world and its queue is aborted**, and what was paid for the
+  undelivered part is lost with it — the risk of queueing on ground you might
+  not keep. Cancelling it yourself refunds that part; a rival with ships at the
+  world can interrupt it as any order. A queue cannot
+  be extended or hurried: industry is what speeds it.
+- **A queue needs ground.** A power building in an orbit it does not hold —
+  the smuggler's yard — lays down what fits this turn and nothing queues.
+- Trimmed to the treasury, never rejected, and one order queues at most
+  `MAX_QUEUED_HULLS` (99).
+- `programme: true` is an ordinary build from 36, and the model's build op
+  (`ModelBuildShipsOp`) carries no programme and no timing at all.
+- **The bots build only what fits this turn**, which is what the trim made of
+  a larger order before: `pnpm balance 30` is unchanged.
 
 ### No ground, no yards
 
@@ -1802,9 +1838,9 @@ Three rules decide what is collected:
   it the Combine collects on both halves of most lanes it touches, measured at
   884 tolls over 30 harness turns against 567 with the rule, and a sixth system
   it does not otherwise take.
-- **At what rate.** `TOLL_RATE` (0.25) for an extortionist's **transit**;
-  `BASE_TOLL_RATE` (0.12) for everyone else, and for **every** terminus tariff
-  including the extortionist's. *"Commerce owes you for passing through"* is a
+- **At what rate.** `TOLL_RATE` (0.5) for an extortionist's **transit**;
+  `BASE_TOLL_RATE` (0.25) for everyone else, and for **every** terminus tariff
+  including the extortionist's — of the payer's cargo, below. *"Commerce owes you for passing through"* is a
   claim about chokepoints, not about tariffs at your own markets, so that is
   where the doctrine keeps its premium.
 
@@ -1816,10 +1852,45 @@ bleeding every turn, against a disposition that has no decay, so the galaxy
 floors out and never recovers. `RouteEarnings.tollsPaid` is the mirror of
 `tolls`, and a power now resents whoever charged **it**.
 
-The seed gives the Combine all four targets and everyone else none, so the
-opening galaxy is the one every campaign to date was played in — the balance
-harness reads 3/6/5/4/4 and a 58/42 income mix, both unchanged. The other four
-powers now *have* the lever; they have simply not pulled it.
+The seed gave the Combine all four targets and everyone else none, so the
+opening galaxy was the one every campaign to date was played in — the balance
+harness read 3/6/5/4/4 and a 58/42 income mix, both unchanged. The other four
+powers now *have* the lever; they have simply not pulled it. From journal
+version 38 the Combine spares the Confederacy (below).
+
+### A toll is a cut of the cargo
+
+Journal version 38 (`WorldState.tollBasis`, written by the seed, `hop` for
+anything older). A transit toll was a share of **the crossed world's slice**
+of a lane — the 40% transit pot, divided across every world on the path,
+halved between the two ends — so crossing one world of a three-world corridor
+cost each payer about 1.7% of the lane, and the Combine collected **12 a turn**
+on the opening board against a net of 265. A toll is now a cut of **what each
+paying end of the lane received**: `TOLL_RATE` where an extortionist's space is
+crossed, `BASE_TOLL_RATE` otherwise and at a terminus, once per lane per
+collector, read off what each end received before any toll so two collectors on
+one lane do not depend on the order they are visited in. The old rates are kept
+as `HOP_TOLL_RATE` and `HOP_BASE_TOLL_RATE` for replay.
+
+**Swept, and the Confederacy was the problem, not the rate.** Rebased on the
+cargo and swept from 0.15 to 0.60 (the terminus rate at half), over 30 and 100
+bot turns with events and without: the Combine's lanes wrap Drajk's western
+worlds, the tolls bled it, and at every rate the Vigil took it down to two
+worlds by turn 100 (hop basis: three). Two opening changes fix that, and only
+together:
+
+- **Vosk Marker opens as Drajk's** (`CARGO_TOLL_OPENING`): the unaligned ice
+  world among the Combine's, a smuggler's port its paymaster would keep.
+- **The Combine does not toll the Confederacy**: the power it hires as its
+  proxy, on terms with it from turn 0.
+
+Either alone left the Confederacy on two at 100 turns somewhere in the grid.
+Together, 0.45–0.55 keep every power on three worlds or more and nobody past
+seven; **0.50 is the middle**, and the boards read **5/5/5/5/5** at 30 turns with
+and without events, 5/5/5/5/5 at 100 with events and 5/6/5/5/4 without. On the
+opening board the Combine collects **39** a turn, Meridian pays 16, the Vigil 18
+and Arkane 5, and the Confederacy opens on a net of 110 where it had 76. Four
+worlds open unaligned rather than five, and the Confederacy's homeland is five.
 
 ### Interdiction: attacking an economy without a battle
 
@@ -4422,6 +4493,17 @@ once".
 `successChance` is computed in code from the owner's guile against the target's
 resolve, never chosen by a model. Agents resolve each tick against the same
 seeded d20 as everything else.
+
+**An operative's dice read the log** (journal version 37,
+`LegacyRules.operativeRollsReadTheLog`). Its mission roll, the knife and the
+dig for a secret were salted `<kind>:<operative id>` and nothing else, so an
+operative's whole career was a function of its id and the turn. The salt is
+now `<kind>:<id>:<last word in the event log>` (`lastLogWord`, bare of
+punctuation): whatever the turn has done by the time that operative acts. The
+log is state, so replay reads the same word, and the d20 stays uniform over it
+(chi-square 10–16 on 19 df). It moves the harness: 30 turns read 5/6/6/5/3
+against 5/5/6/5/4, the Vigil taking one Confederacy world — a reseed of every
+operative's dice, the shape the faction rename's combat salt had.
 
 **Exposure is read off the top of the die** — `roll >= 21 - exposureRisk` — and
 that is not a detail. It was written as `roll <= exposureRisk` inside the
@@ -7170,7 +7252,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `sway` | an influence check that worked moves how `whom` sees the actor, by `SWAY_BY_BAND` (3, 6, 10). The engine sizes it; nothing on another stat or a failure |
 | `regard` | a reacting power's own view, or either party's in an accord, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6). In an accord: once a direction, no warmth beside a treaty or without a deal, never aid |
 | `gift` | credits given, which buy the receiver's regard at `GIFT_RATE` (20 a point, 10 at most) |
-| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity. `programme: true` makes it a hidden yard programme at a named world, delivered on completion, counted against the same berths |
+| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best): what this turn's yards have room for now, the rest paid now and queued at the run rate, aborted with its outlay lost if the world is lost. Before journal version 36, `programme: true` made a hidden yard programme |
 | `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
 | `scuttle_ships` | strike off hulls of your own at a world; the named class first |
 | `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |
@@ -7321,7 +7403,8 @@ fleet movement nobody asked for and a stipend.
 
 So a model writes the work, and the reducer files it. `move`, `fortify`,
 `raise_garrison`, `develop`, `found_fixture`, `repair_fixture`, `send_envoy`,
-`blockade`, `raid`, `sweep`, and `build_ships` with `programme: true`. **One
+`blockade`, `raid`, `sweep`, and before journal version 36 `build_ships` with
+`programme: true`. **One
 conversion, `orderFor` in `ops.ts`**, turns each into the order it means — the
 category, the payload, the default duration — and the reducer runs that through
 the `issue_order` case unchanged, so every bound on an order (the floors, the
@@ -7349,7 +7432,8 @@ bots write work too.
   bypassed `yardCapacityFor` entirely — twelve hulls a programme, delivered in
   the tick outside `billConstruction`, any number at once. A programme now takes
   its tonnage from the declaration's berths when it starts, trimmed to what
-  fits, and an open build in the same declaration gets what is left.
+  fits, and an open build in the same declaration gets what is left. From
+  journal version 36 there are no programmes: see *"One way to build ships"*.
 
 Measured: all saves replay byte-identically, the four harness boards do not
 move, and the bots' twelve order shapes are work ops.
@@ -8617,6 +8701,12 @@ send or on the Lists, officers in post and where they stand, where fleets and
 lift stand, and the unaligned worlds in reach. Its commonest bad
 recommendation in the playtest loops was an act with no means behind it, and
 each of these is arithmetic the engine already does.
+
+**An envoy it urges must be one the order would send.** It recommended an
+envoy to a world another power holds, which `envoyRefusal` turns away. The
+capabilities say where an envoy can go, and `envoysRefused` sends back counsel
+naming a world after "envoy" that the reducer would refuse, with the reducer's
+own reason — the rule is read, not restated.
 
 `AdvisorReplySchema` is **one field, the counsel**. A one-line
 `recommendation` sat under it from loop 2 of the 2026-10-19 playtest, when the

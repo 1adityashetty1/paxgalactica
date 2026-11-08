@@ -820,6 +820,14 @@ export const PendingOrderSchema = z.object({
    * ever written true, so no older order changes shape.
    */
   holdLanding: z.literal(true).optional(),
+  /**
+   * Hulls waiting in the yards' queue: ordered past what the yards could lay
+   * down that turn, paid for at issue, and delivered at the yards' run rate
+   * each tick until done — see `deliverYardQueues`. `onComplete` carries what
+   * is still to come and `investedCredits` what it cost, so a cancellation
+   * refunds exactly the undelivered part. Losing the world refunds nothing. Optional, so no older order changes shape.
+   */
+  queued: z.literal(true).optional(),
 });
 export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 
@@ -985,6 +993,15 @@ export const WorldStateSchema = z.object({
    */
   routeTies: z.enum(['first', 'split']).default('first'),
   /**
+   * What a toll is a cut of: `hop`, the crossed world's slice of a lane's
+   * transit value, as before journal version 38 — which made a toll 1–4% of
+   * what a payer earned on the lane — or `cargo`, what the paying end of the
+   * lane received. On the world for `routeTies`' reason: route income is
+   * computed from the world alone. The seed writes `cargo`; an older journal
+   * is rebuilt with `hop`, and a save that predates the field parses to it.
+   */
+  tollBasis: z.enum(['hop', 'cargo']).default('hop'),
+  /**
    * What each power has seen in full of another's secret work, kept after the
    * sight is lost — see `recordSightings` in `intel.ts`. Never shipped: the
    * viewer's own rows reach the browser as `CampaignView.remembered`, without
@@ -1003,6 +1020,12 @@ export const WorldStateSchema = z.object({
    * from before journal version 22 has nobody waiting.
    */
   listedAgents: z.array(ListedAgentSchema).default([]),
+  /**
+   * Tons each power's yards have laid down this turn, the queue's deliveries
+   * included — what `yardCapacityFor` is a cap on. Reset by the tick. Optional,
+   * so a campaign from before journal version 36 carries none.
+   */
+  yardTons: z.record(z.string(), z.number().int().min(0)).optional(),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -1441,6 +1464,21 @@ export const MAX_AGENTS_BASE = 2;
  */
 export const YARD_TONS_BASE = 22;
 export const YARD_TONS_PER_POINT = 8;
+
+/** The most hulls one build can queue: what a `commission_ships` payload can carry. */
+export const MAX_QUEUED_HULLS = 99;
+
+/** Tons a power's yards can still lay down this turn. */
+export function yardRoomFor(state: WorldState, factionId: string): number {
+  return Math.max(0, yardCapacityFor(state, factionId) - (state.yardTons?.[factionId] ?? 0));
+}
+
+/** Tons still waiting in a power's yard queue, in the order they will be laid down. */
+export function yardQueueTons(state: WorldState, factionId: string): number {
+  return state.pendingOrders
+    .filter((o) => o.queued && o.factionId === factionId && o.onComplete?.kind === 'commission_ships')
+    .reduce((n, o) => n + o.onComplete!.magnitude * HULL_SPEC[o.onComplete!.hull ?? 'battleship'].tonnage, 0);
+}
 
 export function yardCapacityFor(state: WorldState, factionId: string): number {
   const faction = getFaction(state, factionId);

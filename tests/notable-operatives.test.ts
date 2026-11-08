@@ -150,11 +150,15 @@ describe('a seduction', () => {
 
 describe('the knife', () => {
   /** Tick on a turn whose kill roll lands, so the test does not ride the die. */
+  // The knife's roll reads the last word in the log (journal version 37), which
+  // only the tick knows, so the turn it lands on is found by trying them.
   function strike(s: WorldState) {
-    const agent = s.agents.at(-1)!;
-    let turn = s.turn;
-    while (rollD20(turn + 1, `assassinate:${agent.id}`) < ASSASSINATION_KILL_ROLL) turn++;
-    return tickTurn({ ...s, turn }, calm).state;
+    const mark = s.agents.at(-1)!.targetNotableId!;
+    for (let turn = s.turn; turn < s.turn + 400; turn++) {
+      const out = tickTurn({ ...s, turn }, calm).state;
+      if (!notableById(out, mark)) return out;
+    }
+    throw new Error('the knife never landed');
   }
 
   it('kills one of a holder’s own, and the seat stands empty until the holder appoints', () => {

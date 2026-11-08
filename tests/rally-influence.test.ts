@@ -40,10 +40,10 @@ function occupy(s: WorldState, factionId: string, n: number, by = 'drajk'): Worl
 }
 
 describe('a people whose homeland is occupied rallies', () => {
-  it('opens every power on four home worlds, so the deficit moves in quarters', () => {
+  it('opens every power on four home worlds, the Confederacy on five, so the deficit moves in quarters or fifths', () => {
     const s = fresh();
     for (const f of s.factions) {
-      expect(s.systems.filter((x) => x.homeFactionId === f.id)).toHaveLength(4);
+      expect(s.systems.filter((x) => x.homeFactionId === f.id)).toHaveLength(f.id === 'drajk' ? 5 : 4);
       expect(homelandLost(s, f.id)).toBe(0);
       expect(rallyBonus(s, f.id)).toBe(0);
     }

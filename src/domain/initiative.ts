@@ -82,6 +82,7 @@ import {
   type StarSystem,
   type WorldState,
   fleetStackOf,
+  yardRoomFor,
 } from './state.js';
 import {
   CREDITS_PER_TON,
@@ -806,7 +807,10 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const keep = Math.round(ledger.gross * reserveTurns);
   const budget = Math.max(0, purse(ctx.state, ctx.me) - keep);
   const affordable = Math.floor(budget / CREDITS_PER_TON);
-  let tonsToSpend = Math.min(room, affordable, 8 * HULL_SPEC.battleship.tonnage);
+  // What the yards can still take this turn: a bot builds what lands now and
+  // queues nothing, which is what the trim made of a larger order before the
+  // yards kept a queue.
+  let tonsToSpend = Math.min(room, affordable, 8 * HULL_SPEC.battleship.tonnage, yardRoomFor(ctx.state, ctx.me));
   if (tonsToSpend <= 0) return [];
 
   // **A world is taken by the lift arm**, so a bot that only laid down

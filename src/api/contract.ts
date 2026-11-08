@@ -234,6 +234,14 @@ export const EffectiveStatsSchema = z.object({
    * client talking to an older server still parses.
    */
   ledger: LedgerSchema.optional(),
+  /**
+   * The player's yards: tons a turn (`yardCapacityFor`), tons laid down this
+   * turn so far, and tons still waiting in the queue. For `stats`'s reason —
+   * capacity reads industry. Defaulted for an older server.
+   */
+  yards: z
+    .object({ capacity: z.number().int(), used: z.number().int(), queued: z.number().int() })
+    .default({ capacity: 0, used: 0, queued: 0 }),
 });
 
 export type EffectiveStats = z.infer<typeof EffectiveStatsSchema>;

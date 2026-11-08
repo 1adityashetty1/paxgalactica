@@ -222,7 +222,7 @@ export function SidePanel({
             holding={effective.holding}
           />
         )}
-        {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} onDraft={onDraft} onOrganise={onOrganise} />}
+        {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} onDraft={onDraft} onOrganise={onOrganise} yards={effective.yards} />}
         {tab === 'commanders' && (
           <Command state={state} onDraft={onDraft} onOffer={onOffer} activeChannel={activeChannel} />
         )}

@@ -87,11 +87,13 @@ describe('servicing a debt is conserved', () => {
     state.debts = [
       {
         id: 'debt-x', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
-        principal: 400, balance: 400, perTurn: 40, status: 'current',
+        principal: 400, balance: 400, perTurn: 200, status: 'current',
         missedPayments: 0, establishedTurn: 0, text: 'owed',
       },
     ];
-    // Strip Drajk's income to nothing so it genuinely cannot pay.
+    // Strip Drajk's worlds and treasury so it genuinely cannot pay. Its ships
+    // still contest Vosk Marker, so the instalment is set past anything that
+    // one orbit and its lanes pay in a turn.
     for (const sys of state.systems) if (sys.controllerFactionId === 'drajk') sys.controllerFactionId = null;
     fac(state, 'drajk').credits = 0;
     const creditorBefore = fac(state, 'ojjul').credits;
@@ -102,7 +104,7 @@ describe('servicing a debt is conserved', () => {
     // Whatever it scraped together — it holds a lane share even with no
     // worlds — is all that moved, and it moved once.
     const paid = 400 - debt(after, 'debt-x').balance;
-    expect(paid).toBeLessThan(40);
+    expect(paid).toBeLessThan(200);
     expect(fac(after, 'ojjul').credits).toBe(fac(control, 'ojjul').credits + paid);
     expect(fac(after, 'drajk').credits).toBe(fac(control, 'drajk').credits - paid);
     expect(fac(after, 'drajk').credits).toBeGreaterThanOrEqual(0);
@@ -139,7 +141,7 @@ describe('default is a state, because both of the Combine’s lines turn on "unp
     state.debts = [
       {
         id: 'debt-d', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
-        principal: 400, balance: 400, perTurn: 40, status: 'current',
+        principal: 400, balance: 400, perTurn: 200, status: 'current',
         missedPayments: 0, establishedTurn: 0, text: 'owed',
       },
     ];

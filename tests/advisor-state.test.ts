@@ -28,7 +28,7 @@ describe('what a power can do', () => {
   it('is computed from the board', () => {
     const lines = capabilitiesOf(createSeedState('meridian'), 'meridian').join('\n');
     console.log(lines);
-    expect(lines).toMatch(/^Yards: \d+ tons of hulls a declaration/m);
+    expect(lines).toMatch(/^Yards: \d+ tons of hulls a turn/m);
     expect(lines).toMatch(/Fixture slots free on your worlds: .*Brannix/);
     expect(lines).toMatch(/^Operatives: \d+ of \d+ slots used/m);
     expect(lines).toMatch(/On your Lists, recruitable/);

@@ -62,3 +62,19 @@ describe('a build is founded as the ruling named it', () => {
     expect(foundingRefusal(state, 'meridian', { kind: 'factory', systemId: 'tor-2' })).toMatch(/not yours/);
   });
 });
+
+describe('a ship build refused for want of a yard (playtest 2026-11-06)', () => {
+  const state = createSeedState('meridian');
+  const missing = (name: string) => ({ kind: 'no_such_entity', name, entity: 'thing', reason: '' }) as never;
+
+  it('does not stand on a building the order never named', () => {
+    const order = 'Lay down 4 battleships at Brannix.';
+    expect(checkGround(state, 'meridian', missing('factory at Brannix'), order)).toMatch(/names no "factory at Brannix"/);
+    expect(checkGround(state, 'meridian', missing('shipyard'), order)).toMatch(/names no/);
+    expect(checkGround(state, 'meridian', missing('arsenal or factory fixture at Brannix'), order)).toMatch(/names no/);
+  });
+
+  it('still stands on a thing the order does name and nobody holds', () => {
+    expect(checkGround(state, 'meridian', missing('Crown of Shalka'), 'Pawn the Crown of Shalka.')).toBeNull();
+  });
+});

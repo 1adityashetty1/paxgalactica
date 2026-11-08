@@ -53,8 +53,11 @@ export function FleetsPanel({
   onSelect,
   onDraft,
   onOrganise,
+  yards,
 }: {
   state: WorldState;
+  /** The player's yards, from the true world — see `EffectiveStats.yards`. */
+  yards?: { capacity: number; used: number; queued: number };
   onSelect: (systemId: string) => void;
   /** Puts an order on the command line: moving a fleet is a declaration. */
   onDraft: (text: string) => void;
@@ -94,8 +97,20 @@ export function FleetsPanel({
     .sort((a, b) => FLEET_KINDS.indexOf(a.fleet.kind) - FLEET_KINDS.indexOf(b.fleet.kind) || a.fleet.number - b.fleet.number);
   const mineUnderWay = state.pendingOrders.filter((o) => o.factionId === me && o.fleet && !o.fleet.detached);
 
+  const battleship = HULL_SPEC.battleship.tonnage;
   return (
     <div className="fleet-panel">
+      {yards && yards.capacity > 0 && (
+        <p
+          className="meta yards"
+          title="Your industry sets how many tons your yards lay down a turn. A build lays down what fits now; the rest is paid for and waits in the queue, which has the next turn's yards first. Lose the world and its queue is aborted, and what was paid for it is lost."
+        >
+          <strong>Yards</strong> {yards.capacity} tons a turn ({Math.floor(yards.capacity / battleship)} battleships) ·{' '}
+          {Math.max(0, yards.capacity - yards.used)} free this turn
+          {yards.queued > 0 &&
+            ` · ${yards.queued} tons queued, done in ${Math.ceil(yards.queued / yards.capacity)} turn${Math.ceil(yards.queued / yards.capacity) === 1 ? '' : 's'}`}
+        </p>
+      )}
       {(mine.length > 0 || mineUnderWay.length > 0) && (
         <>
           <h4>
