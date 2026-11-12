@@ -1,4 +1,4 @@
-import { median, quantile, type CallRecord, type PhaseRecord, type TraceRecord } from './telemetry.js';
+import { median, quantile, type CallRecord, type DoctrineRecord, type PhaseRecord, type TraceRecord } from './telemetry.js';
 
 /**
  * Reading a campaign's trace: what `pnpm trace` prints.
@@ -15,7 +15,7 @@ export function parseTrace(text: string): TraceRecord[] {
     if (line.trim() === '') continue;
     try {
       const r = JSON.parse(line) as TraceRecord;
-      if (r && (r.type === 'call' || r.type === 'phase')) out.push(r);
+      if (r && (r.type === 'call' || r.type === 'phase' || r.type === 'doctrine')) out.push(r);
     } catch {
       // A line cut off by a crash mid-write. Everything before it still counts.
     }
@@ -214,7 +214,15 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
       lines.push(`  t${c.turn ?? '?'} ${c.kind} #${c.attempt}: ${JSON.stringify(c.unparsed!.replace(/\s+/g, ' ').slice(0, 200))}`);
     }
   }
-  const why = calls.filter((c) => c.outcome !== 'ok' && c.why).slice(-8);
+  const doctrine = records.filter((r): r is DoctrineRecord => r.type === 'doctrine');
+  if (doctrine.length > 0) {
+    const kept = doctrine.filter((d) => d.kept).length;
+    lines.push('', `reactions that kept their doctrine's plan: ${kept} of ${doctrine.length}`);
+    for (const d of doctrine.filter((x) => !x.kept).slice(-6)) {
+      lines.push(`  t${d.turn} ${d.factionId}: doctrine ${d.proposed.join(', ') || '—'}; did ${d.acted.join(', ') || 'nothing'}`);
+    }
+  }
+    const why = calls.filter((c) => c.outcome !== 'ok' && c.why).slice(-8);
   if (why.length > 0) {
     lines.push('', 'why attempts did not succeed (newest last):');
     for (const c of why) lines.push(`  t${c.turn ?? '?'} ${c.kind} #${c.attempt} ${c.outcome}: ${c.why}`);
@@ -357,6 +365,9 @@ export function toPerfetto(records: readonly TraceRecord[]): {
         tid: r.step === r.phase ? 1 : 2,
         args: { turn: r.turn, actionId: r.actionId, ok: r.ok },
       });
+    } else if (r.type === 'doctrine') {
+      // An instant, on the reactions' thread: kept or not, and what each side was.
+      events.push({ name: `doctrine ${r.factionId}`, cat: r.kept ? 'kept' : 'departed', ph: 'i', s: 't', ts, pid: 1, tid: 2, args: r });
     } else {
       const { type: _t, at: _a, ...args } = r;
       events.push({

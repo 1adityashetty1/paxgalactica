@@ -2580,6 +2580,29 @@ export function proposeFor(
   return { factionId, ops, rationale: describeProposal(state, factionId, ops), withheld };
 }
 
+/**
+ * What a batch sets out to do, as `kind@world` keys: each order by its type and
+ * target, each build and each operative sent by where. The same reading for a
+ * bot's proposal and a reaction's ops, so the two can be compared — which is
+ * how the trace says whether a reaction kept its doctrine's plan.
+ */
+export function intentKeys(ops: readonly Record<string, unknown>[]): string[] {
+  const keys = new Set<string>();
+  for (const raw of ops) {
+    if (raw.op === 'build_ships') {
+      keys.add(`build_ships@${String(raw.systemId ?? 'yards')}`);
+      continue;
+    }
+    if (raw.op === 'deploy_agent') {
+      keys.add(`deploy_agent@${String(raw.systemId ?? '')}`);
+      continue;
+    }
+    const order = orderFor(raw);
+    if (order) keys.add(`${String(order.type)}@${String(order.targetId)}`);
+  }
+  return [...keys].sort();
+}
+
 /* ------------------------------------------------------------------ */
 /* What two powers agree without a channel                             */
 /* ------------------------------------------------------------------ */

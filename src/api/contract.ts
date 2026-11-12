@@ -173,6 +173,8 @@ export const BriefingSchema = z.object({
   court: z.array(z.object({ text: z.string(), tone: z.enum(['good', 'bad', 'info']) })).default([]),
   /** Open ultimatums you made, were made of you, or declared in. */
   ultimatums: z.array(z.object({ text: z.string(), tone: z.enum(['good', 'bad', 'info']) })).default([]),
+  /** Work that ended this turn without completing — see `endedLines`. */
+  ended: z.array(z.object({ text: z.string(), tone: z.enum(['good', 'bad', 'info']) })).default([]),
   quiet: z.boolean(),
 });
 
@@ -402,7 +404,55 @@ export const RefusalViewSchema = z.object({
   violated: z.string(),
 });
 
+/**
+ * What came of a declaration or an accord, in one word — the state machine the
+ * five nullable fields below encode, read once on the server by `outcomeKind`
+ * so the browser and the counsellor's record cannot read them in different
+ * orders, as they did.
+ *
+ * A declaration: `out_of_actions`, `inadmissible`, `unexpressed` (no mission
+ * produces it), `negotiation` (it needs another power and nothing else in it
+ * acted), `refused` (a red line), `rolled` (an open part was rolled) or `sent`
+ * (covert work and groundwork only, never rolled). An accord: `agreed`,
+ * `nothing_agreed` or `refused`. A defied compulsion is not a kind: its ops
+ * land, so `defiance` rides on `rolled`, `sent` or `agreed`.
+ */
+export const OUTCOME_KINDS = [
+  'out_of_actions',
+  'inadmissible',
+  'unexpressed',
+  'negotiation',
+  'refused',
+  'rolled',
+  'sent',
+  'agreed',
+  'nothing_agreed',
+] as const;
+export const OutcomeKindSchema = z.enum(OUTCOME_KINDS);
+export type OutcomeKind = z.infer<typeof OutcomeKindSchema>;
+
+/** The fields `outcomeKind` reads, so the engine's outcome and the wire's both fit. */
+export interface OutcomeFields {
+  refusal?: unknown;
+  negotiation?: unknown;
+  inadmissible?: string | null;
+  outOfActions?: unknown;
+  unexpressed?: boolean;
+  check?: unknown;
+  staged: number;
+}
+
+export function outcomeKind(o: OutcomeFields, via: 'declared' | 'accord'): OutcomeKind {
+  if (o.outOfActions) return 'out_of_actions';
+  if (o.refusal) return 'refused';
+  if (via === 'accord') return o.staged > 0 ? 'agreed' : 'nothing_agreed';
+  if (o.inadmissible) return o.unexpressed ? 'unexpressed' : 'inadmissible';
+  if (o.negotiation && o.staged === 0) return 'negotiation';
+  return o.check ? 'rolled' : 'sent';
+}
+
 export const ActionOutcomeSchema = z.object({
+  kind: OutcomeKindSchema,
   narrative: z.string(),
   refusal: RefusalViewSchema.nullable().default(null),
   /**

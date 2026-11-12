@@ -259,61 +259,75 @@ export function useGame() {
       guard(async () => {
         say(`> ${text}`, 'you');
         const outcome = await api.action(text);
-        if (outcome.refusal) {
-          // Your own faction said no. Distinct from a failed roll, and from a
-          // rejected op — nothing was attempted at all.
-          sayWithArt(
-            `${outcome.refusal.by} refuse the order: ${outcome.refusal.reason}`,
-            'refusal',
-            'refusal',
-            refusalAlt(outcome.refusal, 'will not carry the order out'),
-          );
-          // The breached line is NOT said here: both refusal paths already put
-          // `Breached: …` in `notes`, so saying it as well printed it twice.
-          say(outcome.narrative, 'narrative');
-          for (const note of outcome.notes) say(note, 'system');
-          return;
-        }
-        if (outcome.outOfActions) {
-          // The turn's actions are spent. Not a failure and not a ruling about
-          // the world — the one non-outcome that is purely about pacing, and
-          // the only one that costs nothing to discover.
-          sayWithArt(
-            outcome.narrative,
-            'system',
-            'out-of-actions',
-            `No actions left this turn (${outcome.outOfActions.perTurn} per turn). End the turn to continue.`,
-          );
-          for (const note of outcome.notes) say(note, 'system');
-          return;
-        }
-        if (outcome.inadmissible) {
-          // The world does not permit the attempt, as distinct from permitting
-          // it and having it go badly. Nothing was rolled and nothing staged.
-          sayWithArt(
-            outcome.narrative,
-            'narrative',
-            'inadmissible',
-            `That cannot be attempted: ${outcome.inadmissible}`,
-          );
-          for (const note of outcome.notes) say(note, 'system');
-          return;
-        }
-        if (outcome.negotiation) {
-          // Not a failure and not a refusal: the thing is reasonable, it just
-          // needs someone else to agree, and agreement lives in a channel.
-          const n = outcome.negotiation;
-          sayWithArt(
-            outcome.narrative,
-            'narrative',
-            'negotiation',
-            `Not yours to declare: ${n.what} needs the agreement of ${
-              n.withFactionIds.map(nameOf).join(', ') || 'another power'
-            }.`,
-          );
-          for (const note of outcome.notes) say(note, 'system');
-          say(`→ ${n.channels}`, 'brief');
-          return;
+        // One word for what came of it (`outcomeKind`), read here once. The
+        // five non-ordinary kinds each end the handler; `rolled` and `sent`
+        // fall through to the ordinary account below.
+        switch (outcome.kind) {
+          case 'refused': {
+            // Your own faction said no. Distinct from a failed roll, and from a
+            // rejected op — nothing was attempted at all.
+            const refusal = outcome.refusal!;
+            sayWithArt(
+              `${refusal.by} refuse the order: ${refusal.reason}`,
+              'refusal',
+              'refusal',
+              refusalAlt(refusal, 'will not carry the order out'),
+            );
+            // The breached line is NOT said here: both refusal paths already put
+            // `Breached: …` in `notes`, so saying it as well printed it twice.
+            say(outcome.narrative, 'narrative');
+            for (const note of outcome.notes) say(note, 'system');
+            return;
+          }
+          case 'out_of_actions':
+            // The turn's actions are spent. Not a failure and not a ruling about
+            // the world — the one non-outcome that is purely about pacing, and
+            // the only one that costs nothing to discover.
+            sayWithArt(
+              outcome.narrative,
+              'system',
+              'out-of-actions',
+              `No actions left this turn (${outcome.outOfActions!.perTurn} per turn). End the turn to continue.`,
+            );
+            for (const note of outcome.notes) say(note, 'system');
+            return;
+          case 'inadmissible':
+          case 'unexpressed':
+            // The world does not permit the attempt, as distinct from permitting
+            // it and having it go badly. Nothing was rolled and nothing staged.
+            sayWithArt(
+              outcome.narrative,
+              'narrative',
+              'inadmissible',
+              outcome.kind === 'unexpressed'
+                ? `Nothing in the game does that yet: ${outcome.inadmissible}`
+                : `That cannot be attempted: ${outcome.inadmissible}`,
+            );
+            for (const note of outcome.notes) say(note, 'system');
+            return;
+          case 'negotiation': {
+            // Not a failure and not a refusal: the thing is reasonable, it just
+            // needs someone else to agree, and agreement lives in a channel.
+            const n = outcome.negotiation!;
+            sayWithArt(
+              outcome.narrative,
+              'narrative',
+              'negotiation',
+              `Not yours to declare: ${n.what} needs the agreement of ${
+                n.withFactionIds.map(nameOf).join(', ') || 'another power'
+              }.`,
+            );
+            for (const note of outcome.notes) say(note, 'system');
+            say(`→ ${n.channels}`, 'brief');
+            return;
+          }
+          case 'rolled':
+          case 'sent':
+            break;
+          case 'agreed':
+          case 'nothing_agreed':
+            // An accord's kinds; a declaration never carries one.
+            break;
         }
         if (outcome.defiance) {
           // Your institutions objected and carried the order out anyway. The
@@ -476,7 +490,7 @@ export function useGame() {
         // WHOLE accord, a compulsion lets it stand and charges. Both were on the
         // wire and neither was drawn, which left the most consequential thing a
         // conversation can do arriving as an ordinary narrative line.
-        if (outcome.refusal) {
+        if (outcome.kind === 'refused' && outcome.refusal) {
           sayWithArt(
             `${outcome.refusal.by} will not ratify the accord: ${outcome.refusal.reason}`,
             'refusal',
@@ -494,12 +508,9 @@ export function useGame() {
         say(outcome.narrative, 'narrative');
         for (const note of outcome.notes) say(note, 'system');
         for (const r of outcome.rejections) say(`rejected [${r.code}] ${r.message}`, 'error');
-        say(
-          outcome.staged > 0
-            ? 'Agreement declared — lands on end of turn.'
-            : 'Nothing was agreed.',
-          'system',
-        );
+        if (outcome.kind !== 'refused') {
+          say(outcome.kind === 'agreed' ? 'Agreement declared — lands on end of turn.' : 'Nothing was agreed.', 'system');
+        }
       }),
     [guard, say, sayWithArt],
   );

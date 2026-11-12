@@ -8,6 +8,7 @@ import type {
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
 import type { OrganiseRequest, SaveSummary } from '../api/contract.js';
+import { outcomeKind } from '../api/contract.js';
 import { applyOps } from '../domain/reducer.js';
 import { observeOrders, worldAsSeenBy } from '../domain/intel.js';
 import { holdingFactor } from '../domain/regard.js';
@@ -135,12 +136,13 @@ export type SessionSnapshot = z.infer<typeof SessionSnapshotSchema>;
  */
 export const LOG_PUSH_TAIL = 200;
 
-export class GameSession {
-  private campaign: Campaign | null = null;
-  private openChannel: string | null = null;
+/** A conversation in progress: who it is with, what was said, and what is on the table. */
+interface OpenChannel {
+  with: string;
+  history: ChatMessage[];
   /**
-   * What the other power has put on the table so far in the open channel, and
-   * any of the PLAYER's own concessions that its institutions will not have.
+   * What the other power has put on the table so far, and any of the PLAYER's
+   * own concessions that its institutions will not have.
    *
    * Accumulated per message rather than read once at `/endtalk`, and that is
    * the point rather than an optimisation. A concession the persona wrote down
@@ -149,11 +151,25 @@ export class GameSession {
    * about to cross is flagged in the turn they approach it, instead of the
    * whole negotiation being refused at the end after both sides have said yes.
    */
-  private channelConcessions: Concession[] = [];
-  /** The other power's concession budget in the open channel — see `concessionBudget`. */
-  private channelBudget: { budget: number; given: number; over: string[] } = { budget: 0, given: 0, over: [] };
-  private channelBlockers: { concession: string; principle: string }[] = [];
-  private channelHistory: ChatMessage[] = [];
+  concessions: Concession[];
+  /** The other power's concession budget — see `concessionBudget`. */
+  budget: { budget: number; given: number; over: string[] };
+  blockers: { concession: string; principle: string }[];
+}
+
+function emptyChannel(factionId: string): OpenChannel {
+  return { with: factionId, history: [], concessions: [], budget: { budget: 0, given: 0, over: [] }, blockers: [] };
+}
+
+export class GameSession {
+  private campaign: Campaign | null = null;
+  /**
+   * The open channel, or `null`: one value, so opening, closing and restoring
+   * one is one assignment. It was five fields reset together by copy at four
+   * sites, where a missed line would have carried one conversation's
+   * concessions into the next.
+   */
+  private channel: OpenChannel | null = null;
   private lastBriefing: Briefing | null = null;
   /**
    * The ending, once time has run out.
@@ -327,16 +343,16 @@ export class GameSession {
           ? null
           : withCurrentIntel(this.lastBriefing, campaign.state),
       openChannel: this.openChannel,
-      channelHistory: [...this.channelHistory],
-      channelConcessions: [...this.channelConcessions],
+      channelHistory: [...(this.channel?.history ?? [])],
+      channelConcessions: [...(this.channel?.concessions ?? [])],
       // Read live, so the panel shows the budget before the first reply and
       // follows the board while the channel is open.
       channelBudget: (() => {
-        if (!this.openChannel) return { budget: 0, given: 0, over: [] };
-        const now = withinBudget(campaign.state, this.channelConcessions, this.openChannel, campaign.state.playerFactionId);
-        return { budget: now.budget, given: now.given, over: [...this.channelBudget.over] };
+        if (!this.channel) return { budget: 0, given: 0, over: [] };
+        const now = withinBudget(campaign.state, this.channel.concessions, this.channel.with, campaign.state.playerFactionId);
+        return { budget: now.budget, given: now.given, over: [...this.channel.budget.over] };
       })(),
-      channelBlockers: [...this.channelBlockers],
+      channelBlockers: [...(this.channel?.blockers ?? [])],
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
       maxTurns: campaign.maxTurns,
@@ -450,22 +466,38 @@ export class GameSession {
     };
   }
 
+  /** Who the open channel is with, or `null`. */
+  private get openChannel(): string | null {
+    return this.channel?.with ?? null;
+  }
+
+  /** The open channel, where only code with a channel open reads it. */
+  private get live(): OpenChannel {
+    if (!this.channel) throw new ApiFailure('conflict', 'No channel is open.');
+    return this.channel;
+  }
+
   private channelState(): SessionSnapshot['channel'] {
+    const c = this.channel;
     return {
-      open: this.openChannel,
-      history: this.channelHistory,
-      concessions: this.channelConcessions,
-      budget: this.channelBudget,
-      blockers: this.channelBlockers,
+      open: c?.with ?? null,
+      history: c?.history ?? [],
+      concessions: c?.concessions ?? [],
+      budget: c?.budget ?? { budget: 0, given: 0, over: [] },
+      blockers: c?.blockers ?? [],
     };
   }
 
   private adoptChannel(channel: SessionSnapshot['channel']): void {
-    this.openChannel = channel.open;
-    this.channelHistory = [...channel.history];
-    this.channelConcessions = [...channel.concessions];
-    this.channelBudget = { ...channel.budget, over: [...channel.budget.over] };
-    this.channelBlockers = [...channel.blockers];
+    this.channel = channel.open
+      ? {
+          with: channel.open,
+          history: [...channel.history],
+          concessions: [...channel.concessions],
+          budget: { ...channel.budget, over: [...channel.budget.over] },
+          blockers: [...channel.blockers],
+        }
+      : null;
   }
 
   /* ---------------- lifecycle ---------------- */
@@ -485,11 +517,7 @@ export class GameSession {
     const saveAs = sandboxEvent === undefined ? name : `sandbox_${sandboxEvent}`;
     this.campaign = Campaign.start(factionId, saveAs, this.store, maxTurns, sandboxEvent);
     this.traceTo(saveAs);
-    this.openChannel = null;
-    this.channelHistory = [];
-    this.channelConcessions = [];
-    this.channelBudget = { budget: 0, given: 0, over: [] };
-    this.channelBlockers = [];
+    this.channel = null;
     this.lastBriefing = null;
     this.epilogue = null;
     await this.campaign.save();
@@ -505,11 +533,7 @@ export class GameSession {
     if (!loaded.isOver) this.requireProvider();
     this.campaign = loaded;
     this.traceTo(name);
-    this.openChannel = null;
-    this.channelHistory = [];
-    this.channelConcessions = [];
-    this.channelBudget = { budget: 0, given: 0, over: [] };
-    this.channelBlockers = [];
+    this.channel = null;
     // A finished campaign reloads finished. The narration is cached in the
     // save rather than regenerated, because it is a model call and a player
     // reopening their own ending should not pay for it twice — nor read a
@@ -629,6 +653,7 @@ export class GameSession {
     this.noteThisTurn(campaign.state.turn, `"${text.trim().slice(0, 200)}" — ${whatCameOf(outcome)}`);
     this.pushState();
     return {
+      kind: outcomeKind(outcome, 'declared'),
       narrative: outcome.narrative,
       refusal: outcome.refusal ?? null,
       defiance: outcome.defiance ?? null,
@@ -861,13 +886,7 @@ export class GameSession {
       );
     }
 
-    if (!this.openChannel) {
-      this.openChannel = factionId;
-      this.channelHistory = [];
-      this.channelConcessions = [];
-      this.channelBudget = { budget: 0, given: 0, over: [] };
-      this.channelBlockers = [];
-    }
+    if (!this.channel) this.channel = emptyChannel(factionId);
 
     // A channel is unmetered by action points on purpose, but unmetered is not
     // unbounded: every message re-sends the whole transcript and the persona,
@@ -876,7 +895,7 @@ export class GameSession {
     // the faction forget terms it had already agreed, and the extraction pass
     // reads that same transcript. The message is not consumed; the player is
     // told to close the channel, which is also how anything agreed is banked.
-    const sent = this.channelHistory.filter((m) => m.speaker === 'player').length;
+    const sent = this.live.history.filter((m) => m.speaker === 'player').length;
     if (sent >= MAX_CHANNEL_MESSAGES) {
       throw new ApiFailure(
         'conflict',
@@ -887,44 +906,44 @@ export class GameSession {
     // The player's own withdrawals, applied in code before the other power
     // answers, and said in the message so the persona reads them (S2).
     const me = campaign.state.playerFactionId;
-    const struck = this.channelConcessions.filter((c) => c.by === me && strike.includes(c.kind));
+    const struck = this.live.concessions.filter((c) => c.by === me && strike.includes(c.kind));
     if (struck.length > 0) {
-      this.channelConcessions = this.channelConcessions.filter((c) => !struck.includes(c));
+      this.live.concessions = this.live.concessions.filter((c) => !struck.includes(c));
       const gone = new Set(struck.map((c) => c.text));
-      this.channelBlockers = this.channelBlockers.filter((b) => !gone.has(b.concession));
+      this.live.blockers = this.live.blockers.filter((b) => !gone.has(b.concession));
     }
     const said = struck.length > 0 ? `${text}\n\n(Withdrawn from our side of the record: ${struck.map((c) => c.text).join('; ')}.)` : text;
-    this.channelHistory.push({ speaker: 'player', text: said });
+    this.live.history.push({ speaker: 'player', text: said });
 
     const { result, rulings } = await this.traced('talk', async () => {
       const result = await this.exclusive(`${faction.name} considers`, async () =>
         diplomacyReply(
           campaign.state,
           factionId,
-          this.channelHistory,
+          this.live.history,
           campaign.priorTranscripts(factionId),
-          this.channelConcessions,
+          this.live.concessions,
         ),
       );
 
-      this.channelHistory.push({ speaker: 'faction', text: result.reply });
+      this.live.history.push({ speaker: 'faction', text: result.reply });
 
       // Then held to the budget: what the other power wrote past it is struck,
       // and said, so a term never vanishes from the table unexplained.
-      const merged = mergeConcessions(this.channelConcessions, result.concessions, result.retractions);
+      const merged = mergeConcessions(this.live.concessions, result.concessions, result.retractions);
       const held = withinBudget(campaign.state, merged, factionId, campaign.state.playerFactionId);
-      this.channelConcessions = held.kept;
+      this.live.concessions = held.kept;
       // A blocker stands on a concession of the player's, and goes when that
       // concession does. A retracted note handover still refused the whole
       // accord at the close (playtest 2026-10-18, C6).
       const standing = new Set(
-        this.channelConcessions.filter((c) => c.by === campaign.state.playerFactionId).map((c) => c.text),
+        this.live.concessions.filter((c) => c.by === campaign.state.playerFactionId).map((c) => c.text),
       );
-      this.channelBlockers = this.channelBlockers.filter((b) => standing.has(b.concession));
-      this.channelBudget = {
+      this.live.blockers = this.live.blockers.filter((b) => standing.has(b.concession));
+      this.live.budget = {
         budget: held.budget,
         given: held.given,
-        over: [...this.channelBudget.over, ...held.over.map((c) => c.text)].slice(-6),
+        over: [...this.live.budget.over, ...held.over.map((c) => c.text)].slice(-6),
       };
 
       // The player's own institutions get a view NOW, not at `/endtalk`. A red
@@ -967,15 +986,15 @@ export class GameSession {
     let costUsd = result.costUsd;
     for (const { c, ruled, found, extra } of rulings) {
       costUsd += ruled.costUsd + extra;
-      if (found) this.channelBlockers.push({ concession: c.text, principle: found.principle });
+      if (found) this.live.blockers.push({ concession: c.text, principle: found.principle });
     }
 
     this.pushState();
     return {
       reply: result.reply,
-      concessions: [...this.channelConcessions],
+      concessions: [...this.live.concessions],
       retractions: result.retractions,
-      blockers: [...this.channelBlockers],
+      blockers: [...this.live.blockers],
       costUsd,
     };
   }
@@ -986,17 +1005,13 @@ export class GameSession {
       throw new ApiFailure('conflict', `No open channel with "${factionId}".`);
     }
 
-    const history = [...this.channelHistory];
-    const conceded = [...this.channelConcessions];
-    const blockers = [...this.channelBlockers];
-    const budget = this.channelBudget;
+    const history = [...this.live.history];
+    const conceded = [...this.live.concessions];
+    const blockers = [...this.live.blockers];
+    const budget = this.live.budget;
     // Close the channel before extraction: whatever the pass returns, the
     // conversation is over, and leaving it open on failure would strand the UI.
-    this.openChannel = null;
-    this.channelHistory = [];
-    this.channelConcessions = [];
-    this.channelBudget = { budget: 0, given: 0, over: [] };
-    this.channelBlockers = [];
+    this.channel = null;
 
     // ...but a call that THREW returned nothing at all, and clearing first made
     // that unrecoverable: measured live, an arbiter response that failed its
@@ -1014,11 +1029,7 @@ export class GameSession {
         ),
       );
     } catch (err) {
-      this.openChannel = factionId;
-      this.channelHistory = history;
-      this.channelConcessions = conceded;
-      this.channelBudget = budget;
-      this.channelBlockers = blockers;
+      this.channel = { with: factionId, history, concessions: conceded, budget, blockers };
       this.pushState();
       throw err;
     }
@@ -1036,6 +1047,7 @@ export class GameSession {
     this.pushState();
 
     return {
+      kind: outcomeKind(outcome, 'accord'),
       narrative: outcome.narrative,
       // Passed through, not nulled. `closeChannel` appraises what was agreed
       // and can return either — a red line refuses the whole accord, a
@@ -1082,23 +1094,39 @@ export function whatCameOf(outcome: {
   refusal?: { by: string; violated: string } | null;
   negotiation?: { withFactionIds: string[] } | null;
   inadmissible?: string | null;
+  unexpressed?: boolean;
   outOfActions?: unknown;
   check?: { outcome: string } | null;
+  staged?: number;
   ops?: unknown[];
   rejections?: { message: string }[];
 }): string {
-  if (outcome.refusal) return `refused by ${outcome.refusal.by}, on the line "${outcome.refusal.violated}"`;
-  if (outcome.negotiation) return `turned back: it needs ${outcome.negotiation.withFactionIds.join(' and ')} to agree, so it is a conversation, not an order`;
-  if (outcome.inadmissible) return `could not be attempted: ${outcome.inadmissible}`;
-  if (outcome.outOfActions) return 'not attempted: the turn was spent';
-  // The band is not what landed: a "success" whose only work was refused for
-  // want of presence changed nothing, and the next counsel read it as a
-  // fortification standing (loop 5).
-  const landed = (outcome.ops ?? []).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
-  if (outcome.check && landed.length === 0) {
-    const why = outcome.rejections?.[0]?.message;
-    return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}, and nothing came of it${why ? ` (${why})` : ''}`;
+  const kind = outcomeKind({ ...outcome, staged: outcome.staged ?? (outcome.ops ?? []).length }, 'declared');
+  switch (kind) {
+    case 'refused':
+      return `refused by ${outcome.refusal!.by}, on the line "${outcome.refusal!.violated}"`;
+    case 'negotiation':
+      return `turned back: it needs ${outcome.negotiation!.withFactionIds.join(' and ')} to agree, so it is a conversation, not an order`;
+    case 'inadmissible':
+    case 'unexpressed':
+      return `could not be attempted: ${outcome.inadmissible}`;
+    case 'out_of_actions':
+      return 'not attempted: the turn was spent';
+    case 'rolled': {
+      // The band is not what landed: a "success" whose only work was refused
+      // for want of presence changed nothing, and the next counsel read it as a
+      // fortification standing (loop 5).
+      const landed = (outcome.ops ?? []).filter((o) => !['log_narrative', 'spend'].includes((o as { op?: string }).op ?? ''));
+      const band = outcome.check!.outcome.replace('_', ' ');
+      if (landed.length === 0) {
+        const why = outcome.rejections?.[0]?.message;
+        return `attempted; it came out a ${band}, and nothing came of it${why ? ` (${why})` : ''}`;
+      }
+      return `attempted; it came out a ${band}`;
+    }
+    case 'sent':
+    case 'agreed':
+    case 'nothing_agreed':
+      return 'carried out';
   }
-  if (outcome.check) return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}`;
-  return 'carried out';
 }

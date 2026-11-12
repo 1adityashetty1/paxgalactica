@@ -30,10 +30,10 @@ import {
 import {
   breachContradictsState, classifyPrinciples, enforcedByDrift } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
-import { span } from '../model/telemetry.js';
+import { recordDoctrine, span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
-import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
+import { brokeredAccords, honourTreaties, intentKeys, proposeFor, type Proposal } from '../domain/initiative.js';
 import { battleHistory, controlHistory, overrulings } from './journal.js';
 import { holdToRuling, noPaymentBesideAGift,
   organisingIsFree, onlyOrganising, type RulingBounds } from '../domain/refusals.js';
@@ -111,6 +111,8 @@ export interface ActionOutcome {
    * inadmissible action from an ordinary one by matching a note string.
    */
   inadmissible?: string | null;
+  /** Set beside `inadmissible` when the reason is that no mission produces it yet. */
+  unexpressed?: boolean;
   /**
    * Set when the declaration was turned away because the turn's actions are
    * spent. The fifth and last way a declaration produces nothing, and the only
@@ -804,6 +806,16 @@ async function commitWithCorrection(
   };
 }
 
+/** Whether a bot's batch would land whole, as `endTurn` commits it — `proposeFor`'s `applies`. */
+function botApplies(campaign: Campaign, factionId: string): (ops: Record<string, unknown>[]) => boolean {
+  return (ops) => applyOps(campaign.state, ops, 'model', factionId, true).rejections.length === 0;
+}
+
+/** The acts a bot's batch would commit — `proposeFor`'s `actsOf`. */
+function botActs(campaign: Campaign, factionId: string): (ops: Record<string, unknown>[]) => Act[] {
+  return (ops) => applyOps(campaign.state, ops, 'model', factionId, false, {}, 'bot').acts;
+}
+
 /**
  * Declare a general action.
  *
@@ -871,6 +883,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       narrative: resolution.output.narrative,
       refusal: null,
       inadmissible: resolution.output.inadmissible,
+      unexpressed: resolution.unexpressed === true,
       staged: 0,
       notes: ['The arbiter ruled this cannot be attempted as things stand.'],
       rejections: [],
@@ -1261,6 +1274,15 @@ export async function endTurn(
     );
 
     if (responders.length > 0) {
+      // What each responder's doctrine would do this turn if nobody spoke for
+      // it. A power is played by its bot on the turns the player does not reach
+      // it, so a reaction turn is handed the plan it would otherwise be blind
+      // to. Pure and free: the same `proposeFor` the bots run below.
+      const standing = new Map<string, Proposal>();
+      for (const id of responders) {
+        const proposal = proposeFor(campaign.state, id, botApplies(campaign, id), botActs(campaign, id));
+        if (proposal) standing.set(id, proposal);
+      }
       try {
         const reactions = await gatherReactions(
           campaign.state,
@@ -1271,7 +1293,15 @@ export async function endTurn(
           declared
             ? `${campaign.state.playerFactionId} acted this turn:\n\n${declared}`
             : `${campaign.state.playerFactionId} did nothing this turn that you could see.`,
+          Object.fromEntries(
+            [...standing].map(([id, p]) => [id, `${p.rationale}${p.withheld.length > 0 ? ` It holds back ${p.withheld.join(' and ')}.` : ''}`]),
+          ),
         );
+        for (const reaction of reactions.output.reactions) {
+          const proposed = intentKeys(standing.get(reaction.factionId)?.ops ?? []);
+          const acted = intentKeys(reaction.ops as Record<string, unknown>[]);
+          recordDoctrine({ turn, factionId: reaction.factionId, proposed, acted, kept: proposed.every((k) => acted.includes(k)) });
+        }
         costUsd += reactions.costUsd;
 
         for (const reaction of reactions.output.reactions) {
@@ -1385,12 +1415,7 @@ export async function endTurn(
       if (spokenFor.has(faction.id)) continue;
       // Committed atomically below, so a rule that would sink the batch is
       // left out rather than costing the power its turn.
-      const proposal = proposeFor(
-        campaign.state,
-        faction.id,
-        (ops) => applyOps(campaign.state, ops, 'model', faction.id, true).rejections.length === 0,
-        (ops) => applyOps(campaign.state, ops, 'model', faction.id, false, {}, 'bot').acts,
-      );
+      const proposal = proposeFor(campaign.state, faction.id, botApplies(campaign, faction.id), botActs(campaign, faction.id));
       if (!proposal) continue;
 
       // The rationale is logged as part of the batch, so `serializeRecentLog`

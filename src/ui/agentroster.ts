@@ -1,4 +1,5 @@
 import { statModifier } from '../domain/checks.js';
+import { whereaboutsOf } from '../domain/people.js';
 import { atWork, type Agent } from '../domain/diplomacy.js';
 import {
   AGENT_UPKEEP,
@@ -68,8 +69,10 @@ export function agentRoster(state: WorldState, me: string, guile: number): Agent
     .filter((a) => a.exposed)
     .sort(byPlace)
     .map((agent) => {
-      const held = (state.assets ?? []).find((x) => x.agentId === agent.id && x.quantity > 0);
-      return { agent, heldBy: held?.heldBy ?? null, heldAt: held?.atSystemId ?? null };
+      const place = whereaboutsOf(state, { kind: 'operative', id: agent.id });
+      return place.at === 'held'
+        ? { agent, heldBy: place.byFactionId, heldAt: place.systemId }
+        : { agent, heldBy: null, heldAt: null };
     });
 
   const owners = [...new Set(visible.filter((a) => a.ownerFactionId !== me).map((a) => a.ownerFactionId))].sort();

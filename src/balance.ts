@@ -67,7 +67,7 @@ export interface Snapshot {
 
 export function runBalance(
   turns: number,
-  onTurn?: (s: Snapshot) => void,
+  onTurn?: (s: Snapshot, state: WorldState) => void,
   /**
    * Rules to tick under. `{ randomEvents: false }` is the control a sweep of the
    * events is measured against — the board the bots produce on their own.
@@ -164,7 +164,7 @@ export function runBalance(
       ),
     };
     history.push(snap);
-    onTurn?.(snap);
+    onTurn?.(snap, state);
   }
   return history;
 }

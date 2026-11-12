@@ -153,7 +153,25 @@ export interface PhaseRecord {
   ok: boolean;
 }
 
-export type TraceRecord = CallRecord | PhaseRecord;
+/**
+ * Whether a reaction kept its doctrine's plan: the targets `proposeFor` would
+ * have struck, raided, blockaded or worked on this turn, against the ones the
+ * reaction did. One a reaction, beside its call.
+ */
+export interface DoctrineRecord {
+  type: 'doctrine';
+  at: number;
+  turn: number;
+  factionId: string;
+  /** What the doctrine would have done, as `kind@world` keys. */
+  proposed: string[];
+  /** What the reaction did, the same way. */
+  acted: string[];
+  /** Every proposed key is among the acted ones (true when nothing was proposed). */
+  kept: boolean;
+}
+
+export type TraceRecord = CallRecord | PhaseRecord | DoctrineRecord;
 
 export interface TelemetrySink {
   write(record: TraceRecord): void;
@@ -247,6 +265,11 @@ export async function span<T>(
       ok,
     });
   }
+}
+
+/** Record whether a reaction kept its doctrine's plan — see `DoctrineRecord`. */
+export function recordDoctrine(r: Omit<DoctrineRecord, 'type' | 'at'>): void {
+  sink.write({ type: 'doctrine', at: Date.now(), ...r });
 }
 
 /** Calls currently in flight. Read at the start of each, for contention. */

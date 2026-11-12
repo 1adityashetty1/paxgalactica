@@ -4456,6 +4456,30 @@ The six, as found:
   guard forbids;
 - the counsellor reads the board badly and seldom advises.
 
+## The state machines, each read in one place
+
+Eight lifecycles in this game were stored as combinations of fields and read
+by whoever needed them, each reader its own way. Each is now worked out by one
+function from the fields that already exist. Nothing new is stored except the
+one rule below, so saves replay as they were played and the four harness
+boards are unchanged (5/5/5/5/5 three times, 5/6/5/5/4 at 100 turns without
+events).
+
+| machine | read by | what disagreed |
+|---|---|---|
+| what two powers are to each other | `relationBetween` (`state.ts`): `war`, `truce`, `married`, `allied`, `peace`, `neutral`, with `why`, `truceUntil`, `basing` | `warsFor` kept its own list of four peace treaties and `PEACE_TREATIES` held five, so a married pair whose regard sank to war was at war to the bots, compulsions, prompts and Treaties panel, and at peace to every attack guard. `warsFor` is now a view of it. Pinned to `JOURNAL_VERSION` 39 (`WorldState.marriagePeace`) |
+| where a person is | `whereaboutsOf` (`people.ts`): `listed`, `post`, `under_way`, `working`, `held`, `abroad`, `gone`, for officers, operatives and notables | three encodings of one lifecycle. `personViolations` holds everyone to one place; the suite runs it over 60 bot turns and the bug-hunt gate over every step of every save |
+| the lines a meter crosses | `bands.ts`: regard, dissent, heat, intel, favour, a world's standing — `bandOf`, `watchLine` ("5 from war at -60") | the UI coloured regard at ±10 and ±40/−50, the prompts named it at ±20 and ±60, and neither said where war began |
+| what came of a declaration or accord | `outcomeKind` (`contract.ts`), sent as `ActionOutcome.kind` | five nullable fields, read in different orders by the client and the counsellor's record |
+| what the screen is doing | `screenMode`, `commandControls` (`src/ui/mode.ts`) | eight flags, and the command line, Send and End turn each restated "can I act" without the ending — all three stayed live after the epilogue |
+| the open channel | `GameSession.channel`, one value or `null` | five fields reset by copy at four sites |
+| how an order ended | `ApplyResult.ended`, `TurnReport.ended`: `completed`, `cancelled`, `interrupted`, `aborted`, `lost`; the briefing's **Ended early** group | the ending lived in log prose alone |
+| who plays a power this turn | a reaction is handed `proposeFor`'s plan as **Your standing orders this turn**; the trace records whether it kept it (`DoctrineRecord`, shown by `pnpm trace`) | a power played by its bot one turn and a model the next could not see the plan it was carrying out |
+
+The standing orders change only a prompt, so nothing replays differently;
+whether reactions keep their plans is the next playtest's to read off the
+trace.
+
 ## Treaties and agents
 
 Both live in world state (`src/domain/diplomacy.ts`), because both have

@@ -3,7 +3,9 @@
  * The gate a bug-hunt round must pass before its fixes are pushed: the three
  * typechecks, the whole suite, and every bug-hunt save replaying with no more
  * rejections than it had before the round (a fix that makes an old journal
- * reject is a fix that changed history; pin it to a journal version instead).
+ * reject is a fix that changed history; pin it to a journal version instead),
+ * and with every person in exactly one place at every step of it
+ * (`personViolations` in `src/domain/people.ts`).
  *
  *   node scripts/bughunt-gate.mjs            # check, and print the baseline
  *   node scripts/bughunt-gate.mjs --record   # write the replay baseline
@@ -56,6 +58,25 @@ if (record) {
   console.log(`Recorded the replay baseline for ${saves.length} save(s).`);
   process.exit(0);
 }
+// Every person in exactly one place, at every step of every save.
+const { replay } = await import(resolve(root, 'dist/engine/journal.js'));
+const { personViolations } = await import(resolve(root, 'dist/domain/people.js'));
+for (const name of saves) {
+  const save = JSON.parse(readFileSync(resolve(root, 'saves', `${name}.json`), 'utf8'));
+  const broken = new Set();
+  try {
+    replay(save.journal ?? save, (state) => {
+      for (const v of personViolations(state)) broken.add(`turn ${state.turn}: ${v}`);
+    });
+  } catch {
+    continue; // reported as a failed replay above
+  }
+  if (broken.size > 0) {
+    console.log(`FAIL people ${name}: ${[...broken].slice(0, 3).join('; ')}${broken.size > 3 ? ` (+${broken.size - 3})` : ''}`);
+    failed = true;
+  }
+}
+
 const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : {};
 for (const [name, n] of Object.entries(counts)) {
   const was = baseline[name];

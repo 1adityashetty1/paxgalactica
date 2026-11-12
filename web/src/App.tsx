@@ -13,6 +13,7 @@ import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
 import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
 import { helpPage } from '../../src/ui/help.js';
+import { commandControls, screenMode } from '../../src/ui/mode.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -203,7 +204,20 @@ export function App() {
     await game.act(text);
   }, [input, busy, channel, game, say, view]);
 
-  if (game.fatal) {
+  // What the screen is doing, once (`screenMode`): every early return below and
+  // every control on the command line reads it.
+  const mode = screenMode({
+    fatal: !!game.fatal,
+    settingsOpen: game.settingsOpen,
+    needsCampaign: game.needsCampaign,
+    providerReady,
+    hasView: view !== null,
+    ended: !!view?.epilogue,
+    channel: view ? (view.openChannel ?? draftChannel) : null,
+    busy,
+  });
+
+  if (mode === 'fatal') {
     return (
       <div className="fatal">
         <h1>Cannot start</h1>
@@ -222,7 +236,7 @@ export function App() {
   // Who pays comes before what to play. On a cold start the provider is asked
   // first, so a player with no key lands on the screen that takes one rather
   // than on a faction list whose every choice would be refused.
-  if (game.settingsOpen || (game.needsCampaign && providerReady === false)) {
+  if (mode === 'settings') {
     return (
       <SettingsPanel
         firstRun={game.needsCampaign || !view}
@@ -234,8 +248,8 @@ export function App() {
     );
   }
 
-  if (game.needsCampaign || !view) {
-    return game.needsCampaign ? (
+  if (mode === 'title' || mode === 'loading' || !view) {
+    return mode === 'title' ? (
       <FactionPicker
         onStart={game.start}
         onResume={game.resume}
@@ -251,6 +265,11 @@ export function App() {
 
   const player = view.state.factions.find((f) => f.id === view.state.playerFactionId);
   const activeChannel = view.openChannel ?? draftChannel;
+  const controls = commandControls(mode, { actionsLeft: view.actionPoints.left, input, confirmEnd });
+  // After the ending there is nobody left to talk to: a channel opened from a
+  // panel would only be refused by the server.
+  const ended = mode === 'ended';
+  const afterTheEnd = () => say('The campaign has ended: there is nobody left to negotiate with.', 'error');
 
   return (
     <div className="app" style={paneStyle(panes)}>
@@ -406,23 +425,13 @@ export function App() {
                   setRecallAt(null);
                 }
               }}
-              placeholder={
-                busy
-                  ? 'Working…'
-                  : activeChannel
-                    ? 'Close the channel to declare actions'
-                    : view.actionPoints.left === 0
-                      ? 'No actions left — end the turn'
-                      : 'Declare an action, /advisor for counsel, or :help'
-              }
-              disabled={!!busy || !!activeChannel}
+              placeholder={controls.placeholder}
+              disabled={controls.inputDisabled}
               autoFocus
             />
             <button
               type="submit"
-              disabled={
-                !!busy || !!activeChannel || !input.trim() || view.actionPoints.left === 0
-              }
+              disabled={controls.sendDisabled}
             >
               Send
             </button>
@@ -437,18 +446,10 @@ export function App() {
                 setConfirmEnd(false);
                 void game.endTurn();
               }}
-              disabled={!!busy || !!activeChannel}
-              title={
-                activeChannel
-                  ? 'Close the channel first'
-                  : confirmEnd
-                    ? 'Press again to end the turn with actions unspent'
-                    : 'Land everything declared'
-              }
+              disabled={controls.endDisabled}
+              title={controls.endTitle}
             >
-              {confirmEnd
-                ? `${view.actionPoints.left} action${view.actionPoints.left === 1 ? '' : 's'} unspent — end anyway?`
-                : 'End turn'}
+              {controls.endLabel}
             </button>
           </form>
         </div>
@@ -493,9 +494,9 @@ export function App() {
             briefing={view.briefing}
             effective={view.effective}
             onSelect={setSelectedId}
-            onTalk={setDraftChannel}
+            onTalk={ended ? afterTheEnd : setDraftChannel}
             onDraft={draft}
-            onOffer={offer}
+            onOffer={ended ? afterTheEnd : offer}
             onOrganise={game.organise}
             activeChannel={activeChannel}
           />

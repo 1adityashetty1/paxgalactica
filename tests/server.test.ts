@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { openTestChannel } from './helpers/channel.js';
 import {
   ApiErrorSchema,
   CampaignViewSchema,
@@ -291,7 +292,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
   it('blocks actions and end-of-turn while a channel is open', async () => {
     const { session } = await startedSession();
     // Force the channel open without a model call.
-    (session as unknown as { openChannel: string | null }).openChannel = 'ojjul';
+    openTestChannel(session, 'ojjul');
 
     for (const [path, body] of [
       [ROUTES.action, { text: 'attack' }],
@@ -304,7 +305,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
 
   it('refuses a second, different channel', async () => {
     const { session } = await startedSession();
-    (session as unknown as { openChannel: string | null }).openChannel = 'ojjul';
+    openTestChannel(session, 'ojjul');
     const res = await dispatch(session, 'POST', ROUTES.talk('vigil'), { text: 'hello' });
     expect(res.status).toBe(409);
   });
@@ -331,8 +332,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
    */
   it('caps how many messages the player may send in one channel', async () => {
     const { session } = await startedSession();
-    const history = (session as unknown as { channelHistory: unknown[] }).channelHistory;
-    (session as unknown as { openChannel: string | null }).openChannel = 'ojjul';
+    const history = openTestChannel(session, 'ojjul').history;
     for (let i = 0; i < MAX_CHANNEL_MESSAGES; i++) {
       history.push({ speaker: 'player', text: `turn ${i}` });
       history.push({ speaker: 'faction', text: 'noted' });
@@ -389,7 +389,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
       const { GameSession: Fresh } = await import('../src/server/session.js');
       const session = new Fresh(new MemoryCampaignStore(), () => {});
       await session.newCampaign('freeworlds', 'refused-accord');
-      (session as unknown as { openChannel: string | null }).openChannel = 'vigil';
+      openTestChannel(session, 'vigil');
 
       const outcome = await session.endTalk('vigil');
       expect(outcome.refusal).toMatchObject({ violated: 'will never accept occupation' });
@@ -466,6 +466,7 @@ describe('the non-outcomes reach the wire', () => {
     expect(res.status).toBe(200);
     const body = ActionOutcomeSchema.parse(res.body);
     expect(body.outOfActions).toEqual({ perTurn: ACTION_POINTS_PER_TURN });
+    expect(body.kind).toBe('out_of_actions');
     // Free to discover: the guard runs before the arbiter is paid for.
     expect(body.costUsd).toBe(0);
     expect(body.staged).toBe(0);
@@ -477,6 +478,7 @@ describe('the non-outcomes reach the wire', () => {
 
   it('defaults both fields to null so an ordinary outcome is unambiguous', () => {
     const parsed = ActionOutcomeSchema.parse({
+      kind: 'rolled',
       narrative: 'It is done.',
       staged: 1,
       notes: [],

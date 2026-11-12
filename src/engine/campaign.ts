@@ -5,6 +5,7 @@ import {
   tickTurn,
   type ApplyResult,
   type OpSource,
+  type OrderEnded,
   type TurnReport,
 } from '../domain/reducer.js';
 import { WorldStateSchema, getFaction, type OrderType, type WorldState } from '../domain/state.js';
@@ -354,6 +355,13 @@ export class Campaign {
    */
   private actionsDeclared = 0;
 
+  /**
+   * The orders the batches committed since the last tick ended, for that
+   * tick's report. Never saved: commits happen only inside an end of turn, so
+   * nothing is held between requests.
+   */
+  private endedSinceTick: OrderEnded[] = [];
+
   get actionPointsLeft(): number {
     return Math.max(0, ACTION_POINTS_PER_TURN - this.actionsDeclared);
   }
@@ -562,6 +570,7 @@ export class Campaign {
       const source = batch.source ?? 'model';
       const res = applyOps(this.committed, batch.ops, source, batch.actor, true, {}, batch.path);
       this.committed = res.state;
+      this.endedSinceTick.push(...res.ended);
       this.journal.entries.push({
         kind: 'ops',
         source,
@@ -607,6 +616,7 @@ export class Campaign {
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
     const res = applyOps(this.committed, ops, source, actor, true, {}, path);
     this.committed = res.state;
+    this.endedSinceTick.push(...res.ended);
     this.journal.entries.push({ kind: 'ops', source, ...(path ? { path } : {}), label, ops, actor });
     this.resyncPreview();
     return { rejections: res.rejections, notes: res.notes };
@@ -618,7 +628,10 @@ export class Campaign {
     this.committed = res.state;
     this.journal.entries.push({ kind: 'tick' });
     this.resyncPreview();
-    return { notes: res.notes, report: res.report };
+    // What the turn's batches ended before the tick, then what the tick ended.
+    const report = { ...res.report, ended: [...this.endedSinceTick, ...(res.report.ended ?? [])] };
+    this.endedSinceTick = [];
+    return { notes: res.notes, report };
   }
 
   private resyncPreview(): void {

@@ -23,13 +23,16 @@ import {
 } from '../../../src/domain/diplomacy.js';
 import { describeSecret, secretLive } from '../../../src/domain/leverage.js';
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../../../src/domain/heat.js';
+import { intelOn } from '../../../src/domain/intel-levels.js';
 import {
-  INTEL_DELIVERS,
-  INTEL_DIG,
-  INTEL_OPERATIVES,
-  INTEL_TYPED,
-  intelOn,
-} from '../../../src/domain/intel-levels.js';
+  DISSENT_BANDS,
+  HEAT_BANDS,
+  INTEL_BANDS,
+  REGARD_BANDS,
+  bandOf,
+  describeReading,
+  watchLine,
+} from '../../../src/domain/bands.js';
 import { BOUNTY_PER_TON } from '../../../src/domain/diplomacy.js';
 import { shortageFactor } from '../../../src/domain/events.js';
 import { EFFECT_COST, describeOrderEffect } from '../../../src/domain/development.js';
@@ -37,6 +40,7 @@ import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
 import { agentStanding, classFit, profileWords, AGENT_CLASS_MEANING, CLASS_SUCCESS_SHIFT, type Agent } from '../../../src/domain/diplomacy.js';
 import { agentRoster } from '../../../src/ui/agentroster.js';
+import { describePlace, whereaboutsOf } from '../../../src/domain/people.js';
 import { courtView, seatDoing, seatLabel } from '../../../src/ui/court.js';
 import { defaultEstate, emptySeats, listedFor, notableById, powerOf, seatedAt, seatsFor } from '../../../src/domain/seats.js';
 import { MARRIAGE_CONSENT_REGARD, estateOwner, seatOffice } from '../../../src/domain/estates.js';
@@ -98,8 +102,11 @@ import {
   fixturesAt,
   treatiesFor,
   warsFor,
+  relationBetween,
   spanOfControl,
   TRUCE_FLOOR,
+  type Relation,
+  type RelationKind,
   type StarSystem,
   type WorldState,
   fleetBases,
@@ -292,10 +299,14 @@ function Factions({
                 <span className="badge">you</span>
               ) : (
                 <>
-                  <span className={`disp ${dispClass(disposition)}`}>
+                  <span
+                    className={`disp ${dispClass(disposition)}`}
+                    title={`What they think of you: ${describeReading(REGARD_BANDS, disposition)} — ${bandOf(REGARD_BANDS, disposition).band.means}.`}
+                  >
                     {disposition >= 0 ? '+' : ''}
                     {disposition}
                   </span>
+                  <RelationChip relation={relationBetween(state, state.playerFactionId, f.id)} />
                   <button
                     className="talk-btn"
                     onClick={() => onTalk(f.id)}
@@ -374,7 +385,7 @@ function Factions({
                 title={`How notorious its covert work, unlicensed raiding and broken word have made it. It fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} the Rim answers — crackdowns, a price on its head, turned contacts, a neighbour massing on its border.`}
               >
                 heat {f.heat}
-                {(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' · notorious' : ''}
+                {(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' · notorious' : watchLine(HEAT_BANDS, f.heat ?? 0) ? ` · ${watchLine(HEAT_BANDS, f.heat ?? 0)}` : ''}
               </div>
             )}
             {f.dissent > 0 && (
@@ -384,6 +395,10 @@ function Factions({
               >
                 dissent {f.dissent}/100
                 {penalty > 0 && <span className="bad"> · −{penalty} to every stat</span>}
+                {bandOf(DISSENT_BANDS, f.dissent).band.from > 0 && (
+                  <span className="bad"> · {bandOf(DISSENT_BANDS, f.dissent).band.name}: {bandOf(DISSENT_BANDS, f.dissent).band.means}</span>
+                )}
+                {watchLine(DISSENT_BANDS, f.dissent) && <span className="muted"> · {watchLine(DISSENT_BANDS, f.dissent)}</span>}
               </div>
             )}
             {/* A rally lifts the bars above, and a lift nobody can read the
@@ -863,16 +878,7 @@ function Command({
                 {/* Where they are standing, or the fleet they are aboard — the
                     thing that decides which battles they command at all. */}
                 <p className="meta command-where">
-                  {officer.atSystemId
-                    ? `at ${state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId}`
-                    : (() => {
-                        const o = state.pendingOrders.find((x) =>
-                          x.officers.includes(officer.id),
-                        );
-                        return o
-                          ? `under way to ${state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId}`
-                          : 'unposted';
-                      })()}
+                  {describePlace(state, whereaboutsOf(state, { kind: 'officer', id: officer.id }))}
                 </p>
                 <p className="meta command-ladder">
                   {toNextVeterancy(officer.battles) === null
@@ -1207,13 +1213,8 @@ function FixtureBuilder({
   );
 }
 
-/** What each intel threshold buys, in the words the bar's tooltip uses. */
-const INTEL_STEPS: [number, string][] = [
-  [INTEL_TYPED, 'their rumours say what kind of work it is'],
-  [INTEL_DELIVERS, 'and what it will deliver'],
-  [INTEL_OPERATIVES, 'their operatives on your worlds show, and are caught more often'],
-  [INTEL_DIG, 'your watchers dig their secrets more easily, and you trace their dark raids'],
-];
+/** What each intel threshold buys, in the words the bar's tooltip uses — `INTEL_BANDS`. */
+const INTEL_STEPS: [number, string][] = INTEL_BANDS.bands.filter((b) => b.from > 0).map((b) => [b.from, b.means]);
 
 /**
  * How well you know a rival, and what the next step buys. Hidden at nothing,
@@ -2872,10 +2873,28 @@ function Log({ state }: { state: WorldState }) {
   );
 }
 
+/** The colour of a regard figure, by its band in `REGARD_BANDS`. */
 function dispClass(n: number): string {
-  if (n >= 40) return 'ally';
-  if (n >= 10) return 'warm';
-  if (n > -10) return 'neutral';
-  if (n > -50) return 'cool';
-  return 'hostile';
+  return { war: 'hostile', hostile: 'cool', cool: 'neutral', warm: 'warm', friendly: 'ally' }[bandOf(REGARD_BANDS, n).band.name] ?? 'neutral';
+}
+
+const RELATION_WORD: Record<RelationKind, string> = {
+  war: 'at war',
+  truce: 'truce',
+  married: 'married',
+  allied: 'allied',
+  peace: 'at peace',
+  neutral: '',
+};
+
+/** What two powers are to each other, as `relationBetween` reads it; nothing for neutral. */
+function RelationChip({ relation }: { relation: Relation }) {
+  const word = RELATION_WORD[relation.kind];
+  if (!word) return null;
+  const truce = relation.kind !== 'truce' && relation.truceUntil !== undefined ? `, and a truce holds until turn ${relation.truceUntil}` : '';
+  return (
+    <span className={`chip relation ${relation.kind}`} title={`${relation.why}${truce}${relation.basing ? '; their fleets may enter each other\'s space' : ''}.`}>
+      {word}
+    </span>
+  );
 }

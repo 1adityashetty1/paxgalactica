@@ -245,8 +245,39 @@ export interface Briefing {
   court: { text: string; tone: 'good' | 'bad' | 'info' }[];
   /** Open ultimatums you made, were made of you, or declared in — see `ultimatumLines`. */
   ultimatums: { text: string; tone: 'good' | 'bad' | 'info' }[];
+  /**
+   * Work that left the board this turn without completing: your own, recalled,
+   * interrupted, aborted or abandoned for want of ships, and a rival's you
+   * stood down — see `endedLines`. A fact about the turn, kept on refresh.
+   */
+  ended: { text: string; tone: 'good' | 'bad' | 'info' }[];
   /** Nothing completed, nothing running, nothing visible. */
   quiet: boolean;
+}
+
+/**
+ * How the player's work ended this turn, when it did not complete, and the
+ * rival work the player stood down. Completions are `completed`'s; this is the
+ * rest of an order's last state, which was a line of prose in the log alone.
+ */
+export function endedLines(state: WorldState, report: TurnReport): { text: string; tone: 'good' | 'bad' | 'info' }[] {
+  const me = state.playerFactionId;
+  const name = (id: string) => getFaction(state, id)?.name ?? id;
+  const out: { text: string; tone: 'good' | 'bad' | 'info' }[] = [];
+  for (const e of report.ended ?? []) {
+    if (e.reason === 'completed') continue;
+    if (e.factionId === me) {
+      const what = `${e.label} at ${e.where}`;
+      if (e.reason === 'cancelled') out.push({ text: `${what}: recalled.`, tone: 'info' });
+      else if (e.reason === 'interrupted') {
+        out.push(e.by ? { text: `${what}: interrupted by ${name(e.by)}.`, tone: 'bad' } : { text: `${what}: stood down.`, tone: 'info' });
+      } else if (e.reason === 'aborted') out.push({ text: `${what}: aborted — the world was lost, and its yards with it.`, tone: 'bad' });
+      else out.push({ text: `${what}: ended — no ships of yours are left to sustain it.`, tone: 'bad' });
+    } else if (e.by === me && e.reason === 'interrupted') {
+      out.push({ text: `You stood down ${name(e.factionId)}'s ${e.covert ? 'work' : e.label} at ${e.where}.`, tone: 'good' });
+    }
+  }
+  return out;
 }
 
 /**
@@ -489,6 +520,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
   const worlds = [...turnWorlds, ...worldsOnTheBoard(state)];
   const court = courtLines(state, me);
   const ultimatums = ultimatumLines(state, me);
+  const ended = endedLines(state, report);
 
   return {
     turn: state.turn,
@@ -505,6 +537,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     worlds,
     court,
     ultimatums,
+    ended,
     // A battle is never a quiet turn, even if nothing else moved; nor is one
     // the Rim filled on its own.
     quiet:
@@ -517,7 +550,8 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       events.length === 0 &&
       worlds.length === 0 &&
       court.length === 0 &&
-      ultimatums.length === 0,
+      ultimatums.length === 0 &&
+      ended.length === 0,
   };
 }
 

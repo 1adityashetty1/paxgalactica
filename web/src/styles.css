@@ -217,6 +217,11 @@ body.resizing-h, body.resizing-h * { cursor: row-resize !important; user-select:
 .chip.on { background: #1e3a5f; color: #93c5fd; }
 /* A button chip reads as one: it lightens under the pointer. */
 button.chip:hover { background: #262c37; color: var(--text); }
+/* What a power is to you, beside its regard: the war it is in, or the paper that keeps it out of one. */
+.chip.relation { margin-left: 6px; }
+.chip.relation.war { color: var(--bad); }
+.chip.relation.truce { color: var(--warn); }
+.chip.relation.married, .chip.relation.allied, .chip.relation.peace { color: var(--good); }
 /* A type — an estate, a school, a class — is a label, not a button: outlined,
    in its own colour, and nothing happens under the pointer. */
 .kind-tag {

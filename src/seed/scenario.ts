@@ -1033,6 +1033,8 @@ function buildSeedState(
    * `cargoTolls: false` levies a toll on a crossed world's slice of a lane
    * rather than on the cargo, leaves Vosk Marker unaligned and has the
    * Combine toll the Confederacy, as before version 38.
+   * `marriagePeace: false` leaves a marriage out of what holds two powers out
+   * of war, as `warsFor` read it before version 39.
    */
   {
     fourSchools = true,
@@ -1049,6 +1051,7 @@ function buildSeedState(
     lineActs = true,
     fleets = true,
     cargoTolls = true,
+    marriagePeace = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -1065,6 +1068,7 @@ function buildSeedState(
     lineActs?: boolean;
     fleets?: boolean;
     cargoTolls?: boolean;
+    marriagePeace?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -1087,6 +1091,7 @@ function buildSeedState(
     pendingOrders: [],
     routeTies: splitTies ? 'split' : 'first',
     tollBasis: cargoTolls ? 'cargo' : 'hop',
+    marriagePeace,
     sightings: [],
     notables: [],
     listedAgents: [],
