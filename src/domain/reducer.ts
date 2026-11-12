@@ -582,6 +582,8 @@ export interface ApplyResult {
    * held back.
    */
   acts: Act[];
+  /** The orders the batch ended, and how. Output only; empty when the batch was held back. */
+  ended: OrderEnded[];
 }
 
 /**
@@ -778,6 +780,43 @@ function wrongPathReason(op: string, path: OpPath): string {
  */
 let actsOut: Act[] | null = null;
 let actOpIndex = -1;
+
+/**
+ * How an order left the board: the last state of an order's lifecycle, which
+ * was kept only as a line of prose in the log. `completed` ran its course;
+ * `cancelled` was recalled by its owner; `interrupted` was stood down by an
+ * interruption (its owner's, or a rival's, named in `by`); `aborted` lost the
+ * world its yards stood on; `lost` lost the fleet that sustained it.
+ */
+export type OrderEnding = 'completed' | 'cancelled' | 'interrupted' | 'aborted' | 'lost';
+
+export interface OrderEnded {
+  id: string;
+  label: string;
+  factionId: string;
+  where: string;
+  reason: OrderEnding;
+  /** The power that interrupted it, when not its owner. */
+  by?: string;
+  /** Work the fog keeps to its owner — see `isPublicOrderType`. */
+  covert: boolean;
+}
+
+/** The orders ended by a running `applyOps` or `tickTurn`; null outside one. Output only. */
+let endedOut: OrderEnded[] | null = null;
+
+function recordEnded(state: WorldState, order: PendingOrder, reason: OrderEnding, by?: string): void {
+  if (!endedOut) return;
+  endedOut.push({
+    id: order.id,
+    label: order.label,
+    factionId: order.factionId,
+    where: systemName(state, order.targetId),
+    reason,
+    ...(by && by !== order.factionId ? { by } : {}),
+    covert: !isPublicOrderType(order.type),
+  });
+}
 
 /** Record that `actor` did `kind`, toward `toward`, at the op being applied. */
 function recordAct(kind: ActKind, actor: string | null | undefined, toward: readonly (string | null | undefined)[]): void {
@@ -3619,13 +3658,18 @@ export function applyOps(
   const acts: Act[] = [];
   actsOut = acts;
   actOpIndex = -1;
+  const outerEnded = endedOut;
+  const ended: OrderEnded[] = [];
+  endedOut = ended;
   try {
     const out = withNameStock(legacy.widerNames ?? true, () =>
       applyOpsUnderRules(adopted(input), rawOps, source, actor, atomic, legacy, path),
     );
     // A batch held back did nothing, so it committed nothing.
-    return { ...out, acts: atomic && out.rejections.length > 0 ? [] : acts };
+    const held = atomic && out.rejections.length > 0;
+    return { ...out, acts: held ? [] : acts, ended: held ? [] : ended };
   } finally {
+    endedOut = outerEnded;
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
@@ -3685,7 +3729,7 @@ function applyOpsUnderRules(
    */
   legacy: LegacyRules = {},
   path?: OpPath,
-): Omit<ApplyResult, 'acts'> {
+): Omit<ApplyResult, 'acts' | 'ended'> {
   const {
     unbuildFromGain = true,
     arrangementStanding = true,
@@ -7524,6 +7568,7 @@ function applyOpsUnderRules(
           break;
         }
         const [removed] = state.pendingOrders.splice(idx, 1);
+        recordEnded(state, removed!, 'cancelled');
         // Recalling a movement brings its ships home. Splicing the order out
         // without this quietly destroyed the fleet it was carrying.
         if (isMovementType(removed!.type) && hullsIn(removed!.force) > 0) {
@@ -10896,6 +10941,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
 
   const idx = state.pendingOrders.findIndex((o) => o.id === order.id);
   if (idx !== -1) state.pendingOrders.splice(idx, 1);
+  recordEnded(state, order, 'interrupted', by);
 
   if (order.onInterrupt === 'cancel') {
     // Cancelled movement still returns its ships — they were never destroyed.
@@ -10984,6 +11030,7 @@ function deliverYardQueues(state: WorldState, report: TurnReport): string[] {
         notes.push(note);
         logEvent(state, 'order', note, faction.id, [faction.id]);
         report.completed.push({ label: order.label, factionId: faction.id, where: site?.name ?? order.targetId, outcome: note, covert: true });
+        recordEnded(state, order, 'aborted');
         done.add(order.id);
         continue;
       }
@@ -11017,6 +11064,12 @@ function deliverYardQueues(state: WorldState, report: TurnReport): string[] {
 
 /** Everything the turn produced, structured so the UI never has to re-derive it. */
 export interface TurnReport {
+  /**
+   * Every order that left the board since the last tick and how — set by
+   * `tickTurn` for its own, and by `Campaign.tick` with what the turn's
+   * batches ended before it. Absent on a report built by hand.
+   */
+  ended?: OrderEnded[];
   /**
    * What finished this turn. `covert` marks work in a category the fog keeps
    * to its owner (see `isPublicOrderType`): a reader showing completions to
@@ -11063,7 +11116,7 @@ export interface TurnReport {
   };
 }
 
-export interface TickResult extends Omit<ApplyResult, 'acts'> {
+export interface TickResult extends Omit<ApplyResult, 'acts' | 'ended'> {
   report: TurnReport;
 }
 
@@ -11088,6 +11141,9 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   saltWithLog = legacy.operativeRollsReadTheLog ?? true;
   const outerActs = actsOut;
   actsOut = null;
+  const outerEnded = endedOut;
+  const ended: OrderEnded[] = [];
+  endedOut = ended;
   try {
     return withNameStock(legacy.widerNames ?? true, () => {
       const out = tickTurnUnderRules(adopted(input), legacy);
@@ -11095,9 +11151,11 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
       settleCommand(out.state);
       settleCouriers(out.state);
       settleFleets(out.state);
+      out.report.ended = ended;
       return out;
     });
   } finally {
+    endedOut = outerEnded;
     actsOut = outerActs;
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
@@ -11872,6 +11930,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (onStation <= 0) {
       const idx = state.pendingOrders.findIndex((o) => o.id === order.id);
       if (idx !== -1) state.pendingOrders.splice(idx, 1);
+      recordEnded(state, order, 'lost');
       const note = `${nameFor(state, order.factionId)} no longer has ships ${order.type === 'blockade' ? 'at' : 'within reach of'} ${target?.name ?? order.targetId}; ${order.label} ends.`;
       notes.push(note);
       logEvent(state, 'order', note, order.factionId, orderAudience(order));
@@ -12576,6 +12635,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     else survivors.push(next);
   }
   state.pendingOrders = survivors;
+  for (const order of completed) recordEnded(state, order, 'completed');
 
   // Computed HERE, not partway up this function, which is where it used to sit.
   // A tick pays income, resolves orders, fights battles, moves territory, fires

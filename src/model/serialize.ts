@@ -11,6 +11,7 @@ import {
   wantOf,
 } from '../domain/regard.js';
 import { HEAT_NOTORIOUS } from '../domain/heat.js';
+import { DISSENT_BANDS, HEAT_BANDS, REGARD_BANDS, bandOf, describeReading, watchLine } from '../domain/bands.js';
 import { eventsVisibleTo, observeOrders, ordersVisibleTo, rememberedBy } from '../domain/intel.js';
 import { INTEL_DELIVERS, intelOn } from '../domain/intel-levels.js';
 import {
@@ -94,6 +95,7 @@ import {
   systemIncome,
   treatiesFor,
   warsFor,
+  relationBetween,
   spanOfControl,
   statFixturesAt,
   SPAN_DISSENT_PER_WORLD,
@@ -112,11 +114,22 @@ import {
  */
 
 function fmtDisposition(n: number): string {
-  if (n >= 60) return `${n} (allied)`;
-  if (n >= 20) return `${n} (friendly)`;
-  if (n > -20) return `${n} (neutral)`;
-  if (n > -60) return `${n} (hostile)`;
-  return `${n} (at daggers drawn)`;
+  return describeReading(REGARD_BANDS, n);
+}
+
+/** "at war (regard −64, at or below −60)" — what two powers are to each other, as `relationBetween` reads it. */
+function relationLine(state: WorldState, a: string, b: string): string {
+  const r = relationBetween(state, a, b);
+  const word = r.kind === 'peace' ? 'at peace' : r.kind === 'war' ? 'at war' : r.kind === 'truce' ? 'under truce' : r.kind;
+  return `${word} (${r.why})`;
+}
+
+/** What the dissent figure means next: mutiny and the doctrine lock are the lines it crosses. */
+function dissentWatch(dissent: number): string {
+  const r = bandOf(DISSENT_BANDS, dissent);
+  const now = r.band.from > 0 ? ` It is ${r.band.name}: ${r.band.means}.` : '';
+  const line = watchLine(DISSENT_BANDS, dissent);
+  return `${now}${line ? ` (${line}.)` : ''}`;
 }
 
 export function serializeStats(stats: FactionStats): string {
@@ -155,7 +168,7 @@ export function serializeFactions(
     const toward =
       f.id === viewerId
         ? ''
-        : ` | disposition toward ${viewerId}: ${fmtDisposition(dispositionBetween(state, f.id, viewerId))}${
+        : ` | disposition toward ${viewerId}: ${fmtDisposition(dispositionBetween(state, f.id, viewerId))} | with you: ${relationLine(state, viewerId, f.id)}${
             known > 0 ? ` | your intel on them: ${known}/100` : ''
           }`;
     return [
@@ -189,7 +202,7 @@ export function serializeFactions(
       isViewer || detail === 'full' ? `  doctrine: ${f.doctrine}` : '',
       // Public: notoriety is what the Rim knows about a power.
       (f.heat ?? 0) > 0
-        ? `  heat: ${f.heat}/100${(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' — notorious; the Rim is answering' : ''}`
+        ? `  heat: ${f.heat}/100${(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' — notorious; the Rim is answering' : (watchLine(HEAT_BANDS, f.heat ?? 0) ? ` — ${watchLine(HEAT_BANDS, f.heat ?? 0)}` : '')}`
         : '',
       // **Their officers, by the name a player would use.** For its whole
       // existence this block named nobody but the viewer's own, so an arbiter
@@ -405,7 +418,7 @@ export function serializeCharacter(faction: Faction, opts: { enumerates?: boolea
     // own institutions had lost faith in it, while every stat it was being
     // asked to reason about was already reduced by exactly that.
     faction.dissent > 0
-      ? `Internal dissent: ${faction.dissent}/100 — every stat is reduced by ${dissentPenalty(faction.dissent)}. Your institutions have been overruled once too often.`
+      ? `Internal dissent: ${faction.dissent}/100 — every stat is reduced by ${dissentPenalty(faction.dissent)}. Your institutions have been overruled once too often.${dissentWatch(faction.dissent)}`
       : 'Internal dissent: none. Your institutions are behind you.',
     '',
     `Capabilities: ${serializeStats(effectiveFor(faction))}`,
@@ -978,7 +991,7 @@ export function serializeState(
     // meant a leader could be told its own odds had worsened with no way to
     // know why, and could not narrate the reason to the player either.
     viewer && viewer.dissent > 0
-      ? `Internal dissent: ${viewer.dissent}/100 — your institutions have been overruled once too often, and every capability below is already reduced by ${dissentPenalty(viewer.dissent)}. It falls 2 a turn if you stop.`
+      ? `Internal dissent: ${viewer.dissent}/100 — your institutions have been overruled once too often, and every capability below is already reduced by ${dissentPenalty(viewer.dissent)}. It falls 2 a turn if you stop.${dissentWatch(viewer.dissent)}`
       : '',
     '',
     '## Factions',

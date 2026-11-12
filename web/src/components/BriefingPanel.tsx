@@ -165,7 +165,21 @@ export function BriefingPanel({
             </div>
           )}
 
-          {/* Ultimatums: a deadline that ends in war is the first thing to read. */}
+          {/* Work that ended without completing: recalled, interrupted, aborted, abandoned. */}
+          {(briefing.ended ?? []).length > 0 && (
+            <div className="brief-group">
+              <h4>Ended early</h4>
+              <ul>
+                {briefing.ended.map((e, i) => (
+                  <li key={`end:${i}`} className={e.tone === 'bad' ? 'bad' : e.tone === 'good' ? 'mine' : ''}>
+                    {e.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+                    {/* Ultimatums: a deadline that ends in war is the first thing to read. */}
           {(briefing.ultimatums ?? []).length > 0 && (
             <div className="brief-group">
               <h4>Ultimatums</h4>

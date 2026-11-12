@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { buildAuthEnv, hasStoredToken, TOKEN_PATH } from './model/auth.js';
+import { binaryWorkDir, buildAuthEnv, hasStoredToken, TOKEN_PATH } from './model/auth.js';
 import { resolveClaudeBinary } from './model/binary.js';
 import { missingKeyMessage } from './model/provider.js';
 import {
@@ -58,6 +58,8 @@ export function readAuthStatus(spawn = spawnSync): AuthStatus | null {
     const probe = spawn(binary, ['auth', 'status', '--json'], {
       encoding: 'utf8',
       env: buildAuthEnv() as NodeJS.ProcessEnv,
+      // Where every model call runs it too — see `binaryWorkDir`.
+      cwd: binaryWorkDir(),
     });
     if (typeof probe.stdout !== 'string') return null;
     const parsed = JSON.parse(probe.stdout) as AuthStatus;

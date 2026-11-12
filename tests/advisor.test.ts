@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { openTestChannel } from './helpers/channel.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -148,7 +149,7 @@ describe('the advisor', () => {
 
     it('is blocked while a channel is open, exactly as an action is', async () => {
       const session = await started();
-      (session as unknown as { openChannel: string | null }).openChannel = 'drajk';
+      openTestChannel(session, 'drajk');
       const res = await dispatch(session, 'POST', ROUTES.advisor, {});
       // The board the counsellor would read is not the board that will exist
       // once the accord lands.

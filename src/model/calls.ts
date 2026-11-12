@@ -609,6 +609,8 @@ export async function resolveAction(
    * else records. `null` when no line was named at all.
    */
   ruling: BreachRuling | null;
+  /** The act was turned away because no mission produces it yet (`unexpressed`). */
+  unexpressed?: boolean;
   /** What code changed about the ruling or the batch, for the player to read. */
   notes: string[];
   /** What the ruling lets a batch carry, so a correction is held to it too. Absent when nothing was resolved. */
@@ -1015,6 +1017,7 @@ export async function resolveAction(
     const why = `No mission does that yet: ${priced.appraisal.unexpressed}`;
     return {
       output: { narrative: why, ops: [], inadmissible: why },
+      unexpressed: true,
       check: null,
       roll: 0,
       attempts: priced.attempts,
@@ -1407,6 +1410,13 @@ export async function gatherReactions(
   state: WorldState,
   factionIds: string[],
   whatHappened: string,
+  /**
+   * What each responder's doctrine would do this turn if nobody spoke for it —
+   * `proposeFor`'s account, keyed by faction. A power is played by its bot on
+   * the turns the player's acts do not reach it, so without this a reaction
+   * turn could not see the plan the bot was carrying out.
+   */
+  standingOrders: Record<string, string> = {},
 ): Promise<{ output: ReactionSet; attempts: number; costUsd: number }> {
   if (factionIds.length === 0) {
     return { output: { reactions: [] }, attempts: 0, costUsd: 0 };
@@ -1450,7 +1460,7 @@ export async function gatherReactions(
   const settled = await Promise.all(
     factionIds.map(async (id) => {
       try {
-        return await reactAs(state, id, whatHappened);
+        return await reactAs(state, id, whatHappened, standingOrders[id]);
       } catch {
         // A power that could not be reached simply does not speak this turn.
         // Losing every reaction because one failed is what the split ends.
@@ -1471,6 +1481,7 @@ async function reactAs(
   state: WorldState,
   factionId: string,
   whatHappened: string,
+  standing?: string,
 ): Promise<{ output: ReactionSet; attempts: number; costUsd: number }> {
   // The faction's own observation block. A faction must react only to projects
   // it can actually see, so the scoped view is built for it alone.
@@ -1528,6 +1539,9 @@ async function reactAs(
     '## React as this faction',
     '',
     perFaction,
+    '',
+    '**Your standing orders this turn** — what your doctrine would do if you said nothing:',
+    standing ?? 'Nothing: your doctrine has no move to make this turn.',
     '',
     `Return one reaction object for \`${factionId}\` — not an array.`,
   ].join('\n');

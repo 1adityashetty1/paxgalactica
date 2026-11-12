@@ -43,6 +43,19 @@ eight turns from completion on a contested border is a decision point: raid it,
 match it, or buy the builder off before it finishes. Interruptible orders are
 raidable, and `interrupt_order` is available to you.
 
+## What your doctrine would do
+
+When a faction is not asked to react, its doctrine plays its turn: it masses,
+strikes, raids, courts and builds by fixed rules, and the log says what it did.
+So a faction you are speaking for usually has a plan already under way, and
+**Your standing orders this turn** says what that plan would do now if nobody
+spoke for it. It is your faction's own intent, not a rival's.
+
+Follow it, change it, or set it aside — the player's turn may well be a reason
+to. But a plan dropped should be dropped on purpose: a squadron half-massed for
+an attack and then sent somewhere else for no stated reason reads as a power
+that forgot what it was doing.
+
 ## Acting in character
 
 Each faction is given a full character sheet: how it speaks, its war ethic, its

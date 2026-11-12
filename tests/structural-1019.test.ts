@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { openTestChannel } from './helpers/channel.js';
 
 /**
  * The structural problems from the 2026-10-19 playtest (`docs/audit-2026-10-19.md`
@@ -52,10 +53,9 @@ describe('S2: the player strikes their own term', () => {
   it('comes off the record before the other power answers, and the message says so', async () => {
     const session = new GameSession(new MemoryCampaignStore());
     await session.newCampaign('meridian', 'strike');
-    const inner = session as unknown as { openChannel: string | null; channelConcessions: unknown[]; channelHistory: { text: string }[] };
-    inner.openChannel = 'vigil';
-    inner.channelHistory = [];
-    inner.channelConcessions = [ConcessionSchema.parse({ by: 'meridian', kind: 'cede_worlds', text: 'Torrek passes to the Vigil.', systems: ['tor-1'] })];
+    openTestChannel(session, 'vigil').concessions.push(
+      ConcessionSchema.parse({ by: 'meridian', kind: 'cede_worlds', text: 'Torrek passes to the Vigil.', systems: ['tor-1'] }),
+    );
     queue = { diplomacy: [{ reply: 'Then there is nothing to sign, Chief Executive.', concessions: [], retractions: [] }] };
     const out = await session.talk('vigil', 'No deal.', ['cede_worlds']);
     expect(out.concessions).toEqual([]);

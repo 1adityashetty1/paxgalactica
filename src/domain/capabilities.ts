@@ -2,6 +2,7 @@ import { ASSET_ARCHETYPES } from './assets.js';
 import { COMMANDER_COST, MAX_ACTIVE_COMMANDERS, listedOfficers } from './command.js';
 import { FIXTURE_COST, MAX_FIXTURES_PER_WORLD, atWork } from './diplomacy.js';
 import { buildAdjacency } from './graph.js';
+import { describePlace, whereaboutsOf } from './people.js';
 import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY } from './hulls.js';
 import {
   WORLD_TYPE_STAT,
@@ -96,13 +97,7 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   // Officers.
   const active = state.commanders.filter((c) => c.factionId === me && c.status === 'active');
   const waiting = listedOfficers(state.commanders, me);
-  const where = (c: (typeof active)[number]) =>
-    c.atSystemId
-      ? `at ${nameOf(c.atSystemId)}`
-      : (() => {
-          const order = state.pendingOrders.find((o) => o.officers?.includes(c.id));
-          return order ? `under way to ${nameOf(order.targetId)}` : 'nowhere';
-        })();
+  const where = (c: (typeof active)[number]) => describePlace(state, whereaboutsOf(state, { kind: 'officer', id: c.id }));
   out.push(
     [
       `Officers in post: ${active.length > 0 ? active.map((c) => `${c.name} (${c.archetype}) ${where(c)}`).join('; ') : 'none — your fleets fight without one'}. An officer sails only with a fleet leaving the world they stand on.`,

@@ -1002,6 +1002,15 @@ export const WorldStateSchema = z.object({
    */
   tollBasis: z.enum(['hop', 'cargo']).default('hop'),
   /**
+   * Whether a live marriage holds its two powers out of war, as every attack
+   * guard already read it (`PEACE_TREATIES`) and `warsFor` did not. On the
+   * world for `routeTies`' reason: `relationBetween` is read in the browser as
+   * well as in the tick. The seed writes `true`; an older journal is rebuilt
+   * with `false`, and a save that predates the field parses to it, so both
+   * replay the wars they were played under.
+   */
+  marriagePeace: z.boolean().default(false),
+  /**
    * What each power has seen in full of another's secret work, kept after the
    * sight is lost — see `recordSightings` in `intel.ts`. Never shipped: the
    * viewer's own rows reach the browser as `CampaignView.remembered`, without
@@ -2815,7 +2824,6 @@ export function agentsVisibleTo(state: WorldState, factionId: string): Agent[] {
   );
 }
 
-/** Factions this one is at war with — no live non-aggression or ceasefire. */
 /**
  * How far a relationship has to sour before it counts as a war.
  *
@@ -2891,44 +2899,97 @@ export function spanOfControl(state: WorldState, factionId: string): SpanOfContr
 }
 
 /**
- * Factions this one is at war with — no live non-aggression or ceasefire, and
- * a relationship soured past `WAR_DISPOSITION_THRESHOLD`.
+ * What two powers are to each other, in one reading: the state machine every
+ * other read of war and peace is a view of.
+ *
+ * - `married` — a live `marriage` binds them (from journal version 39; see
+ *   `WorldState.marriagePeace`).
+ * - `allied` — a live `mutual_defense` or `coalition`.
+ * - `peace` — a live `non_aggression` or `ceasefire`.
+ * - `truce` — no treaty of those, but a live truce holds them out of war.
+ * - `war` — none of the above, and either side's regard is at or below
+ *   `WAR_DISPOSITION_THRESHOLD`.
+ * - `neutral` — none of the above.
+ *
+ * In that order, so the paper that binds them names the relation and a truce
+ * under it rides along as `truceUntil`. `basing` is a flag rather than a kind:
+ * basing rights let a fleet in without making the two powers at peace.
  *
  * Checked in BOTH directions, because a war is a property of the relationship
- * and not of one party's opinion. This previously read only "who hates me",
- * which meant the victim of an unprovoked attack did not list their attacker
- * as an enemy: the mechanical disposition costs (raiding, suborning, tolls,
- * pact-breaking) all move the INJURED party's view of the aggressor, and
- * nothing moves the aggressor's view of them. A playtest raid left Arkane
- * hating Drajk at -62 while Drajk's own view sat at -10, so
- * `warsFor('freeworlds')` omitted the faction that had just raided it.
+ * and not of one party's opinion. It once read only "who hates me", which meant
+ * the victim of an unprovoked attack did not list their attacker as an enemy:
+ * the mechanical disposition costs (raiding, suborning, tolls, pact-breaking)
+ * all move the INJURED party's view of the aggressor, and nothing moves the
+ * aggressor's view of them. A playtest raid left Arkane hating Drajk at -62
+ * while Drajk's own view sat at -10.
+ *
+ * **One reading, because two disagreed.** `warsFor` kept its own list of four
+ * peace treaties while `PEACE_TREATIES` held five, so a married pair whose
+ * regard sank to war was at war to the bots, the compulsions, the prompts and
+ * the Treaties panel, and at peace to every attack guard.
  */
-export function warsFor(state: WorldState, factionId: string): string[] {
-  const atPeace = new Set<string>();
-  for (const treaty of treatiesFor(state, factionId)) {
-    if (
-      treaty.type === 'non_aggression' ||
-      treaty.type === 'ceasefire' ||
-      treaty.type === 'mutual_defense' ||
-      treaty.type === 'coalition'
-    ) {
-      for (const p of treaty.parties) if (p !== factionId) atPeace.add(p);
+export type RelationKind = 'war' | 'truce' | 'married' | 'allied' | 'peace' | 'neutral';
+
+export interface Relation {
+  kind: RelationKind;
+  /** One plain line saying why, naming the treaty or the regard. */
+  why: string;
+  /** The treaty that names the relation, when one does. */
+  treatyId?: string;
+  /** The first turn a live truce between them no longer holds, if one does. */
+  truceUntil?: number;
+  /** A live basing-rights, defence pact or coalition lets either's fleets in as guests. */
+  basing: boolean;
+  /** Each side's regard for the other. */
+  regard: { of: number; from: number };
+}
+
+const RELATION_TREATIES: readonly { kind: Exclude<RelationKind, 'war' | 'truce' | 'neutral'>; types: readonly string[] }[] = [
+  { kind: 'married', types: ['marriage'] },
+  { kind: 'allied', types: ['mutual_defense', 'coalition'] },
+  { kind: 'peace', types: ['non_aggression', 'ceasefire'] },
+];
+
+const TREATY_WORDS: Record<string, string> = {
+  marriage: 'a marriage',
+  mutual_defense: 'a defence pact',
+  coalition: 'a coalition',
+  non_aggression: 'a non-aggression pact',
+  ceasefire: 'a ceasefire',
+};
+
+export function relationBetween(state: WorldState, a: string, b: string): Relation {
+  const of = dispositionBetween(state, a, b);
+  const from = dispositionBetween(state, b, a);
+  const regard = { of, from };
+  const live = a === b ? [] : treatiesFor(state, a).filter((t) => t.parties.includes(b));
+  const basing = live.some((t) => (GUEST_TREATIES as readonly string[]).includes(t.type));
+  const truce = a === b
+    ? undefined
+    : (state.truces ?? []).find((t) => t.parties.includes(a) && t.parties.includes(b) && isTruceLive(t, state.turn));
+  const truceUntil = truce?.untilTurn;
+  const marriagePeace = state.marriagePeace === true;
+  for (const { kind, types } of RELATION_TREATIES) {
+    if (kind === 'married' && !marriagePeace) continue;
+    const treaty = live.find((t) => types.includes(t.type));
+    if (treaty) {
+      return { kind, why: `bound by ${TREATY_WORDS[treaty.type] ?? treaty.type}`, treatyId: treaty.id, truceUntil, basing, regard };
     }
   }
-  // A truce holds two powers out of war whatever the paper under it does — a
-  // ceasefire may lapse and a cession is spent on signature. See `TruceSchema`.
-  for (const truce of state.truces ?? []) {
-    if (!truce.parties.includes(factionId) || !isTruceLive(truce, state.turn)) continue;
-    for (const p of truce.parties) if (p !== factionId) atPeace.add(p);
+  if (truce) return { kind: 'truce', why: `a truce holds until turn ${truce.untilTurn}`, truceUntil, basing, regard };
+  if (a !== b && Math.min(of, from) <= WAR_DISPOSITION_THRESHOLD) {
+    return { kind: 'war', why: `regard ${Math.min(of, from)}, at or below ${WAR_DISPOSITION_THRESHOLD}`, basing, regard };
   }
+  return { kind: 'neutral', why: 'no paper between them and no war', basing, regard };
+}
+
+/**
+ * Factions this one is at war with: every power whose `relationBetween` with
+ * it is `war`.
+ */
+export function warsFor(state: WorldState, factionId: string): string[] {
   return state.factions
-    .filter(
-      (f) =>
-        f.id !== factionId &&
-        !atPeace.has(f.id) &&
-        (dispositionBetween(state, f.id, factionId) <= WAR_DISPOSITION_THRESHOLD ||
-          dispositionBetween(state, factionId, f.id) <= WAR_DISPOSITION_THRESHOLD),
-    )
+    .filter((f) => f.id !== factionId && relationBetween(state, factionId, f.id).kind === 'war')
     .map((f) => f.id);
 }
 
