@@ -34,3 +34,16 @@ describe('a hung subscription call', () => {
     }
   });
 });
+
+describe('where the bundled binary runs', () => {
+  it("is an empty folder of the game's own, never the server's working directory", async () => {
+    const { binaryWorkDir } = await import('../src/model/auth.js');
+    const { tmpdir } = await import('node:os');
+    const { existsSync, readdirSync } = await import('node:fs');
+    const dir = binaryWorkDir();
+    expect(dir.startsWith(tmpdir())).toBe(true);
+    expect(dir).not.toBe(process.cwd());
+    expect(existsSync(dir)).toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+});

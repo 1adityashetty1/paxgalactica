@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import Anthropic from '@anthropic-ai/sdk';
-import { buildAuthEnv } from './auth.js';
+import { binaryWorkDir, buildAuthEnv } from './auth.js';
 import { ModelCallError, NotLoggedInError, UsageLimitError, isUsageLimit } from './errors.js';
 import { costFor } from './pricing.js';
 import { apiTierFor, modelFor, type ApiTierConfig, type CallKind } from './router.js';
@@ -212,6 +212,9 @@ export const subscriptionProvider: Provider = {
         // agentic loop — the game engine is the only thing that touches state.
         tools: [],
         allowedTools: [],
+        // An empty folder of the game's own, so the binary looks at nothing of
+        // the player's — see `binaryWorkDir`.
+        cwd: binaryWorkDir(),
         // Do not inherit the developer's CLAUDE.md or settings: campaign output
         // must depend only on this repo's versioned prompts.
         settingSources: [],

@@ -1,5 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /**
@@ -60,6 +60,27 @@ export function looksLikeOAuthToken(token: string): boolean {
  * they come back in every new terminal. Removing them here means the campaign
  * cannot bill an API account by accident regardless of how the shell is set up.
  */
+/**
+ * Where the bundled binary runs: an empty folder of the game's own, never the
+ * server's working directory.
+ *
+ * Every model call starts the Claude Code binary, and it inherited the server's
+ * working directory — `/` under the Mac app, the repo under `pnpm play:web` —
+ * where it looks around as Claude Code does at start (project files, git,
+ * memory files up the tree). Under the Mac app every one of those reads is
+ * attributed to Pax Galactica, so macOS asked the player for access to folders
+ * the game has no business in, turn after turn. The game's calls use no tools
+ * and read nothing, so the binary is given nothing to look at. Under the
+ * system's temporary directory rather than `~/.paxgalactica`, which holds the
+ * player's keys and which the suite keeps pointed at a folder that must not
+ * exist.
+ */
+export function binaryWorkDir(base: string = tmpdir()): string {
+  const dir = join(base, 'paxgalactica-run');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
 export function buildAuthEnv(
   base: NodeJS.ProcessEnv = process.env,
 ): Record<string, string | undefined> {

@@ -123,6 +123,23 @@ directly from the project root fails — and fails silently, which looks exactly
 like being unauthenticated. `scripts/find-binary.mjs` mirrors this for the
 standalone scripts.
 
+### The binary runs in a folder of its own
+
+Every model call, and the auth probe, starts the bundled binary, and it
+inherited the server's working directory: `/` under the Mac app, the repo under
+`pnpm play:web`. Claude Code looks around where it starts — project files, git,
+memory files up the tree — and under the Mac app every read is attributed to
+Pax Galactica, so macOS asked the player for access to folders the game never
+uses, turn after turn. `binaryWorkDir` (`auth.ts`) gives it an empty folder
+under the system's temporary directory instead. Not `~/.paxgalactica`, which
+holds the keys and which the suite keeps pointed at a folder that must not
+exist.
+
+Two more things make macOS ask, and neither is code: an app run from inside
+`~/Documents` reads its own files from a protected folder, and an ad hoc
+signature changes on every `pnpm app:macos`, so macOS forgets what was allowed.
+Run the app from `/Applications`.
+
 ### Startup guards (`src/preflight.ts`), in order
 
 1. **API key present** — a printed note, not an abort, and only when the
