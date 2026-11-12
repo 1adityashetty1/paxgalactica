@@ -47,7 +47,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     };
   },
 }));
-vi.mock('../src/model/auth.js', () => ({ buildAuthEnv: () => ({}) }));
+vi.mock('../src/model/auth.js', () => ({ buildAuthEnv: () => ({}), binaryWorkDir: () => tmpdir() }));
 
 const { callStructured } = await import('../src/model/client.js');
 const telemetry = await import('../src/model/telemetry.js');
