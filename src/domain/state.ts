@@ -80,6 +80,7 @@ import { EstateSchema, NotableSchema, estateBonus } from './estates.js';
 // seats.ts reads this module only inside function bodies, so the cycle is
 // harmless at load time — the shape trade.ts already has.
 import { stipendCostFor, withheldFor } from './seats.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * An order is either a fleet movement — whose duration the reducer computes
@@ -1593,19 +1594,19 @@ export function fixtureSlotRefusal(
     : [];
   const label = (k: string) => k.replace(/_/g, ' ');
   if (perWorld === 1) {
-    if (standing[0]) return `${system.name} already carries a ${label(standing[0].kind)}; a world carries one fixture.`;
-    if (building[0]) return `A fixture is already being raised at ${system.name}; a world carries one.`;
+    if (standing[0]) return say`${system.name} already carries a ${label(standing[0].kind)}; a {world} carries one fixture.`;
+    if (building[0]) return say`A fixture is already being raised at ${system.name}; a {world} carries one.`;
     return null;
   }
   if (standing.some((a) => a.kind === kind)) {
-    return `${system.name} already has a ${label(kind)}; a world's fixtures must be different kinds.`;
+    return say`${system.name} already has a ${label(kind)}; a {world}'s fixtures must be different kinds.`;
   }
   if (building.some((o) => o.onComplete?.fixtureKind === kind)) {
-    return `A ${label(kind)} is already being raised at ${system.name}; a world's fixtures must be different kinds.`;
+    return say`A ${label(kind)} is already being raised at ${system.name}; a {world}'s fixtures must be different kinds.`;
   }
   if (standing.length + building.length >= perWorld) {
     const there = [...standing.map((a) => a.kind), ...building.map((o) => `${o.onComplete!.fixtureKind} (being raised)`)];
-    return `${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a world holds ${perWorld}.`;
+    return say`${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a {world} holds ${perWorld}.`;
   }
   return null;
 }

@@ -22,6 +22,7 @@ import {
   type SaveFile,
 } from './store.js';
 import type { ChatMessage, TranscriptEntry } from '../model/calls.js';
+import { say } from '../skin/lexicon.js';
 
 // Re-exported so existing importers (and src/replay.ts) keep working.
 export { SAVE_DIR, SaveFileSchema, FileCampaignStore, MemoryCampaignStore } from './store.js';
@@ -843,9 +844,9 @@ function sentAgainst(state: WorldState, ops: readonly unknown[]): string[] {
     if (!contested) continue;
     const force =
       o.force === undefined
-        ? 'every hull there'
+        ? say`every {hull} there`
         : typeof o.force === 'number'
-          ? `${o.force} hulls`
+          ? say`${o.force} {hulls}`
           : Object.entries(o.force as Record<string, number>).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}${n === 1 ? '' : 's'}`).join(', ');
     out.push(`${getFaction(state, o.factionId ?? '')?.name ?? o.factionId} sends ${force} from ${origin?.name ?? o.originId} to ${target.name}`);
   }

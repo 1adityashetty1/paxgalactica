@@ -6,6 +6,7 @@ import { fleetName, resolveFleet } from './fleets.js';
 import { hullsIn } from './hulls.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import { FIXTURE_COST } from './diplomacy.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -105,11 +106,11 @@ export function sendsAsRuled(
   for (const op of ops) {
     const o = op as { op?: string; mission?: string; systemId?: string } | null;
     if (o?.op === 'deploy_agent' && !missions.has(`${o.mission}@${o.systemId}`)) {
-      dropped.push(`a ${o.mission ?? 'covert'} send at ${o.systemId ?? 'an unnamed world'}`);
+      dropped.push(`a ${o.mission ?? 'covert'} send at ${o.systemId ?? say`an unnamed {world}`}`);
       continue;
     }
     if (o?.op === 'lay_groundwork' && !places.has(o.systemId ?? '')) {
-      dropped.push(`groundwork at ${o.systemId ?? 'an unnamed world'}`);
+      dropped.push(`groundwork at ${o.systemId ?? say`an unnamed {world}`}`);
       continue;
     }
     kept.push(op);
@@ -287,8 +288,8 @@ export function foundingRefusal(state: WorldState, actor: string, found: Founds)
   const name = found.kind.replace(/_/g, ' ');
   if (!shape?.fixture || !shape.modifies) return `There is no fixture called a ${name}.`;
   const world = state.systems.find((x) => x.id === found.systemId);
-  if (!world) return `There is no world "${found.systemId}".`;
-  if (world.controllerFactionId !== actor) return `A fixture is raised on a world you hold, and ${world.name} is not yours.`;
+  if (!world) return say`There is no {world} "${found.systemId}".`;
+  if (world.controllerFactionId !== actor) return say`A fixture is raised on a {world} you hold, and ${world.name} is not yours.`;
   const ground = WORLD_TYPE_STAT[world.worldType];
   if (!shape.modifies.includes(ground)) {
     return `${world.name} is ${world.worldType} ground, which makes ${ground}; a ${name} works ${shape.modifies.join(' and ')}, so it cannot stand there.`;
@@ -296,7 +297,7 @@ export function foundingRefusal(state: WorldState, actor: string, found: Founds)
   const slot = fixtureSlotRefusal(state, world, found.kind);
   if (slot) return slot;
   const credits = state.factions.find((f) => f.id === actor)?.credits ?? 0;
-  if (credits < FIXTURE_COST) return `A ${name} costs ${FIXTURE_COST} credits, and the treasury holds ${credits}.`;
+  if (credits < FIXTURE_COST) return say`A ${name} costs ${FIXTURE_COST} {credits}, and the treasury holds ${credits}.`;
   return null;
 }
 
@@ -579,7 +580,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
     case 'not_present': {
       const who = ground.factionId ?? actor;
       const world = state.systems.find((x) => x.id === ground.systemId);
-      if (!world) return `There is no world "${ground.systemId}".`;
+      if (!world) return say`There is no {world} "${ground.systemId}".`;
       const there =
         world.controllerFactionId === who ||
         hullsAt(world, who) > 0 ||
@@ -610,7 +611,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
       const id = ground.ref;
       // A fleet existing does not make a move of it done.
       if (state.systems.some((x) => (x.fleets ?? []).some((f) => f.id === id))) {
-        return `"${id}" is a fleet standing where it is; that it exists does not make the order already so.`;
+        return say`"${id}" is a {fleet} standing where it is; that it exists does not make the order already so.`;
       }
       // A voyage under way makes a move already so only if it is the actor's,
       // carries ships, and is the fleet the order names — an officer's passage
@@ -618,7 +619,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
       const voyage = state.pendingOrders.find((o) => o.id === id && isMovementType(o.type));
       if (voyage) {
         if (voyage.factionId !== actor) return `"${id}" is another power's order, not this one.`;
-        if (hullsIn(voyage.force) === (voyage.force.courier ?? 0)) return `"${id}" is an officer travelling alone; it carries no fleet, so no move of one is already under way.`;
+        if (hullsIn(voyage.force) === (voyage.force.courier ?? 0)) return say`"${id}" is an officer travelling alone; it carries no {fleet}, so no move of one is already under way.`;
         const mine = state.systems.flatMap((x) => (x.fleets ?? []).filter((f) => f.factionId === actor));
         const named = mine.find((f) => lower(action).includes(lower(fleetName(actor, f))));
         if (named && voyage.fleet?.id !== named.id) {
@@ -636,7 +637,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
           .filter((x): x is NonNullable<typeof x> => !!x);
         const elsewhere = state.systems.filter((x) => said.includes(lower(x.name)) && !worlds.includes(x));
         if (elsewhere.length > 0 && !worlds.some((x) => said.includes(lower(x.name)))) {
-          return `"${id}" (${work.label}) is at ${worlds[0]?.name ?? 'another world'}, not at ${elsewhere[0]!.name}.`;
+          return `"${id}" (${work.label}) is at ${worlds[0]?.name ?? say`another {world}`}, not at ${elsewhere[0]!.name}.`;
         }
         const building = work.onComplete?.kind === 'found_fixture' ? work.onComplete.fixtureKind : null;
         const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(k.kind.replace(/_/g, ' ')));

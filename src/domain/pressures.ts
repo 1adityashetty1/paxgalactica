@@ -5,7 +5,7 @@ import { effectiveStats, getFaction, ledgerFor, orbitalWeightAt, stackAt, system
 import { driftingCompulsions } from './compulsions.js';
 import { JOIN_LEAD, JOIN_REGARD } from './regard.js';
 import { isNote } from './diplomacy.js';
-import { noteTitle } from '../skin/lexicon.js';
+import { noteTitle, say } from '../skin/lexicon.js';
 import { possessive } from './words.js';
 
 /**
@@ -49,7 +49,7 @@ export function pressuresOn(state: WorldState, me: string): string[] {
       if (r.over > 0) {
         const take = systemIncome(state, world).shares[me] ?? 0;
         out.push(
-          `${name(f)} has ${r.over.toFixed(1)} battleships' weight in the orbit of ${world.name}, a world you hold (garrison ${world.garrison}, yours); you have ${mine.toFixed(1)} there, and the world pays you ${Math.round(take)} a turn of ${world.strategicValue * 7}.`,
+          say`${name(f)} has ${r.over.toFixed(1)} {battleships}' weight in the {orbit} of ${world.name}, a {world} you hold (garrison ${world.garrison}, yours); you have ${mine.toFixed(1)} there, and the {world} pays you ${Math.round(take)} a turn of ${world.strategicValue * 7}.`,
         );
       }
       if (r.troops > world.garrison) {
@@ -58,13 +58,13 @@ export function pressuresOn(state: WorldState, me: string): string[] {
         // moving to", invented a landing date, and weighed it against the
         // garrison alone while 36 troops of the player's own lift and nine
         // battleships stood over the world (playtest 2026-10-19, loop 2).
-        const where = [...r.staged].map(([at, n]) => (at === world.name ? `${n} in its orbit` : `${n} at ${at}, a jump away`)).join(' and ');
+        const where = [...r.staged].map(([at, n]) => (at === world.name ? say`${n} in its {orbit}` : say`${n} at ${at}, a {jump} away`)).join(' and ');
         const ownLift = (stackAt(world, me).lifter ?? 0) * LIFTER_CARRY;
         out.push(
-          `${name(f)} has lift for ${r.troops} troops within reach of ${world.name} (${where}); none of it has sailed, and nothing says when it will. On ${possessive(world.name)} side: your garrison of ${world.garrison}, your own lift for ${ownLift} troops, and ${mine.toFixed(1)} battleships' weight in its orbit.`,
+          say`${name(f)} has lift for ${r.troops} troops within reach of ${world.name} (${where}); none of it has {sailed}, and nothing says when it will. On ${possessive(world.name)} side: your garrison of ${world.garrison}, your own lift for ${ownLift} troops, and ${mine.toFixed(1)} {battleships}' weight in its {orbit}.`,
         );
       } else if (r.line > Math.max(mine, 0.5) * 1.5 && r.over === 0) {
-        out.push(`${name(f)} has ${r.line.toFixed(1)} battleships' weight within a jump of ${world.name}, against your ${mine.toFixed(1)} there.`);
+        out.push(say`${name(f)} has ${r.line.toFixed(1)} {battleships}' weight within a {jump} of ${world.name}, against your ${mine.toFixed(1)} there.`);
       }
     }
   }
@@ -105,7 +105,7 @@ export function pressuresOn(state: WorldState, me: string): string[] {
               ? 'an even exchange: both lines would be spent and nothing taken'
               : 'too little: your line would be driven off';
       out.push(
-        `If you attacked ${base.name} (${name(holder)}) with what stands at ${world.name}, it would be ${ratio.toFixed(1)}:1 counting what ${name(holder)} could move in from a jump away — ${verdict}${holds}. (These are the odds of YOUR attack, not of theirs on you.)`,
+        say`If you attacked ${base.name} (${name(holder)}) with what stands at ${world.name}, it would be ${ratio.toFixed(1)}:1 counting what ${name(holder)} could move in from a {jump} away — ${verdict}${holds}. (These are the odds of YOUR attack, not of theirs on you.)`,
       );
     }
   }
@@ -113,7 +113,7 @@ export function pressuresOn(state: WorldState, me: string): string[] {
   // player's "held" by the Vigil for one freighter in its orbit (playtest
   // 2026-10-19, loop 3). A ship in an orbit holds nothing.
   const held = state.systems.filter((s) => s.controllerFactionId === me).map((s) => s.name);
-  const header = `Worlds you hold: ${held.join(', ') || 'none'}. A rival's ships in an orbit do not make the world theirs.`;
+  const header = say`{Worlds} you hold: ${held.join(', ') || 'none'}. A rival's {ships} in an {orbit} do not make the {world} theirs.`;
   return [header, ...[...new Set(out)].slice(0, 10)];
 }
 
@@ -155,7 +155,7 @@ export function paperOf(state: WorldState, me: string): string[] {
   out.push(
     // "Your treasury", not "net": the counsellor read a bare net figure as one
     // garrison's running cost (loop 7).
-    `Your treasury: ${ledger.net >= 0 ? 'gains' : 'loses'} ${Math.abs(ledger.net)} a turn after every cost, across all your worlds (${ledger.gross} income, ${ledger.upkeep} fleet upkeep${ledger.debtService ? `, ${-ledger.debtService} debt service` : ''}); ${ledger.net > 0 ? 'the quarter is in the black' : 'the quarter is running at a loss'}.`,
+    say`Your treasury: ${ledger.net >= 0 ? 'gains' : 'loses'} ${Math.abs(ledger.net)} a turn after every cost, across all your {worlds} (${ledger.gross} income, ${ledger.upkeep} {fleet} upkeep${ledger.debtService ? `, ${-ledger.debtService} debt service` : ''}); ${ledger.net > 0 ? 'the quarter is in the black' : 'the quarter is running at a loss'}.`,
   );
   // Where each world that answers to nobody stands with you, computed: the
   // counsellor called three worlds "at sixty regard and ready to join" while
@@ -163,7 +163,7 @@ export function paperOf(state: WorldState, me: string): string[] {
   const unaligned = state.systems.filter((x) => x.controllerFactionId === null);
   if (unaligned.length > 0) {
     out.push(
-      `Worlds that answer to nobody (one joins a power at ${JOIN_REGARD} standing, ${JOIN_LEAD} clear of the next; nobody appoints to them): ${unaligned
+      say`{Worlds} that answer to nobody (one joins a power at ${JOIN_REGARD} standing, ${JOIN_LEAD} clear of the next; nobody appoints to them): ${unaligned
         .map((x) => {
           const mine = x.regard[me] ?? 0;
           const [rival, theirs] = Object.entries(x.regard).filter(([f]) => f !== me).sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
@@ -180,7 +180,7 @@ export function paperOf(state: WorldState, me: string): string[] {
   out.push(
     mine.length > 0
       ? `Your work under way (nothing else is): ${mine.map((o) => `${o.label || o.type.replace(/_/g, ' ')} at ${where(o.targetId)}, ${o.durationTurns - o.progress} turn${o.durationTurns - o.progress === 1 ? '' : 's'} to go`).join('; ')}.`
-      : 'Your work under way: none. No programme, envoy or fleet of yours is in progress.',
+      : say`Your work under way: none. No programme, envoy or {fleet} of yours is in progress.`,
   );
   const drifting = driftingCompulsions(state, me);
   out.push(

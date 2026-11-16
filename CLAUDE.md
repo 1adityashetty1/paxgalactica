@@ -4479,7 +4479,8 @@ Eight lifecycles in this game were stored as combinations of fields and read
 by whoever needed them, each reader its own way. Each is now worked out by one
 function from the fields that already exist. Nothing new is stored except the
 one rule below, so saves replay as they were played and the four harness
-boards are unchanged (5/5/5/5/5 in all four, measured again on 2026-11-15).
+boards are unchanged (5/5/5/5/5 three times, 5/6/5/5/4 at 100 turns without
+events).
 
 | machine | read by | what disagreed |
 |---|---|---|

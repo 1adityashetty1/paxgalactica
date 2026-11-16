@@ -104,6 +104,7 @@ import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
 import { ACT_WORDS, linesCrossed, type Act } from './acts.js';
 import { count, possessive } from './words.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -502,7 +503,7 @@ function sabotage(ctx: Ctx): Ops {
       systemId: target.a.atSystemId,
       mission: 'sabotage',
       effect,
-      cover: `a contract crew at ${sys(state, target.a.atSystemId!)?.name ?? target.a.atSystemId}`,
+      cover: say`a contract {crew} at ${sys(state, target.a.atSystemId!)?.name ?? target.a.atSystemId}`,
     },
   ];
 }
@@ -2494,7 +2495,7 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
           `sends ${describeStack(normaliseStack((op.force ?? {}) as ShipStack))} from ${where(op.originId)} against ${where(op.targetId)}`,
         );
       } else if (op.type === 'blockade') {
-        parts.push(`closes the lanes at ${where(op.targetId)}`);
+        parts.push(say`closes the {lanes} at ${where(op.targetId)}`);
       } else if (op.type === 'commerce_raiding') {
         // A raid run dark is not announced, least of all in its own account.
         if (!op.dark) parts.push(`sets raiders on the traffic through ${where(op.targetId)}`);
@@ -2507,7 +2508,7 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
       }
     }
   }
-  if (massed > 0) parts.unshift(`sails ${count(massed, 'hull')} to concentrate`);
+  if (massed > 0) parts.unshift(say`{sails} ${count(massed, 'hull')} to concentrate`);
   if (bought > 0) parts.unshift(`lays down ${count(bought, 'hull')}`);
 
   return parts.length === 0 ? `${name} holds its position.` : `${name} ${parts.join(', ')}.`;
@@ -2590,7 +2591,7 @@ export function intentKeys(ops: readonly Record<string, unknown>[]): string[] {
   const keys = new Set<string>();
   for (const raw of ops) {
     if (raw.op === 'build_ships') {
-      keys.add(`build_ships@${String(raw.systemId ?? 'yards')}`);
+      keys.add(say`build_{ships}@${String(raw.systemId ?? 'yards')}`);
       continue;
     }
     if (raw.op === 'deploy_agent') {
@@ -2797,7 +2798,7 @@ export function brokeredAccords(state: WorldState): Accord[] {
             text:
               payer === null
                 ? `${name(a)} and ${name(b)}, ${quiet} turns without a battle between them, agree a ceasefire.`
-                : `${name(payer)}, unable to carry its wars, sues ${name(payee!)} for peace${indemnity > 0 ? ` and pays ${indemnity} credits for it` : ''}.`,
+                : `${name(payer)}, unable to carry its wars, sues ${name(payee!)} for peace${indemnity > 0 ? say` and pays ${indemnity} {credits} for it` : ''}.`,
           },
         ],
       });

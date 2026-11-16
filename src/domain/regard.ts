@@ -13,6 +13,7 @@ import {
 } from './state.js';
 import type { BattleReport } from './battle.js';
 import { MARRIAGE_REGARD } from './estates.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * A world's regard for each power — its **standing** with them — and the two
@@ -318,7 +319,7 @@ export function joinsWhom(system: StarSystem, factionIds: readonly string[]): st
 export function envoyRefusal(state: WorldState, system: StarSystem, factionId: string): string | null {
   const holder = system.controllerFactionId;
   if (holder !== null && holder !== factionId) {
-    return `${system.name} answers to another power; an envoy goes to a world of your own, or to one that answers to nobody.`;
+    return say`${system.name} answers to another power; an envoy goes to a {world} of your own, or to one that answers to nobody.`;
   }
   if (holder === factionId) return null;
   const reach =
@@ -327,5 +328,5 @@ export function envoyRefusal(state: WorldState, system: StarSystem, factionId: s
     neighboursOf(state, system.id).some(
       (n) => state.systems.find((x) => x.id === n)?.controllerFactionId === factionId,
     );
-  return reach ? null : `Nothing of yours is near ${system.name}; an envoy needs a world of yours next to it, or ships over it.`;
+  return reach ? null : say`Nothing of yours is near ${system.name}; an envoy needs a {world} of yours next to it, or {ships} over it.`;
 }

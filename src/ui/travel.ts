@@ -1,5 +1,6 @@
 import { buildAdjacency } from '../domain/graph.js';
 import { hullsAt, movesAtOnce, type WorldState } from '../domain/state.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * How long your nearest fleet takes to reach a world, for the map's tooltip.
@@ -46,8 +47,8 @@ export function travelTo(state: WorldState, me: string, targetId: string): Trave
 
 /** The tooltip's line. */
 export function travelLine(t: Travel | null): string {
-  if (t === null) return 'No fleet of yours can reach here.';
-  if (t.jumps === 0) return 'Your ships are here.';
-  if (t.atOnce) return `From ${t.fromName}, one jump inside your space: lands the turn it is ordered.`;
-  return `From ${t.fromName}: ${t.jumps} jump${t.jumps === 1 ? '' : 's'}, arrives in ${t.turns} turn${t.turns === 1 ? '' : 's'}.`;
+  if (t === null) return say`No {fleet} of yours can reach here.`;
+  if (t.jumps === 0) return say`Your {ships} are here.`;
+  if (t.atOnce) return say`From ${t.fromName}, one {jump} inside your {space}: lands the turn it is ordered.`;
+  return say`From ${t.fromName}: ${t.jumps} {jump}${t.jumps === 1 ? '' : 's'}, arrives in ${t.turns} turn${t.turns === 1 ? '' : 's'}.`;
 }

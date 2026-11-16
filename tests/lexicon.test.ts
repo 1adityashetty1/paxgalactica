@@ -33,7 +33,9 @@ describe('the lexicon', () => {
     const pax = new Set(paxWords().map((w) => w.toLowerCase()));
     expect(pax.size).toBeGreaterThan(100);
     for (const family of Object.values(nullLexicon())) {
-      for (const entry of Object.values(family as Record<string, { word: string }>)) expect(pax.has(entry.word.toLowerCase())).toBe(false);
+      for (const entry of Object.values(family as Record<string, { word?: string; base?: string }>)) {
+        expect(pax.has((entry.word ?? entry.base)!.toLowerCase())).toBe(false);
+      }
     }
   });
 });
@@ -71,6 +73,7 @@ describe('say', () => {
       'Worlds you hold pay 3 credits across the Rim; torpedo boats strike first',
     );
     expect(say`{Rim}`).toBe('The Rim');
+    expect(say`{Warships} {sailed} and {landing} went well`).toBe('Warships sailed and landing went well');
     withLexicon(nullLexicon(), () => {
       expect(say`{Worlds} you hold pay ${n} {credits} across {rim}`).toMatch(/^Qxplaces\d+s you hold pay 3 Qxaccounts\d+s across Qxplaces\d+$/);
     });
@@ -82,7 +85,7 @@ describe('say', () => {
   });
 
   it('has a token for every place, force, account and hull class', () => {
-    for (const t of ['world', 'worlds', 'lanes', 'orbit', 'yards', 'rim', 'hulls', 'fleets', 'navies', 'credits', 'tons', 'battleships', 'courier']) {
+    for (const t of ['world', 'worlds', 'lanes', 'orbit', 'yards', 'rim', 'space', 'hulls', 'warships', 'fleets', 'navies', 'credits', 'tons', 'battleships', 'courier', 'sails', 'landing']) {
       expect(SAY_TOKENS).toContain(t);
     }
   });

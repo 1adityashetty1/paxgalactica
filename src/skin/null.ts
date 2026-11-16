@@ -22,6 +22,7 @@ export function nullLexicon(): Words {
       Object.entries(entries as Record<string, Record<string, unknown>>).map(([key, entry], i) => {
         const id = `qx${family.toLowerCase()}${i}`;
         const w = `${tag}${i}`;
+        if ('base' in entry) return [key, { base: w, s: `${w}s`, past: `${w}ed`, ing: `${w}ing`, synonyms: [] }];
         const swapped: Record<string, unknown> = { ...entry, word: w, synonyms: [] };
         if ('id' in entry) swapped.id = id;
         if ('plural' in entry) swapped.plural = `${w}s`;
@@ -42,7 +43,7 @@ export function nullLexicon(): Words {
  */
 export function paxWords(options: { units?: boolean } = {}): string[] {
   const found = new Set<string>();
-  const fields = options.units === false ? (['word', 'plural'] as const) : (['word', 'plural', 'unit'] as const);
+  const fields = options.units === false ? (['word', 'plural', 'base', 's', 'past', 'ing'] as const) : (['word', 'plural', 'unit', 'base', 's', 'past', 'ing'] as const);
   for (const entries of Object.values(PAX_LEXICON)) {
     for (const entry of Object.values(entries as Record<string, Record<string, unknown>>)) {
       for (const k of fields) if (typeof entry[k] === 'string') found.add(entry[k] as string);
@@ -82,8 +83,21 @@ export const ORDINARY_WORDS: readonly string[] = [
   'Most-favoured terms', 'Line of credit', 'Sanctuary', 'Safe passage',
 ];
 
-/** The words a leak scan looks for: the default lexicon's, less its units and the ordinary ones. */
+/**
+ * Words Pax Galactica writes that no role in the lexicon names yet. The scan
+ * looks for them so they cannot hide by being absent from the lexicon; each
+ * leaves this list when it is given a role or reworded away. `lift` is not
+ * here because it is also the verb a toll is lifted by, and `land` is a verb
+ * the lexicon has, whose noun ("land changes hands") a scan cannot tell apart.
+ */
+export const UNROLED_WORDS: readonly string[] = [
+  'salvo', 'salvos', 'torpedo', 'torpedoes', 'berth', 'berths', 'shipyard', 'shipyards',
+  'admiral', 'admirals', 'captain', 'captains', 'voyage', 'voyages', 'dock', 'docks',
+  'convoy', 'convoys', 'boarding', 'pilot', 'pilots', 'galactic', 'starship', 'starships',
+];
+
+/** The words a leak scan looks for: the default lexicon's, less its units and the ordinary ones, and the unroled ones. */
 export function settingWords(): string[] {
   const ordinary = new Set(ORDINARY_WORDS.map((w) => w.toLowerCase()));
-  return paxWords({ units: false }).filter((w) => !ordinary.has(w.toLowerCase()));
+  return [...paxWords({ units: false }).filter((w) => !ordinary.has(w.toLowerCase())), ...UNROLED_WORDS];
 }

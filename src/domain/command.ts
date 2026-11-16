@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { rollD20 } from './checks.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Commanders: a named officer who takes one side of one battle.
@@ -576,7 +577,7 @@ export function commanderPassive(c: Commander): string {
     case 'gunnery':
       return `+${commanderIndustry(c)} industry`;
     case 'convoy':
-      return `-${Math.round(commanderUpkeepRelief(c) * 100)}% fleet upkeep`;
+      return say`-${Math.round(commanderUpkeepRelief(c) * 100)}% {fleet} upkeep`;
     case 'assault':
       return `+${commanderInfluence(c)} influence`;
   }
@@ -631,13 +632,13 @@ export function veterancyLabel(battles: number): string {
 export function commanderEffect(c: Commander): string {
   switch (c.archetype) {
     case 'lineofbattle':
-      return `+${commanderMight(c)} might in every exchange, and the landing`;
+      return say`+${commanderMight(c)} might in every exchange, and the {landing}`;
     case 'gunnery':
       return `+${Math.round(commanderStrike(c) * 100)}% on the opening salvo`;
     case 'convoy':
       return `-${commanderRelief(c)}% off a withdrawal`;
     case 'assault':
-      return `+${Math.round(commanderAssault(c) * 100)}% troops ashore in a landing`;
+      return say`+${Math.round(commanderAssault(c) * 100)}% troops ashore in a {landing}`;
   }
 }
 

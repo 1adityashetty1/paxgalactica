@@ -1,4 +1,4 @@
-import type { AssetWord, CountedWord, Term, Word, Words } from './lexicon.js';
+import type { AssetWord, CountedWord, Term, Verb, Word, Words } from './lexicon.js';
 
 /**
  * Pax Galactica's words for the core's roles: the default lexicon.
@@ -20,6 +20,7 @@ const counted = (id: string, w: string, plural = `${w}s`): CountedWord => ({ id,
 const spaced = (id: string): Word => word(id, id.replace(/_/g, ' '));
 const asset = (id: string, unit: string): AssetWord => ({ ...spaced(id), unit });
 const term = (w: string, plural = `${w}s`, synonyms: string[] = []): Term => ({ word: w, plural, synonyms });
+const verb = (base: string): Verb => ({ base, s: `${base}s`, past: `${base}ed`, ing: `${base}ing`, synonyms: [] });
 
 export const PAX_LEXICON: Words = {
   units: {
@@ -152,13 +153,22 @@ export const PAX_LEXICON: Words = {
     garrison: term('garrison'),
     yards: term('yards', 'yards', ['slipways']),
     rim: term('the Rim', 'the Rim'),
+    space: term('space', 'space'),
+    galaxy: term('galaxy', 'galaxies'),
   },
   forces: {
     hull: term('hull'),
     ship: term('ship'),
+    warship: term('warship'),
     fleet: term('fleet'),
+    squadron: term('squadron'),
     crew: term('crew', 'crews'),
     navy: term('navy', 'navies'),
+    cargo: term('cargo', 'cargo'),
+  },
+  verbs: {
+    sail: verb('sail'),
+    land: verb('land'),
   },
   accounts: {
     credits: term('credit'),

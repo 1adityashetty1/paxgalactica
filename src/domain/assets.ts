@@ -1,6 +1,6 @@
 import { MAX_ASSET_STAT } from './diplomacy.js';
 import type { StatName } from './checks.js';
-import { assetUnit } from '../skin/lexicon.js';
+import { assetUnit, say } from '../skin/lexicon.js';
 
 /**
  * The catalogue: what a thing usually is, so the arbiter reaches for a shape
@@ -430,7 +430,7 @@ export function serializeArchetypes(): string {
       a.divisible ? 'splits into lots' : 'one thing',
       a.uses === null ? null : a.uses === 1 ? 'played once, then spent' : `played ${a.uses} times`,
       a.speculative ? 'worth is a BAND, nobody has settled it' : null,
-      a.fixture ? 'stands on a world; changes hands only with it' : null,
+      a.fixture ? say`stands on a {world}; changes hands only with it` : null,
     ]
       .filter((x): x is string => x !== null)
       .join(' · ');

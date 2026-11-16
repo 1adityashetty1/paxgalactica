@@ -8,7 +8,7 @@ import { RIM_EVENT_KINDS as EVENT_KINDS } from '../domain/events.js';
 import { FLEET_KINDS } from '../domain/fleets.js';
 import { HULL_CLASSES } from '../domain/hulls.js';
 import { WORLD_TYPES, type WorldState } from '../domain/state.js';
-import { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS } from './lexicon.js';
+import { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS, VERB_TERMS } from './lexicon.js';
 
 /**
  * A skin: the words, names and art that sit over the core's mechanics.
@@ -79,7 +79,10 @@ export const ASSET_KINDS: readonly string[] = ASSET_ARCHETYPES.map((a) => a.kind
 export const RIM_EVENT_KINDS: readonly string[] = EVENT_KINDS;
 export const SCHOOLS: readonly string[] = COMMANDER_ARCHETYPES.map((a) => a.kind);
 
-export { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS };
+export { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS, VERB_TERMS };
+
+/** A verb in the four forms English sentences need. */
+const VerbSchema = z.object({ base: WordSchema, s: WordSchema, past: WordSchema, ing: WordSchema, synonyms: z.array(WordSchema).default([]) });
 
 export const LexiconSchema = z.object({
   units: family(HULL_CLASSES, CountedIdWordSchema),
@@ -94,6 +97,7 @@ export const LexiconSchema = z.object({
   fleetKinds: family(FLEET_KINDS, IdWordSchema),
   places: family(PLACE_TERMS, TermSchema),
   forces: family(FORCE_TERMS, TermSchema),
+  verbs: family(VERB_TERMS, VerbSchema),
   accounts: family(ACCOUNT_TERMS, TermSchema),
 });
 export type Lexicon = z.infer<typeof LexiconSchema>;
@@ -351,6 +355,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
   for (const t of [...Object.values(skin.lexicon.places), ...Object.values(skin.lexicon.forces), ...Object.values(skin.lexicon.accounts)]) {
     words.push(t.word, t.plural, ...t.synonyms);
   }
+  for (const v of Object.values(skin.lexicon.verbs)) words.push(v.base, v.s, v.past, v.ing, ...v.synonyms);
   for (const p of Object.values(skin.powers)) {
     words.push(p.name, p.title, p.voice, p.doctrine, ...p.redLines, ...p.compulsions);
     words.push(...Object.values(p.estates).map((e) => e.name), ...Object.values(p.fleets));

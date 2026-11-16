@@ -1,6 +1,6 @@
 import { fleetName, fleetsAt } from '../domain/fleets.js';
 import { ACT_WORDS } from '../domain/acts.js';
-import { noteTitle } from '../skin/lexicon.js';
+import { noteTitle, say } from '../skin/lexicon.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -173,7 +173,7 @@ export function serializeFactions(
           }`;
     return [
       `- **${f.name}** (id: \`${f.id}\`)${self}`,
-      `  fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons | credits ${f.credits} | ${held} systems${toward}`,
+      say`  {fleet} ${fleetStrengthOf(state, f.id)} {hulls} / ${fleetTonsOf(state, f.id)} {tons} | {credits} ${f.credits} | ${held} {systems}${toward}`,
       // **Effective, not the base sheet** (item 123). This printed `f.stats`,
       // so a fixture, an officer's passive, a rally or dissent that moved a
       // power's numbers reached no prompt that read this line — and every
@@ -202,7 +202,7 @@ export function serializeFactions(
       isViewer || detail === 'full' ? `  doctrine: ${f.doctrine}` : '',
       // Public: notoriety is what the Rim knows about a power.
       (f.heat ?? 0) > 0
-        ? `  heat: ${f.heat}/100${(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' — notorious; the Rim is answering' : (watchLine(HEAT_BANDS, f.heat ?? 0) ? ` — ${watchLine(HEAT_BANDS, f.heat ?? 0)}` : '')}`
+        ? `  heat: ${f.heat}/100${(f.heat ?? 0) >= HEAT_NOTORIOUS ? say` — notorious; {rim} is answering` : (watchLine(HEAT_BANDS, f.heat ?? 0) ? ` — ${watchLine(HEAT_BANDS, f.heat ?? 0)}` : '')}`
         : '',
       // **Their officers, by the name a player would use.** For its whole
       // existence this block named nobody but the viewer's own, so an arbiter
@@ -272,8 +272,8 @@ function commanderLine(state: WorldState, viewerId: string): string {
     // A power with nobody in post is a power that can appoint one, and saying
     // so is the difference between a gap and a mystery.
     const none = held.length > 0
-      ? `You have no officer in post, and your fleets fight without one until you appoint. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
-      : 'You have no officer in post, and your fleets fight without one until you appoint.';
+      ? say`You have no officer in post, and your {fleets} fight without one until you appoint. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
+      : say`You have no officer in post, and your {fleets} fight without one until you appoint.`;
     return [none, lists].filter(Boolean).join('\n');
   }
   const shape = archetypeOf(officer.archetype);
@@ -303,7 +303,7 @@ function commanderLine(state: WorldState, viewerId: string): string {
     `Your officers (${roster.length} in post${room > 0 ? `, room for ${room} more` : ', the roster is full'}):`,
     ...each.map((line) => `  - ${line}`),
     `The senior officer, ${officer.name}, is known for ${shape.known} and runs your establishment: ${commanderPassive(officer)}. ${ladder}`,
-    'An officer is part of the fleet they stand with. They sail when named in a fleet movement\'s `officers` (a family name is enough) or when the whole port sails; they command only the battle they are at, and fall only when every ship they fought with is lost.',
+    say`An officer is part of the {fleet} they stand with. They {sail} when named in a {fleet} movement\'s \`officers\` (a family name is enough) or when the whole port {sails}; they command only the battle they are at, and fall only when every {ship} they fought with is lost.`,
     lists,
   ]
     .filter(Boolean)
@@ -336,7 +336,7 @@ function occupiedNames(state: WorldState, viewerId: string): string {
         sys.homeFactionId !== viewerId,
     )
     .map((sys) => sys.name);
-  return names.length > 0 ? names.join(', ') : 'worlds taken from others';
+  return names.length > 0 ? names.join(', ') : say`{worlds} taken from others`;
 }
 
 /**
@@ -355,7 +355,7 @@ function terrainLine(state: WorldState, viewerId: string): string {
     const held = state.systems.filter(
       (sys) => sys.controllerFactionId === viewerId && kinds.includes(sys.worldType),
     ).length;
-    return `${stat} +${bonus[stat]} (${held} ${kinds.join('/')} worlds)`;
+    return say`${stat} +${bonus[stat]} (${held} ${kinds.join('/')} {worlds})`;
   });
   return `What your ground is worth: ${parts.join(' · ')}. Taking more of one kind is worth more than taking more.`;
 }
@@ -567,9 +567,9 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   // Bounties are public: a price nobody hears of is a price nobody earns.
   const bounties = (state.bounties ?? []).filter((b) => b.status === 'open' && b.pool > 0);
   if (bounties.length > 0) {
-    lines.push('', '**Bounties standing** — prizes raided from the target pay out credit for credit, and its hulls destroyed pay 15 a ton');
+    lines.push('', say`**Bounties standing** — prizes raided from the target pay out {credit} for {credit}, and its {hulls} destroyed pay 15 a {ton}`);
     for (const b of bounties) {
-      const by = b.postedBy === null ? `the Rim's merchants (${b.note})` : nameOfFaction(state, b.postedBy);
+      const by = b.postedBy === null ? say`{rim}'s merchants (${b.note})` : nameOfFaction(state, b.postedBy);
       const mine = b.postedBy === viewerId ? ' — YOURS; withdraw_bounty takes back what is left' : '';
       const onYou = b.targetFactionId === viewerId ? ' — ON YOU' : '';
       lines.push(`  - \`${b.id}\` ${b.pool} on ${nameOfFaction(state, b.targetFactionId)}, posted by ${by}${onYou}${mine}`);
@@ -604,11 +604,11 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   const span = spanOfControl(state, viewerId);
   lines.push(
     '',
-    `**Span of control: ${span.held} worlds held, ${span.span} governable**` +
+    say`**Span of control: ${span.held} {worlds} held, ${span.span} governable**` +
       (span.over > 0
         ? ` — ${span.over} over, +${span.over * SPAN_DISSENT_PER_WORLD} dissent every turn until it is back within the span.`
         : span.held === span.span
-          ? ' — at the limit; every world taken now costs dissent every turn.'
+          ? say` — at the limit; every {world} taken now costs dissent every turn.`
           : ` (room for ${span.span - span.held} more before holding ground costs dissent).`),
   );
 
@@ -685,13 +685,13 @@ function seatsLine(state: WorldState, s: StarSystem): string[] {
   if (seated.length === 0 && empty.length === 0) return [];
   const parts = seated.map((n) => {
     const estate = estateById(state, n.estateId);
-    const of = estate ? `of ${estate.estate.name}, ${estate.faction.name}` : 'speaking for the world itself';
+    const of = estate ? `of ${estate.estate.name}, ${estate.faction.name}` : say`speaking for the {world} itself`;
     const foreign =
       estate && s.controllerFactionId !== null && estate.faction.id !== s.controllerFactionId
         ? ' — FOREIGN, working against its holder until reseated'
         : '';
     const spouse = notableById(state, n.spouseId);
-    const spouseOf = spouse ? (estateById(state, spouse.estateId)?.faction.name ?? 'an independent world') : '';
+    const spouseOf = spouse ? (estateById(state, spouse.estateId)?.faction.name ?? say`an independent {world}`) : '';
     return `${seatOffice(n)} ${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
   });
   for (const k of empty) parts.push(`${seatOffice({ seat: k })}: EMPTY, until its holder appoints someone off its Lists`);
@@ -714,7 +714,7 @@ function courtLine(state: WorldState, viewerId: string): string {
   for (const e of me.estates ?? []) {
     const b = favourBaseline(state, e);
     lines.push(
-      `- ${e.name} (\`${e.id}\`, ${e.stat}): favour ${e.favour} → ${sign(favourModifier(e.favour))} ${e.stat}; ${b.seats} seat${b.seats === 1 ? '' : 's'} against a fair share of ${b.fairShare.toFixed(1)}, ${b.grants} grant${b.grants === 1 ? '' : 's'} (${e.stipends} paid)${b.hated > 0 ? `, ${b.hated} on worlds that resent you` : ''}; drifting toward ${b.baseline}.`,
+      `- ${e.name} (\`${e.id}\`, ${e.stat}): favour ${e.favour} → ${sign(favourModifier(e.favour))} ${e.stat}; ${b.seats} seat${b.seats === 1 ? '' : 's'} against a fair share of ${b.fairShare.toFixed(1)}, ${b.grants} grant${b.grants === 1 ? '' : 's'} (${e.stipends} paid)${b.hated > 0 ? say`, ${b.hated} on {worlds} that resent you` : ''}; drifting toward ${b.baseline}.`,
     );
   }
   const lists = listsOf(state, viewerId);
@@ -726,7 +726,7 @@ function courtLine(state: WorldState, viewerId: string): string {
   const vacant = state.systems
     .filter((x) => x.controllerFactionId === viewerId)
     .flatMap((x) => emptySeats(state, x).map((k) => `${x.name}'s ${seatOffice({ seat: k }).toLowerCase()}`));
-  if (vacant.length > 0) lines.push(`Empty seats on your worlds, doing nothing for you until filled: ${vacant.join(', ')}.`);
+  if (vacant.length > 0) lines.push(say`Empty seats on your {worlds}, doing nothing for you until filled: ${vacant.join(', ')}.`);
   const abroad = (state.notables ?? []).filter((n) => n.systemId === null && n.estateId?.startsWith(`${viewerId}:`));
   for (const n of abroad) {
     const held = heldAs(state, n.id);
@@ -753,7 +753,7 @@ function courtLine(state: WorldState, viewerId: string): string {
     .filter((x) => x.controllerFactionId === null && regardFor(x, viewerId) >= MARRIAGE_CONSENT_REGARD)
     .filter((x) => seatedAt(state, x.id).some((n) => n.estateId === null && n.spouseId === null));
   if (matches.length > 0) {
-    lines.push(`Independent worlds that would accept a match with one of your notables: ${matches.map((x) => `${x.name} (\`${x.id}\`)`).join(', ')}.`);
+    lines.push(say`Independent {worlds} that would accept a match with one of your notables: ${matches.map((x) => `${x.name} (\`${x.id}\`)`).join(', ')}.`);
   }
   const rivals = state.factions
     .filter((f) => f.id !== viewerId && (f.estates?.length ?? 0) > 0)
@@ -787,7 +787,7 @@ function peopleLine(state: WorldState, s: StarSystem): string[] {
   const h = holdAt(state, s);
   if (!h || h.content) return [];
   return [
-    `      people: ${h.shortfall > 0 ? 'RESTLESS, garrison deserting' : 'held down by force'} — regard for ${nameOfFaction(state, h.holder)} ${h.regard} (content at ${CONTENT_REGARD}); wants ${h.need.toFixed(1)} battleship-equivalents of its warships over it, has ${h.have.toFixed(1)}; wants ${want} (${WANT_MEANS[want]})`,
+    say`      people: ${h.shortfall > 0 ? 'RESTLESS, garrison deserting' : 'held down by force'} — regard for ${nameOfFaction(state, h.holder)} ${h.regard} (content at ${CONTENT_REGARD}); wants ${h.need.toFixed(1)} {battleship}-equivalents of its {warships} over it, has ${h.have.toFixed(1)}; wants ${want} (${WANT_MEANS[want]})`,
   ];
 }
 
@@ -831,7 +831,7 @@ export function serializeSystems(state: WorldState): string {
           : describeStack(stack);
         return `${nameOfFaction(state, id)} ${held}${officersOf(id)}`;
       }),
-      ...ashore.map((id) => `${nameOfFaction(state, id)} no ships${officersOf(id)}`),
+      ...ashore.map((id) => say`${nameOfFaction(state, id)} no {ships}${officersOf(id)}`),
     ].join(', ');
     const payout = Object.entries(income.shares)
       .filter(([, v]) => v > 0)
@@ -863,7 +863,7 @@ export function serializeSystems(state: WorldState): string {
       .join(', ');
     const line = [
       `  - \`${s.id}\` ${s.name} — held by ${controller}, garrison ${s.garrison}, value ${s.strategicValue}${income.contested ? ', CONTESTED' : ''}`,
-      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}${built ? ` | fixtures: ${built}` : ''}`,
+      say`      {ships}: ${ships || 'none'} | pays: ${payout || 'nobody'} | {lanes}: ${lanes || 'none'}${built ? ` | fixtures: ${built}` : ''}`,
       ...seatsLine(state, s),
       ...peopleLine(state, s),
     ].join('\n');
@@ -913,7 +913,7 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
       const target = getSystem(state, o.targetId)?.name ?? o.targetId;
       const remaining = o.durationTurns - o.progress;
       const mine = o.factionId === viewerId ? 'YOURS' : 'observed';
-      const kind = isMovementType(o.type) ? 'fleet movement' : o.type.replace(/_/g, ' ');
+      const kind = isMovementType(o.type) ? say`{fleet} movement` : o.type.replace(/_/g, ' ');
       const raidable = o.interruptible ? 'interruptible' : 'cannot be interrupted';
       // What it will deliver, so a project already paid for is not re-ordered
       // and so a rival can see what is worth interrupting.
@@ -957,17 +957,17 @@ export function serializeState(
   const viewer = getFaction(state, viewerId);
   const ledger = ledgerFor(state, viewerId);
   return [
-    `# Galaxy state — turn ${state.turn}`,
+    say`# {Galaxy} state — turn ${state.turn}`,
     '',
     `Viewpoint: **${viewer?.name ?? viewerId}** (\`${viewerId}\`)`,
-    `Treasury: ${viewer?.credits ?? 0} credits · income ${ledger.gross}/turn (${ledger.territory} territory + ${ledger.routes} trade lanes), upkeep ${ledger.upkeep}/turn (net ${ledger.net >= 0 ? '+' : ''}${ledger.net})`,
-    ledger.tolls > 0 ? `Tolls levied on other powers' cargo: ${ledger.tolls}/turn.` : '',
+    say`Treasury: ${viewer?.credits ?? 0} {credits} · income ${ledger.gross}/turn (${ledger.territory} territory + ${ledger.routes} trade {lanes}), upkeep ${ledger.upkeep}/turn (net ${ledger.net >= 0 ? '+' : ''}${ledger.net})`,
+    ledger.tolls > 0 ? say`Tolls levied on other powers' {cargo}: ${ledger.tolls}/turn.` : '',
     ledger.raided > 0 ? `Taken by commerce raiding: ${ledger.raided}/turn.` : '',
     (ledger.bounties ?? 0) > 0 ? `Bounties collected on those prizes: ${ledger.bounties}/turn.` : '',
     // What raiders took, named or not: a raid run dark shows up here and
     // nowhere else for its victim.
     (ledger.lostToRaids ?? 0) > 0
-      ? `Lost to raiders on your own lanes: ${ledger.lostToRaids}/turn${
+      ? say`Lost to raiders on your own {lanes}: ${ledger.lostToRaids}/turn${
           observeOrders(state, viewerId).rumours.some((r) => r.factionId === null)
             ? ' — some of it to raiders nobody can name'
             : ''
@@ -981,7 +981,7 @@ export function serializeState(
       : '',
     (ledger.stipends ?? 0) > 0 ? `Stipends to your estates: ${ledger.stipends}/turn.` : '',
     (ledger.withheld ?? 0) > 0
-      ? `Kept back by resentful notables on your worlds: ${ledger.withheld}/turn. Reseat a foreign notable, or win back the estate.`
+      ? say`Kept back by resentful notables on your {worlds}: ${ledger.withheld}/turn. Reseat a foreign notable, or win back the estate.`
       : '',
     terrainLine(state, viewerId),
     rallyLine(state, viewerId),
@@ -997,7 +997,7 @@ export function serializeState(
     '## Factions',
     serializeFactions(state, viewerId, detail),
     '',
-    '## Systems by sector',
+    say`## {Systems} by {sector}`,
     serializeSystems(state),
     '',
     '## Orders in progress (as you can observe them)',
@@ -1124,7 +1124,7 @@ function shareWorth(state: WorldState, share: NonNullable<Commitment['share']>):
  * over it knows the figure is the market's mood and will not last.
  */
 function scarcityNote(factor: number): string {
-  return factor === 1 ? '' : ' · scarce just now, so priced high: the Rim is short of it';
+  return factor === 1 ? '' : say` · scarce just now, so priced high: {rim} is short of it`;
 }
 
 export function serializeTheirAssets(
@@ -1151,7 +1151,7 @@ export function serializeTheirAssets(
 
 export function serializeAssets(state: WorldState, viewerId: string): string {
   const mine = (state.assets ?? []).filter((a) => a.heldBy === viewerId);
-  if (mine.length === 0) return '_You hold nothing beyond credits, ships and ground._';
+  if (mine.length === 0) return say`_You hold nothing beyond {credits}, {ships} and ground._`;
   return mine
     .map((a) => {
       const scarce = shortageFactor(state, a.kind);
@@ -1168,7 +1168,7 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
       const split = a.divisible ? '' : ' · one thing, does not divide';
       // A fixture is the one thing on this list you cannot put on the table, so
       // it is said here rather than discovered by having the accord rejected.
-      const fixed = a.portable ? '' : ' · fixed here; changes hands only with the world';
+      const fixed = a.portable ? '' : say` · fixed here; changes hands only with the {world}`;
       // A note and a commodity each have one rule that decides what to do
       // with them, and a persona that is not told it will not reach for it.
       // Proof a watcher found is the one kind of file that does something.
@@ -1244,7 +1244,7 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
       const flag = c.exclusive ? ' **[exclusive — one at a time]**' : '';
       const worth =
         c.incomePerTurn !== 0
-          ? ` · ${c.incomePerTurn > 0 ? '+' : ''}${c.incomePerTurn} credits/turn`
+          ? say` · ${c.incomePerTurn > 0 ? '+' : ''}${c.incomePerTurn} {credits}/turn`
           : '';
       // A charter pays from a world, and what it pays now is the honest figure
       // (§7): at most a quarter of the world's take, nothing once it is lost.

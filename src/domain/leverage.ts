@@ -30,6 +30,7 @@ import {
   type WorldState,
 } from './state.js';
 import type { DurationCategory } from './duration.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Leverage: what one power has over another, read off the board.
@@ -298,7 +299,7 @@ export function concessionBudget(state: WorldState, conceder: string, other: str
   }
   if (underDuressFrom(state, other, conceder) > 0) {
     scale += 0.25;
-    because.push('their ships over your worlds');
+    because.push(say`their {ships} over your {worlds}`);
   }
   if ((state.debts ?? []).some((d) => isDebtLive(d) && d.debtorFactionId === conceder && d.creditorFactionId === other)) {
     scale += 0.25;

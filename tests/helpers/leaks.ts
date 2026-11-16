@@ -49,6 +49,8 @@ export interface Literal {
   file: string;
   line: number;
   text: string;
+  /** A `say` evaluated when its module loads, which writes the default skin's words whatever the scope later holds. */
+  early?: boolean;
   /** Text of a `say` template, whose `{tokens}` are the lexicon's words and not the source's. */
   say: boolean;
 }
@@ -62,13 +64,16 @@ function lineAt(src: string, offset: number): number {
   return n;
 }
 
-function walk(node: unknown, out: Node[], skip: Set<unknown>, says: Set<unknown>): void {
+const FUNCTIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
+
+function walk(node: unknown, out: Node[], skip: Set<unknown>, says: Set<unknown>, depth = 0, early: Node[] = []): void {
   if (!node || typeof node !== 'object' || skip.has(node)) return;
   if (Array.isArray(node)) {
-    for (const child of node) walk(child, out, skip, says);
+    for (const child of node) walk(child, out, skip, says, depth, early);
     return;
   }
   const n = node as Node;
+  const inner = FUNCTIONS.has(n.type) ? depth + 1 : depth;
   // An import's source, an export's source, and an object key are not prose.
   if ((n.type === 'ImportDeclaration' || n.type === 'ExportNamedDeclaration' || n.type === 'ExportAllDeclaration') && n.source) skip.add(n.source);
   if (n.type === 'ImportExpression' && n.source) skip.add(n.source);
@@ -76,12 +81,13 @@ function walk(node: unknown, out: Node[], skip: Set<unknown>, says: Set<unknown>
   if (n.type === 'TSLiteralType' || n.type === 'TSEnumMember') return;
   if (n.type === 'TaggedTemplateExpression' && (n.tag as Node).type === 'Identifier' && (n.tag as { name: string }).name === 'say') {
     for (const q of ((n.quasi as { quasis: unknown[] }).quasis ?? [])) says.add(q);
+    if (depth === 0) early.push(n);
   }
   if ((n.type === 'Literal' && typeof n.value === 'string') || n.type === 'JSXText') out.push(n);
   if (n.type === 'TemplateElement') out.push(n);
   for (const key of Object.keys(n)) {
     if (key === 'type' || key === 'start' || key === 'end') continue;
-    walk(n[key], out, skip, says);
+    walk(n[key], out, skip, says, inner, early);
   }
 }
 
@@ -106,7 +112,9 @@ export async function literals(): Promise<Literal[]> {
       const src = readFileSync(path, 'utf8');
       const found: Node[] = [];
       const says = new Set<unknown>();
-      walk(parseAst(src, { lang: path.endsWith('.tsx') ? 'tsx' : 'ts' }), found, new Set(), says);
+      const early: Node[] = [];
+      walk(parseAst(src, { lang: path.endsWith('.tsx') ? 'tsx' : 'ts' }), found, new Set(), says, 0, early);
+      for (const e of early) out.push({ file, line: lineAt(src, e.start), text: '', say: true, early: true });
       for (const n of found) {
         const text =
           n.type === 'TemplateElement' ? String((n.value as { cooked?: string; raw: string }).cooked ?? (n.value as { raw: string }).raw) : String(n.value);
@@ -137,19 +145,34 @@ export interface Hit {
 
 /**
  * Every place a scanned word appears in a prose string, longest words first so
- * "torpedo boat" is not also "boat".
+ * "torpedo boat" is not also "boat". An ordinary phrase is masked first, so
+ * "line of credit" is not also "credit".
+ *
+ * A `say` evaluated at module load is a hit of its own: it fills its tokens
+ * once, from the default lexicon, and a skin set later never reaches it.
  *
  * A `say` template's tokens are taken out first, since they are the
  * lexicon's words rather than the source's. A token anywhere else is a hit of
  * its own: outside `say` nothing fills it, and a player would read the braces.
  */
-export function hits(found: readonly Literal[], words: readonly string[], tokens: readonly string[] = []): Hit[] {
+export function hits(
+  found: readonly Literal[],
+  words: readonly string[],
+  tokens: readonly string[] = [],
+  ordinary: readonly string[] = [],
+): Hit[] {
   const ordered = [...new Set(words.map((w) => w.toLowerCase()))].sort((a, b) => b.length - a.length);
   const patterns = ordered.map((w) => [w, wordPattern(w)] as const);
+  const masks = [...ordinary].sort((a, b) => b.length - a.length).map(wordPattern);
   const known = new Set(tokens.map((t) => t.toLowerCase()));
   const out: Hit[] = [];
   for (const lit of found) {
-    let text = lit.text.replace(/\{([A-Za-z][A-Za-z_]*)\}/g, (all, name: string) => {
+    if (lit.early) {
+      out.push({ file: lit.file, line: lit.line, word: 'say at module load' });
+      continue;
+    }
+    let text = masks.reduce((t, re) => t.replace(re, ' '), lit.text);
+    text = text.replace(/\{([A-Za-z][A-Za-z_]*)\}/g, (all, name: string) => {
       if (!known.has(name.toLowerCase())) return all;
       if (!lit.say) out.push({ file: lit.file, line: lit.line, word: `{${name}} outside say` });
       return ' ';

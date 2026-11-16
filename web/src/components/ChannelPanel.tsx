@@ -4,6 +4,7 @@ import type { CampaignView } from '../../../src/api/contract.js';
 import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex } from '../color.js';
 import { MAX_CHANNEL_MESSAGES } from '../../../src/api/contract.js';
+import { say } from '../../../src/skin/lexicon.js';
 
 /**
  * A diplomatic channel as an actual conversation.
@@ -118,7 +119,7 @@ export function ChannelPanel({
               )}
               {c.credits > 0 && <span className="muted"> · {c.credits}cr</span>}
               {c.perTurn > 0 && <span className="muted"> · {c.perTurn}/turn</span>}
-              {c.hulls > 0 && <span className="muted"> · {c.hulls} hulls</span>}
+              {c.hulls > 0 && <span className="muted"> · {c.hulls}{say` {hulls}`}</span>}
               {c.assets.length > 0 && <span className="muted"> · {c.assets.join(', ')}</span>}
               {c.lifts.length > 0 && (
                 <span className="muted">

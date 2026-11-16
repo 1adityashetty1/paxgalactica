@@ -54,12 +54,25 @@ export interface Term {
 }
 
 /** The words for where things are, which every prompt and panel uses and no op names. */
-export const PLACE_TERMS = ['world', 'system', 'sector', 'lane', 'jump', 'hub', 'orbit', 'garrison', 'yards', 'rim'] as const;
+export const PLACE_TERMS = ['world', 'system', 'sector', 'lane', 'jump', 'hub', 'orbit', 'garrison', 'yards', 'rim', 'space', 'galaxy'] as const;
 export type PlaceTerm = (typeof PLACE_TERMS)[number];
 
 /** The words for armed force in general, whatever its class: a hull, a fleet, a crew, a navy. */
-export const FORCE_TERMS = ['hull', 'ship', 'fleet', 'crew', 'navy'] as const;
+export const FORCE_TERMS = ['hull', 'ship', 'warship', 'fleet', 'squadron', 'crew', 'navy', 'cargo'] as const;
 export type ForceTerm = (typeof FORCE_TERMS)[number];
+
+/** The verbs a fleet does: it sails, and it lands. */
+export const VERB_TERMS = ['sail', 'land'] as const;
+export type VerbTerm = (typeof VERB_TERMS)[number];
+
+/** A verb in the four forms English sentences need: "sail", "sails", "sailed", "sailing". */
+export interface Verb {
+  base: string;
+  s: string;
+  past: string;
+  ing: string;
+  synonyms: string[];
+}
 
 /** The units every price and every fleet is counted in. */
 export const ACCOUNT_TERMS = ['credits', 'tons'] as const;
@@ -79,6 +92,7 @@ export interface Words {
   fleetKinds: Record<FleetKind, Word>;
   places: Record<PlaceTerm, Term>;
   forces: Record<ForceTerm, Term>;
+  verbs: Record<VerbTerm, Verb>;
   accounts: Record<AccountTerm, Term>;
 }
 
@@ -165,7 +179,10 @@ export function assetUnit(kind: string): string {
 /* say: prose with the lexicon's words in it                           */
 /* ------------------------------------------------------------------ */
 
-type TokenSource = { family: 'places' | 'forces' | 'accounts'; key: string; plural: boolean } | { family: 'units'; key: HullClass; plural: boolean };
+type TokenSource =
+  | { family: 'places' | 'forces' | 'accounts'; key: string; plural: boolean }
+  | { family: 'units'; key: HullClass; plural: boolean }
+  | { family: 'verbs'; key: VerbTerm; form: Exclude<keyof Verb, 'synonyms'> };
 
 function tokenTable(): Map<string, TokenSource> {
   const table = new Map<string, TokenSource>();
@@ -183,11 +200,22 @@ function tokenTable(): Map<string, TokenSource> {
   add('places', 'garrison', 'garrison', 'garrisons');
   add('places', 'yards', 'yards', null);
   add('places', 'rim', 'rim', null);
+  add('places', 'space', 'space', null);
+  add('places', 'galaxy', 'galaxy', 'galaxies');
   add('forces', 'hull', 'hull', 'hulls');
   add('forces', 'ship', 'ship', 'ships');
+  add('forces', 'warship', 'warship', 'warships');
   add('forces', 'fleet', 'fleet', 'fleets');
+  add('forces', 'squadron', 'squadron', 'squadrons');
   add('forces', 'crew', 'crew', 'crews');
   add('forces', 'navy', 'navy', 'navies');
+  add('forces', 'cargo', 'cargo', null);
+  for (const verb of ['sail', 'land'] as const) {
+    table.set(verb, { family: 'verbs', key: verb, form: 'base' });
+    table.set(`${verb}s`, { family: 'verbs', key: verb, form: 's' });
+    table.set(`${verb}ed`, { family: 'verbs', key: verb, form: 'past' });
+    table.set(`${verb}ing`, { family: 'verbs', key: verb, form: 'ing' });
+  }
   add('accounts', 'credits', 'credit', 'credits');
   add('accounts', 'tons', 'ton', 'tons');
   for (const hull of ['battleship', 'escort', 'torpedo_boat', 'lifter', 'freighter', 'listener', 'courier'] as const) {
@@ -207,6 +235,8 @@ function tokenWord(name: string): string {
   const lower = name[0]!.toLowerCase() + name.slice(1);
   const source = TOKENS.get(lower);
   if (!source) throw new Error(`say: no lexicon token {${name}}`);
+  const capital = (word: string) => (name[0] === lower[0] ? word : word[0]!.toUpperCase() + word.slice(1));
+  if (source.family === 'verbs') return capital(active.verbs[source.key][source.form]);
   const entry =
     source.family === 'units'
       ? active.units[source.key]
@@ -215,8 +245,7 @@ function tokenWord(name: string): string {
         : source.family === 'forces'
           ? active.forces[source.key as ForceTerm]
           : active.accounts[source.key as AccountTerm];
-  const word = source.plural ? entry.plural : entry.word;
-  return name[0] === lower[0] ? word : word[0]!.toUpperCase() + word.slice(1);
+  return capital(source.plural ? entry.plural : entry.word);
 }
 
 /** A token in a `say` template: a name in braces, `{world}`, `{Fleets}`, `{torpedo_boats}`. */

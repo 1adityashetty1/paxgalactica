@@ -12,6 +12,7 @@ import {
   type ProviderId,
   type Settings,
 } from './settings.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * The provider seam (docs/architecture.md A.1).
@@ -543,7 +544,7 @@ export function openRouterProvider(
         const why = parsed.error?.message ?? raw.slice(0, 200);
         if (res.status === 402) {
           throw new ModelCallError(
-            `Model call failed: OpenRouter says the account is out of credit (402). Add credit at openrouter.ai, or lower the tier models in Settings. ${why}`.trim(),
+            say`Model call failed: OpenRouter says the account is out of {credit} (402). Add {credit} at openrouter.ai, or lower the tier models in Settings. ${why}`.trim(),
             1,
           );
         }

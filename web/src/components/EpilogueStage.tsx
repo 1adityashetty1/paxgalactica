@@ -1,5 +1,6 @@
 import type { EpilogueView } from '../../../src/api/contract.js';
 import { ansi256ToHex } from '../color.js';
+import { say } from '../../../src/skin/lexicon.js';
 
 /**
  * The last page.
@@ -32,7 +33,7 @@ export function EpilogueStage({
   return (
     <div className="epilogue">
       <header className="epilogue-head">
-        <h2>The Rim, {epilogue.turn} turns on</h2>
+        <h2>{say`{Rim}, `}{epilogue.turn} turns on</h2>
         <p className="hint">
           {epilogue.unaligned} worlds still answer to nobody.
           {epilogue.fallback && ' (The narration could not be written; this is the plain record.)'}
@@ -61,7 +62,7 @@ export function EpilogueStage({
                 </span>
               )}
             </span>
-            <span>{f.fleet} hulls</span>
+            <span>{f.fleet}{say` {hulls}`}</span>
             <span className={f.net >= 0 ? 'up' : 'down'}>
               {f.net >= 0 ? '+' : ''}
               {f.net}/turn

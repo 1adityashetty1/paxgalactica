@@ -15,6 +15,7 @@ import type { Loan } from './loan.js';
 import { personViolations } from './people.js';
 import { seatsFor } from './seats.js';
 import { isStatFixture, relationBetween, type WorldState } from './state.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * The headless spine's second check: every state machine in the world keeps
@@ -241,7 +242,7 @@ export function worldViolations(state: WorldState): string[] {
   for (const a of state.assets ?? []) {
     if (a.portable) continue;
     if (a.atSystemId === null || !systems.has(a.atSystemId)) {
-      out.push(`fixture ${a.id} stands on no world`);
+      out.push(say`fixture ${a.id} stands on no {world}`);
       continue;
     }
     if ((a.damage ?? 0) > fixtureIntegrity(a)) out.push(`fixture ${a.id} has ${a.damage} damage against ${fixtureIntegrity(a)}`);

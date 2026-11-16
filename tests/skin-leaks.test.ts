@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { countByFile, hits, literals, type Hit } from './helpers/leaks.js';
-import { settingWords } from '../src/skin/null.js';
+import { ORDINARY_WORDS, settingWords } from '../src/skin/null.js';
 import { SAY_TOKENS } from '../src/skin/lexicon.js';
 
 /**
@@ -24,7 +24,7 @@ const BASELINE = join(import.meta.dirname, 'skin-leaks.baseline.json');
 
 describe('the source', () => {
   it('writes no more setting words than it did when last recorded', async () => {
-    const found = hits(await literals(), settingWords(), SAY_TOKENS);
+    const found = hits(await literals(), settingWords(), SAY_TOKENS, ORDINARY_WORDS);
     const now = countByFile(found);
     if (process.env.SKIN_LEAKS_RECORD) {
       writeFileSync(BASELINE, `${JSON.stringify(now, null, 2)}\n`);
@@ -51,6 +51,7 @@ describe('the scan', () => {
   it('finds a setting word as a whole word, the longest phrase first', () => {
     const found = hits([lit('3 torpedo boats left orbit'), lit('worldly orbiter')], settingWords(), SAY_TOKENS);
     expect(found.map((h) => h.word)).toEqual(['torpedo boats', 'orbit']);
+    expect(hits([lit('a line of credit, and credits')], settingWords(), SAY_TOKENS, ORDINARY_WORDS).map((h) => h.word)).toEqual(['credits']);
   });
 
   it('reads a say template\'s tokens as the lexicon\'s, and a token anywhere else as a leak', () => {

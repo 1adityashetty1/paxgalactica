@@ -14,6 +14,7 @@ import {
 } from '../../../src/domain/trade.js';
 import { stormbound } from '../../../src/domain/events.js';
 import { ansi256ToHex } from '../color.js';
+import { say } from '../../../src/skin/lexicon.js';
 
 /**
  * The lane network, made visible.
@@ -58,7 +59,7 @@ export function TradePanel({
           <span>{ledger.territory}/turn</span>
         </div>
         <div className="ledger-row">
-          <span>Lanes</span>
+          <span>{say`{Lanes}`}</span>
           <span className={ledger.routes >= 0 ? 'good' : 'bad'}>
             {ledger.routes >= 0 ? '+' : ''}
             {ledger.routes}/turn
@@ -72,7 +73,7 @@ export function TradePanel({
         )}
         {(ledger.internalMarket ?? 0) > 0 && (
           <div className="ledger-row sub">
-            <span title="Your own connected worlds trading with each other. An autarkist's economy: no toll, no foreign share, and no blockade elsewhere touches it — only a blockade or a raid on one of your own worlds.">
+            <span title={say`Your own connected {worlds} trading with each other. An autarkist's economy: no toll, no foreign share, and no blockade elsewhere touches it — only a blockade or a raid on one of your own {worlds}.`}>
               …of which your internal market
             </span>
             <span className="good">+{ledger.internalMarket}</span>
@@ -86,7 +87,7 @@ export function TradePanel({
         )}
         {(ledger.lostToRaids ?? 0) > 0 && (
           <div className="ledger-row sub">
-            <span title="Taken off your lanes by raiders this turn, already out of the figure above. A raid run dark takes it without saying whose it is.">
+            <span title={say`Taken off your {lanes} by raiders this turn, already out of the figure above. A raid run dark takes it without saying whose it is.`}>
               …lost to raiders
             </span>
             <span className="bad">−{ledger.lostToRaids}</span>
@@ -94,7 +95,7 @@ export function TradePanel({
         )}
         {(ledger.bounties ?? 0) > 0 && (
           <div className="ledger-row">
-            <span title="Bounties posted on the powers you raided pay out of escrow, credit for credit on what you took.">
+            <span title={say`Bounties posted on the powers you raided pay out of escrow, {credit} for {credit} on what you took.`}>
               Bounties collected
             </span>
             <span className="good">+{ledger.bounties}/turn</span>
@@ -102,19 +103,19 @@ export function TradePanel({
         )}
         {ledger.occupation > 0 && (
           <div className="ledger-row">
-            <span title="A share of what each world you took from somebody else pays you. Institutions built for another state do not administer themselves.">
+            <span title={say`A share of what each {world} you took from somebody else pays you. Institutions built for another state do not administer themselves.`}>
               Occupied ground
             </span>
             <span className="bad">−{ledger.occupation}/turn</span>
           </div>
         )}
         <div className="ledger-row sub">
-          <span>Galaxy lanes open</span>
+          <span>{say`{Galaxy} {lanes} open`}</span>
           <span>{Math.round(earnings.openness * 100)}%</span>
         </div>
         {earnings.uncollected > 0 && (
           <div className="ledger-row sub">
-            <span title="Trade crossing unaligned systems nobody has a fleet on.">
+            <span title={say`Trade crossing unaligned {systems} nobody has a {fleet} on.`}>
               Unclaimed on neutral space
             </span>
             <span>{earnings.uncollected}/turn</span>
@@ -181,7 +182,7 @@ function Lane({
   const nameFaction = (id: string) => state.factions.find((f) => f.id === id)?.name ?? id;
 
   return (
-    <li className={interference.length > 0 ? 'lane cut' : 'lane'}>
+    <li className={interference.length > 0 ? say`{lane} cut` : 'lane'}>
       <div className="lane-head">
         <span className="lane-ends">
           <button className="linkish" style={{ color: colorOf(holderOf(a)) }} onClick={() => onSelect(a)}>
