@@ -1,0 +1,469 @@
+{
+  "briefing": [
+    "border_incident",
+    "bounty_posted",
+    "ion_storm",
+    "rich_seam",
+    "shortage",
+    "show_of_force",
+    "turned_contact"
+  ],
+  "help:actions": [
+    "hyperlane"
+  ],
+  "help:assets": [
+    "dossier"
+  ],
+  "help:diplomacy": [
+    "basing rights",
+    "fleets",
+    "lanes",
+    "systems",
+    "worlds"
+  ],
+  "help:espionage": [
+    "credits",
+    "crews",
+    "hulls",
+    "world"
+  ],
+  "help:fixtures": [
+    "factory",
+    "military base",
+    "stock exchange"
+  ],
+  "help:index": [
+    "lanes",
+    "ship",
+    "the rim",
+    "worlds"
+  ],
+  "help:trade": [
+    "commerce raiding"
+  ],
+  "help:war": [
+    "convoy"
+  ],
+  "prompt:advisor:system": [
+    "fleet",
+    "hulls",
+    "landing",
+    "lane",
+    "lanes",
+    "lifters",
+    "listener",
+    "listeners",
+    "orbit",
+    "sailed",
+    "ships",
+    "the rim",
+    "world",
+    "worlds"
+  ],
+  "prompt:advisor:user": [
+    "convoy",
+    "courier",
+    "crew",
+    "fleet",
+    "freighter",
+    "galaxy",
+    "gunnery",
+    "hull",
+    "hulls",
+    "lane",
+    "lineofbattle",
+    "listener",
+    "space",
+    "volunteers",
+    "warships",
+    "yards"
+  ],
+  "prompt:appraisal:system": [
+    "basing rights",
+    "boarding",
+    "captains",
+    "courier",
+    "credits",
+    "crews",
+    "dock",
+    "dossier",
+    "factory",
+    "fleet",
+    "fleet movement",
+    "fleets",
+    "freighters",
+    "galaxy",
+    "hospital",
+    "hulls",
+    "hyperlanes",
+    "jump",
+    "landing",
+    "lane",
+    "listener",
+    "sail",
+    "sailing",
+    "sails",
+    "salvage",
+    "ship",
+    "ships",
+    "shipyard",
+    "space",
+    "squadron",
+    "system",
+    "university",
+    "unrest",
+    "world",
+    "worlds",
+    "yards"
+  ],
+  "prompt:appraisal:user": [
+    "convoy",
+    "courier",
+    "crew",
+    "freighter",
+    "gunnery",
+    "lineofbattle",
+    "listener",
+    "world"
+  ],
+  "prompt:diplomacy:system": [
+    "basing rights",
+    "battleship",
+    "credit",
+    "credits",
+    "crews",
+    "fleet",
+    "fleets",
+    "galaxy",
+    "hull",
+    "hulls",
+    "lane",
+    "ships",
+    "space",
+    "system",
+    "systems",
+    "world",
+    "worlds",
+    "yards"
+  ],
+  "prompt:diplomacy:user": [
+    "construction infrastructure",
+    "convoy",
+    "courier",
+    "freighter",
+    "gunnery",
+    "lineofbattle",
+    "listener",
+    "retooling",
+    "space",
+    "ton"
+  ],
+  "prompt:epilogue:system": [
+    "dossier",
+    "fleet",
+    "galaxy",
+    "hull",
+    "hulls",
+    "lane",
+    "lanes",
+    "navy",
+    "shipyard",
+    "the rim",
+    "world",
+    "worlds",
+    "yards"
+  ],
+  "prompt:epilogue:user": [
+    "dossier"
+  ],
+  "prompt:event_flavour:system": [
+    "crews",
+    "mutiny",
+    "pilot",
+    "ships",
+    "worlds"
+  ],
+  "prompt:event_flavour:user": [
+    "unrest",
+    "world"
+  ],
+  "prompt:extraction:system": [
+    "basing rights",
+    "battleship",
+    "commerce raiding",
+    "credits",
+    "crews",
+    "dossier",
+    "escort",
+    "fleet",
+    "fleets",
+    "galaxy",
+    "hulls",
+    "jumps",
+    "lane",
+    "lanes",
+    "sail",
+    "sails",
+    "ships",
+    "shipyard",
+    "space",
+    "squadron",
+    "system",
+    "systems",
+    "tons",
+    "warships",
+    "world",
+    "worlds",
+    "yards"
+  ],
+  "prompt:extraction:user": [
+    "convoy",
+    "courier",
+    "crew",
+    "freighter",
+    "gunnery",
+    "lineofbattle",
+    "listener",
+    "space"
+  ],
+  "prompt:reaction:system": [
+    "courier",
+    "crackdown",
+    "credits",
+    "crews",
+    "factory",
+    "fleet",
+    "fleet movement",
+    "fleets",
+    "galaxy",
+    "hub",
+    "hulls",
+    "hyperlane",
+    "jump",
+    "jumps",
+    "landing",
+    "lane",
+    "lanes",
+    "navy",
+    "orbital",
+    "retooling",
+    "sails",
+    "sector",
+    "ships",
+    "shipyard",
+    "space",
+    "squadron",
+    "system",
+    "systems",
+    "the rim",
+    "world",
+    "worlds",
+    "yards"
+  ],
+  "prompt:reaction:user": [
+    "construction infrastructure",
+    "convoy",
+    "courier",
+    "freighter",
+    "gunnery",
+    "lineofbattle",
+    "listener",
+    "retooling",
+    "ton"
+  ],
+  "prompt:reconcile:system": [
+    "crew",
+    "fleet",
+    "ship",
+    "ships",
+    "world",
+    "worlds"
+  ],
+  "prompt:resolution:system": [
+    "a price on your head",
+    "arid",
+    "basing rights",
+    "battleship",
+    "battleships",
+    "blueprints",
+    "cargo",
+    "charts",
+    "convoy",
+    "courier",
+    "crackdown",
+    "credit",
+    "credits",
+    "crew",
+    "crews",
+    "dock",
+    "dossier",
+    "earthlike",
+    "earthnight",
+    "escort",
+    "escorts",
+    "factory",
+    "fleet",
+    "fleet movement",
+    "fleets",
+    "freighter",
+    "freighters",
+    "galaxy",
+    "gasgiant",
+    "gunnery",
+    "hospital",
+    "hub",
+    "hull",
+    "hulls",
+    "hyperlane",
+    "ice",
+    "industrialmoon",
+    "jump",
+    "jumps",
+    "landing",
+    "lane",
+    "lanes",
+    "lifter",
+    "lifters",
+    "lineofbattle",
+    "listener",
+    "listeners",
+    "navy",
+    "oceanic",
+    "orbit",
+    "orbital",
+    "power plant",
+    "retooling",
+    "sail",
+    "sailed",
+    "sailing",
+    "sails",
+    "salvage",
+    "sector",
+    "ship",
+    "ships",
+    "shipyard",
+    "space",
+    "squadron",
+    "system",
+    "systems",
+    "the rim",
+    "ton",
+    "tons",
+    "torpedo boat",
+    "torpedo boats",
+    "university",
+    "warship",
+    "warships",
+    "world",
+    "worlds",
+    "yards"
+  ],
+  "prompt:resolution:user": [
+    "convoy",
+    "courier",
+    "credits",
+    "crew",
+    "dossier",
+    "freighter",
+    "gunnery",
+    "lineofbattle",
+    "listener",
+    "world"
+  ],
+  "rim:border_incident": [
+    "border_incident"
+  ],
+  "rim:bounty_posted": [
+    "bounty_posted"
+  ],
+  "rim:crackdown": [
+    "crackdown"
+  ],
+  "rim:derelict": [
+    "derelict"
+  ],
+  "rim:envoys_of_peace": [
+    "envoys_of_peace"
+  ],
+  "rim:free_captains": [
+    "free_captains"
+  ],
+  "rim:ion_storm": [
+    "ion_storm"
+  ],
+  "rim:mutiny": [
+    "mutiny"
+  ],
+  "rim:rich_seam": [
+    "rich_seam"
+  ],
+  "rim:shortage": [
+    "shortage"
+  ],
+  "rim:show_of_force": [
+    "show_of_force"
+  ],
+  "rim:turned_contact": [
+    "turned_contact"
+  ],
+  "rim:unrest": [
+    "unrest"
+  ],
+  "rim:volunteers": [
+    "volunteers"
+  ],
+  "schema:appraisal": [
+    "world"
+  ],
+  "schema:diplomacy": [
+    "credits",
+    "hulls",
+    "systems"
+  ],
+  "schema:extraction": [
+    "battleship",
+    "convoy",
+    "courier",
+    "credits",
+    "escort",
+    "fleet",
+    "freighter",
+    "gunnery",
+    "hull",
+    "hulls",
+    "lifter",
+    "lineofbattle",
+    "listener",
+    "torpedo_boat"
+  ],
+  "schema:reaction": [
+    "battleship",
+    "convoy",
+    "courier",
+    "credits",
+    "escort",
+    "fleet",
+    "freighter",
+    "gunnery",
+    "hull",
+    "lifter",
+    "lineofbattle",
+    "listener",
+    "torpedo_boat"
+  ],
+  "schema:resolution": [
+    "battleship",
+    "convoy",
+    "courier",
+    "credits",
+    "escort",
+    "fleet",
+    "freighter",
+    "gunnery",
+    "hull",
+    "lifter",
+    "lineofbattle",
+    "listener",
+    "torpedo_boat"
+  ]
+}

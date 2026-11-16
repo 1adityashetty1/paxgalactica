@@ -6,7 +6,7 @@ import { fleetName, resolveFleet } from './fleets.js';
 import { hullsIn } from './hulls.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import { FIXTURE_COST } from './diplomacy.js';
-import { say } from '../skin/lexicon.js';
+import { assetKindWord, say } from '../skin/lexicon.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -285,7 +285,7 @@ export function foundsInWords(state: WorldState, action: string): Founds[] {
  */
 export function foundingRefusal(state: WorldState, actor: string, found: Founds): string | null {
   const shape = ASSET_ARCHETYPES.find((a) => a.kind === found.kind);
-  const name = found.kind.replace(/_/g, ' ');
+  const name = assetKindWord(found.kind);
   if (!shape?.fixture || !shape.modifies) return `There is no fixture called a ${name}.`;
   const world = state.systems.find((x) => x.id === found.systemId);
   if (!world) return say`There is no {world} "${found.systemId}".`;
@@ -303,7 +303,7 @@ export function foundingRefusal(state: WorldState, actor: string, found: Founds)
 
 /** The ruled fixture, labelled for the order it becomes. */
 export function ruledFixture(state: WorldState, actor: string, found: Founds): RuledFixture {
-  const name = found.kind.replace(/_/g, ' ');
+  const name = assetKindWord(found.kind);
   const world = state.systems.find((x) => x.id === found.systemId)?.name ?? found.systemId;
   return { factionId: actor, systemId: found.systemId, kind: found.kind, label: `${name[0]!.toUpperCase()}${name.slice(1)} at ${world}` };
 }
@@ -642,7 +642,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
         const building = work.onComplete?.kind === 'found_fixture' ? work.onComplete.fixtureKind : null;
         const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(k.kind.replace(/_/g, ' ')));
         if (building && asked && asked.kind !== building) {
-          return `"${id}" raises a ${building.replace(/_/g, ' ')}, not a ${asked.kind.replace(/_/g, ' ')}.`;
+          return `"${id}" raises a ${building.replace(/_/g, ' ')}, not a ${assetKindWord(asked.kind)}.`;
         }
       }
       const exists = [

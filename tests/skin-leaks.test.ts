@@ -74,6 +74,10 @@ describe('the scan', () => {
     expect(hits([lit('a line of credit, and credits')], settingWords(), SAY_TOKENS, ORDINARY_WORDS).map((h) => h.word)).toEqual(['credits']);
   });
 
+  it('counts an id spaced into words, which bypasses the lexicon', () => {
+    expect(hits([{ file: 'x.ts', line: 1, text: '', say: false, spaced: true }], settingWords()).map((h) => h.word)).toEqual(['id spaced as a word']);
+  });
+
   it('reads a say template\'s tokens as the lexicon\'s, and a token anywhere else as a leak', () => {
     expect(hits([lit('your {fleet} over {worlds}', true)], settingWords(), SAY_TOKENS)).toEqual([]);
     expect(hits([lit('your {fleet} over a world')], settingWords(), SAY_TOKENS).map((h) => h.word)).toEqual([

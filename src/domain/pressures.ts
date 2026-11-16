@@ -5,7 +5,7 @@ import { effectiveStats, getFaction, ledgerFor, orbitalWeightAt, stackAt, system
 import { driftingCompulsions } from './compulsions.js';
 import { JOIN_LEAD, JOIN_REGARD } from './regard.js';
 import { isNote } from './diplomacy.js';
-import { noteTitle, say } from '../skin/lexicon.js';
+import { noteTitle, orderWord, say } from '../skin/lexicon.js';
 import { possessive } from './words.js';
 
 /**
@@ -179,7 +179,7 @@ export function paperOf(state: WorldState, me: string): string[] {
   const where = (id: string) => state.systems.find((x) => x.id === id)?.name ?? id;
   out.push(
     mine.length > 0
-      ? `Your work under way (nothing else is): ${mine.map((o) => `${o.label || o.type.replace(/_/g, ' ')} at ${where(o.targetId)}, ${o.durationTurns - o.progress} turn${o.durationTurns - o.progress === 1 ? '' : 's'} to go`).join('; ')}.`
+      ? `Your work under way (nothing else is): ${mine.map((o) => `${o.label || orderWord(o.type)} at ${where(o.targetId)}, ${o.durationTurns - o.progress} turn${o.durationTurns - o.progress === 1 ? '' : 's'} to go`).join('; ')}.`
       : say`Your work under way: none. No programme, envoy or {fleet} of yours is in progress.`,
   );
   const drifting = driftingCompulsions(state, me);

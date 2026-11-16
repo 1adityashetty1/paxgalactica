@@ -51,6 +51,8 @@ export interface Literal {
   text: string;
   /** A `say` evaluated when its module loads, which writes the default skin's words whatever the scope later holds. */
   early?: boolean;
+  /** An id shown by spacing its underscores (`kind.replace(/_/g, ' ')`), which writes the id where the lexicon has a word. */
+  spaced?: boolean;
   /** Text of a `say` template, whose `{tokens}` are the lexicon's words and not the source's. */
   say: boolean;
 }
@@ -66,6 +68,18 @@ function lineAt(src: string, offset: number): number {
 
 const FUNCTIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
 
+/** `x.replace(/_/g, ' ')`: an id turned into words by spacing it, rather than asking the lexicon for its word. */
+function spacesAnId(n: Node): boolean {
+  const callee = n.callee as Node & { property?: { name?: string } };
+  const [pattern, replacement] = (n.arguments as (Node & { regex?: { pattern: string }; value?: unknown })[]) ?? [];
+  return (
+    callee?.type === 'MemberExpression' &&
+    callee.property?.name === 'replace' &&
+    pattern?.regex?.pattern === '_' &&
+    replacement?.value === ' '
+  );
+}
+
 function walk(node: unknown, out: Node[], skip: Set<unknown>, says: Set<unknown>, depth = 0, early: Node[] = []): void {
   if (!node || typeof node !== 'object' || skip.has(node)) return;
   if (Array.isArray(node)) {
@@ -79,6 +93,7 @@ function walk(node: unknown, out: Node[], skip: Set<unknown>, says: Set<unknown>
   if (n.type === 'ImportExpression' && n.source) skip.add(n.source);
   if ((n.type === 'Property' || n.type === 'PropertyDefinition' || n.type === 'TSPropertySignature') && n.key && !n.computed) skip.add(n.key);
   if (n.type === 'TSLiteralType' || n.type === 'TSEnumMember') return;
+  if (n.type === 'CallExpression' && spacesAnId(n)) early.push({ ...n, type: 'SpacedId' });
   if (n.type === 'TaggedTemplateExpression' && (n.tag as Node).type === 'Identifier' && (n.tag as { name: string }).name === 'say') {
     for (const q of ((n.quasi as { quasis: unknown[] }).quasis ?? [])) says.add(q);
     if (depth === 0) early.push(n);
@@ -114,7 +129,10 @@ export async function literals(): Promise<Literal[]> {
       const says = new Set<unknown>();
       const early: Node[] = [];
       walk(parseAst(src, { lang: path.endsWith('.tsx') ? 'tsx' : 'ts' }), found, new Set(), says, 0, early);
-      for (const e of early) out.push({ file, line: lineAt(src, e.start), text: '', say: true, early: true });
+      for (const e of early) {
+        if (e.type === 'SpacedId') out.push({ file, line: lineAt(src, e.start), text: '', say: false, spaced: true });
+        else out.push({ file, line: lineAt(src, e.start), text: '', say: true, early: true });
+      }
       for (const n of found) {
         const text =
           n.type === 'TemplateElement' ? String((n.value as { cooked?: string; raw: string }).cooked ?? (n.value as { raw: string }).raw) : String(n.value);
@@ -128,9 +146,10 @@ export async function literals(): Promise<Literal[]> {
 
 /**
  * A word or phrase as a whole-word, case-blind pattern: "torpedo boat" also
- * matches "torpedo  boat". An underscore is part of a word, so an op or id
- * named in prose (`publish_dossier`, `capital_ship_construction`) is protocol,
- * not the word inside it.
+ * matches "torpedo  boat". An underscore is part of a word, so the dossier in
+ * `publish_dossier` is not the word "dossier" — but a setting id is itself in
+ * the vocabulary (`settingIds`), so `torpedo_boat` named in prose is found as
+ * the id it is.
  */
 export function wordPattern(word: string): RegExp {
   const body = word
@@ -174,6 +193,10 @@ export function hits(
   for (const lit of found) {
     if (lit.early) {
       out.push({ file: lit.file, line: lit.line, word: 'say at module load' });
+      continue;
+    }
+    if (lit.spaced) {
+      out.push({ file: lit.file, line: lit.line, word: 'id spaced as a word' });
       continue;
     }
     let text = masks.reduce((t, re) => t.replace(re, ' '), lit.text);
@@ -264,12 +287,23 @@ export function segments(name: string): string[] {
     .filter(Boolean);
 }
 
-/** Every id or field name carrying one of `words` among its segments, once per word it carries. */
+/**
+ * Every id or field name carrying one of `words` among its segments, once per
+ * word it carries. A word with an underscore — a setting id, `ion_storm` — is
+ * matched as a run of segments, so `rim:ion_storm` and `ionStormTurns` carry it
+ * and `ion` alone does not.
+ */
 export function idHits(found: readonly IdName[], words: readonly string[]): Hit[] {
-  const single = new Set(words.filter((w) => !/\s/.test(w)).map((w) => w.toLowerCase()));
+  const single = new Set(words.filter((w) => !/[\s_]/.test(w)).map((w) => w.toLowerCase()));
+  const runs = words.filter((w) => w.includes('_') && !/\s/.test(w)).map((w) => w.toLowerCase());
   const out: Hit[] = [];
   for (const id of found) {
-    for (const s of new Set(segments(id.name))) if (single.has(s)) out.push({ file: id.file, line: id.line, word: s });
+    const segs = segments(id.name);
+    const joined = `_${segs.join('_')}_`;
+    const carried = new Set<string>();
+    for (const s of segs) if (single.has(s)) carried.add(s);
+    for (const run of runs) if (joined.includes(`_${run}_`)) carried.add(run);
+    for (const w of carried) out.push({ file: id.file, line: id.line, word: w });
   }
   return out;
 }

@@ -1,7 +1,7 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { DARK_RAID_YIELD } from '../domain/trade.js';
 import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS, RIM_NOTORIETY, type RimEventKind } from '../domain/events.js';
-import { liveMeanings, rimEventTitle, say, unitWord } from '../skin/lexicon.js';
+import { liveMeanings, rimEventTitle, say, treatyWord, unitWord } from '../skin/lexicon.js';
 import {
   COMMANDER_ARCHETYPES,
   COMMANDER_COST,
@@ -477,7 +477,7 @@ export function treatyLines(): string[] {
   return [
     'TREATIES — agreed in a channel, never declared',
     ...(Object.keys(TREATY_JOB) as TreatyType[]).map(
-      (t) => `    ${t.replace(/_/g, ' ').replace('defense', 'defence').padEnd(16)}${TREATY_JOB[t]}`,
+      (t) => `    ${treatyWord(t).replace('defense', 'defence').padEnd(16)}${TREATY_JOB[t]}`,
     ),
     '  One conversation can produce several. Breaking one is your choice, and',
     '  it costs you with the other party and with everyone watching.',

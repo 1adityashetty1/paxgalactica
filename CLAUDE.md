@@ -4608,10 +4608,30 @@ A second ratchet, `tests/skin-ids.baseline.json`, counts ids and field names
 that carry one (`torpedo_boat`, `systemId`); phases 3 and 4 rename those.
 Re-record with `SKIN_LEAKS_RECORD=1`.
 
+**Hull classes, terrains and Rim events are setting in every form.** Their
+ids (`torpedo_boat`, `earthnight`, `ion_storm`) are scan words wherever they
+appear (`settingIds`), and no ordinary-word exemption reaches their words.
+Showing an id by spacing its underscores (`kind.replace(/_/g, ' ')`) counts as
+a leak: use `assetKindWord`, `orderWord`, `treatyWord` or `unitWord`.
+
 `src/skin/null.ts` builds the null lexicon, every word a sentinel.
-`tests/lexicon.test.ts` runs the routed readers under it. Under Pax Galactica
-every token reads as the word it replaced, so the four harness boards are
-unchanged.
+`tests/lexicon.test.ts` runs the routed readers under it.
+`tests/skin-runtime.test.ts` runs the game under it with no model and no
+browser:
+
+- 60 bot turns;
+- every Rim event through its sandbox;
+- every help page;
+- the epilogue;
+- every kind of model call, against a mocked client that records the system
+  prompt, user message and schema each would send.
+
+It masks the scenario's names, then holds each source to the setting words
+recorded in `tests/skin-runtime.baseline.json`.
+
+Under the null lexicon the dice differ, because the operative salt reads the
+log (decision 8, phase 3). Under Pax Galactica every token reads as the word
+it replaced, so the four harness boards are unchanged.
 
 ## Treaties and agents
 

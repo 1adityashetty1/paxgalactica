@@ -2,7 +2,7 @@ import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMissio
 import { MAX_DURATION, type DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { doneAt } from './words.js';
-import { assetUnit, say, unitWord } from '../skin/lexicon.js';
+import { assetKindWord, assetUnit, say, unitWord } from '../skin/lexicon.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
 import {
   addShipsAt,
@@ -358,7 +358,7 @@ function fixtureBuilt(kind: string, stat: string | undefined): string | null {
   if (stat === wants) return null;
   return stat === undefined
     ? `A ${shape.kind} is built, not come by: it takes a ${wants} undertaking, and nothing here tested ${wants}.`
-    : `A ${shape.kind.replace(/_/g, ' ')} takes ${wants}, and this was ${/^[aeiou]/.test(stat) ? 'an' : 'a'} ${stat} undertaking; the fixture was not begun.`;
+    : `A ${assetKindWord(shape.kind)} takes ${wants}, and this was ${/^[aeiou]/.test(stat) ? 'an' : 'a'} ${stat} undertaking; the fixture was not begun.`;
 }
 
 /** Work declared as its own op whose whole point is a payload (intent-ops §1). */
@@ -405,7 +405,7 @@ export function boundPayloadsToOutcome(
         const had = Number(o.durationTurns ?? 0);
         if (had < MAX_DURATION) {
           builtNotes.push(
-            `A partial result: the ${kind.replace(/_/g, ' ')} goes up, slower — ${MAX_DURATION} turns${had > 0 ? ` rather than ${had}` : ''}.`,
+            `A partial result: the ${assetKindWord(kind)} goes up, slower — ${MAX_DURATION} turns${had > 0 ? ` rather than ${had}` : ''}.`,
           );
           kept.push({ ...o, durationTurns: MAX_DURATION });
           changed = true;
@@ -426,7 +426,7 @@ export function boundPayloadsToOutcome(
     // label shape. It goes up slower instead.
     if (wrong === null && outcome === 'partial') {
       changed = true;
-      builtNotes.push(`A partial result: the ${kind.replace(/_/g, ' ')} goes up, slower — ${MAX_DURATION} turns.`);
+      builtNotes.push(`A partial result: the ${assetKindWord(kind)} goes up, slower — ${MAX_DURATION} turns.`);
       return { ...o, durationTurns: Math.max(Number(o.durationTurns ?? 0), MAX_DURATION) };
     }
     const reason = wrong;
@@ -666,9 +666,9 @@ export function describeOrderEffect(effect: OrderEffect): string {
     case 'commission_ships':
       return `${n} new ${unitWord(effect.hull, n)}`;
     case 'found_fixture':
-      return `a ${effect.fixtureKind.replace(/_/g, ' ') || 'fixture'}`;
+      return `a ${assetKindWord(effect.fixtureKind) || 'fixture'}`;
     case 'repair_fixture':
-      return `${n} point${n === 1 ? '' : 's'} of repair to ${effect.fixtureKind ? `the ${effect.fixtureKind.replace(/_/g, ' ')}` : 'a damaged fixture'}`;
+      return `${n} point${n === 1 ? '' : 's'} of repair to ${effect.fixtureKind ? `the ${assetKindWord(effect.fixtureKind)}` : 'a damaged fixture'}`;
     case 'court':
       return n >= 2 ? 'an envoy' : 'half an envoy';
   }
@@ -816,7 +816,7 @@ export function applyOrderEffect(
       else mend.damage = after;
       const whole = fixtureIntegrity(mend);
       return {
-        note: `${doneAt(label, system.name)}: the ${mend.kind.replace(/_/g, ' ')} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
+        note: `${doneAt(label, system.name)}: the ${assetKindWord(mend.kind)} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
         delivered: true,
       };
     }
@@ -838,7 +838,7 @@ export function applyOrderEffect(
       }
       if (holder === null) {
         return {
-          note: say`${doneAt(label, system.name)}, but the {world} has fallen out of anyone's hands and the ${shape.kind.replace(/_/g, ' ')} stands empty.`,
+          note: say`${doneAt(label, system.name)}, but the {world} has fallen out of anyone's hands and the ${assetKindWord(shape.kind)} stands empty.`,
           delivered: false,
         };
       }
@@ -850,7 +850,7 @@ export function applyOrderEffect(
         delivered: true,
         fixture: {
           kind: shape.kind,
-          text: `${shape.kind.replace(/_/g, ' ')} at ${system.name}`,
+          text: `${assetKindWord(shape.kind)} at ${system.name}`,
           heldBy: holder,
           quantity: 1,
           unit: assetUnit(shape.kind),

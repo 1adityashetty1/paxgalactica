@@ -1,15 +1,21 @@
 {
   "src/domain/command.ts": 1,
+  "src/domain/development.ts": 2,
   "src/domain/events.ts": 1,
   "src/domain/fleets.ts": 1,
   "src/domain/ops.ts": 4,
   "src/domain/pronouns.ts": 1,
-  "src/domain/reducer.ts": 4,
+  "src/domain/reducer.ts": 14,
+  "src/domain/refusals.ts": 5,
+  "src/domain/state.ts": 1,
   "src/engine/archive.ts": 1,
-  "src/model/calls.ts": 11,
+  "src/engine/campaign.ts": 1,
+  "src/model/calls.ts": 12,
+  "src/model/serialize.ts": 3,
+  "src/server/session.ts": 1,
   "src/ui/help.ts": 5,
   "src/ui/helptext.ts": 18,
   "src/ui/logview.ts": 2,
   "src/ui/worldtext.ts": 16,
-  "web/src/components/SidePanel.tsx": 2
+  "web/src/components/SidePanel.tsx": 5
 }

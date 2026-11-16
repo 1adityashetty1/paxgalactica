@@ -2,7 +2,7 @@ import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
 import { atWork, describeEffect } from '../domain/diplomacy.js';
 import { observeOrders, rememberedBy } from '../domain/intel.js';
-import { rimEventTitle, say, treatyWord } from '../skin/lexicon.js';
+import { orderWord, rimEventTitle, say, treatyWord } from '../skin/lexicon.js';
 import {
   isBoon,
   rimEventsVisibleTo,
@@ -448,7 +448,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       duration: r.durationTurns,
       remaining,
       completesNextTurn: remaining === 1,
-      ...(r.type ? { kind: r.type.replace(/_/g, ' ') } : {}),
+      ...(r.type ? { kind: orderWord(r.type) } : {}),
       ...(r.delivers !== undefined ? { delivers: r.delivers } : {}),
     };
   });
@@ -461,7 +461,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       factionName: name,
       color,
       label: m.label,
-      kind: m.type.replace(/_/g, ' '),
+      kind: orderWord(m.type),
       delivers: m.delivers,
       progress: m.progress,
       duration: m.durationTurns,

@@ -678,12 +678,34 @@ they were played.
      - Ids and field names (`torpedo_boat`, `unknown_system`, `systemId`) are
        counted on a second ratchet. Phases 3 and 4 rename them, and phase 2
        only stops new ones arriving. 1,115 are recorded today.
-   - Prose: 67 setting words remain in 13 files, from 994 at the start. What
+   - **Hull classes, terrains and Rim events are setting in every form**,
+     ids included (2026-11-16):
+     - no ordinary-word exemption reaches their words;
+     - their ids (`torpedo_boat`, `earthnight`, `ion_storm`) are scan words
+       wherever they appear, in prose, in an id, in a field name or in output.
+   - An id shown by spacing its underscores (`kind.replace(/_/g, ' ')`) is
+     counted as a leak, since it writes the id where the lexicon has a word.
+     57 such sites were routed through `assetKindWord`, `orderWord`,
+     `treatyWord` and `unitWord`; 24 remain.
+   - Prose: 98 hits remain in 19 files, from 994 at the start. That counts
+     the setting ids and the spaced-id sites, which are new to the scan. What
      remains:
      - model-facing schema and prompt text, which is phase 4 and 6 work;
      - the scenario's names, which is phase 5 work;
      - the module-level tables in the help pages and world lines.
-   - Not built yet: the runtime null-skin scan.
+   - The runtime null-lexicon scan (`tests/skin-runtime.test.ts`) drives, with
+     no model and no browser:
+     - 60 bot turns, every log line and briefing;
+     - every Rim event through its sandbox;
+     - every help page;
+     - the epilogue;
+     - all ten kinds of model call, against a mocked client that records the
+       system prompt, user message and JSON schema each would send.
+
+     The scenario's names and sheets are masked out first, being phase 5's.
+     Each source is held to its recorded words: 377 across 45 sources, 281 of
+     them in prompts and 41 in schemas. The engine's log lines are clean, and
+     the briefing carries only Rim event ids.
 3. **Ordinals.**
    - First, as a no-op: a codemod so the suite names ids through a
      default-skin table (`F.meridian`, `S['ark-1']`, `U.battleship`). That is

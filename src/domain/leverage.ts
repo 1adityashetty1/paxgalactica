@@ -30,7 +30,7 @@ import {
   type WorldState,
 } from './state.js';
 import type { DurationCategory } from './duration.js';
-import { say } from '../skin/lexicon.js';
+import { orderWord, say } from '../skin/lexicon.js';
 
 /**
  * Leverage: what one power has over another, read off the board.
@@ -161,7 +161,7 @@ export function describeSecret(state: WorldState, secret: Secret): string {
     case 'secret_programme': {
       const order = state.pendingOrders.find((o) => o.id === secret.ref);
       return order
-        ? `${who} is running ${order.type.replace(/_/g, ' ')} at ${where(order.targetId)} in secret`
+        ? `${who} is running ${orderWord(order.type)} at ${where(order.targetId)} in secret`
         : `${who} ran a programme it never admitted to`;
     }
     case 'default':

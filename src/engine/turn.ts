@@ -57,7 +57,7 @@ import {
   type Campaign,
   type StageMeta,
 } from './campaign.js';
-import { say } from '../skin/lexicon.js';
+import { assetKindWord, say } from '../skin/lexicon.js';
 
 export interface ReactionView {
   factionId: string;
@@ -1035,10 +1035,10 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // Named here, which also sends the story to be reconciled.
   if (resolution.check?.outcome === 'partial' && !routed.ops.some((o) => (o as { op?: string } | null)?.op === 'found_fixture')) {
     const words = ` ${action.toLowerCase().replace(/[^a-z\s]/g, ' ')} `;
-    const named = ASSET_ARCHETYPES.find((a) => a.fixture && words.includes(` ${a.kind.replace(/_/g, ' ')} `));
+    const named = ASSET_ARCHETYPES.find((a) => a.fixture && words.includes(` ${assetKindWord(a.kind)} `));
     if (named) {
       routed.notes.push(
-        `A ${named.kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`,
+        `A ${assetKindWord(named.kind)} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`,
       );
     }
   }

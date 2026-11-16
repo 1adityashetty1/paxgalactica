@@ -156,6 +156,25 @@ export function withLexicon<T>(words: Words, run: () => T): T {
   }
 }
 
+/**
+ * `withLexicon` across awaits: the lexicon stays set until `run` settles.
+ *
+ * The scope is one module variable, so this is only sound while nothing else
+ * runs a campaign in another lexicon meanwhile — true of the suite, which uses
+ * it to build prompts under the null lexicon, and of every campaign today,
+ * which is in Pax Galactica. A server holding campaigns in two skins at once
+ * needs the scope per request (phase 7), the way telemetry's spans already are.
+ */
+export async function withLexiconAsync<T>(words: Words, run: () => Promise<T>): Promise<T> {
+  const outer = active;
+  active = words;
+  try {
+    return await run();
+  } finally {
+    active = outer;
+  }
+}
+
 const one = (n: number) => n === 1;
 
 /** Fill a skin sentence's `{name}` marks with the core's numbers. A mark with no number throws. */
@@ -244,14 +263,18 @@ export function rimEventWord(kind: RimEventKind): string {
   return title[0]!.toLowerCase() + title.slice(1);
 }
 
-/** What an order category is called, a fleet movement included. */
-export function orderWord(category: OrderType): string {
-  return active.orderCategories[category].word;
+/**
+ * What an order category is called, a fleet movement included. A rumour or a
+ * sighting stores its type as a plain string, so one outside the vocabulary is
+ * shown as its id, spaced, rather than throwing.
+ */
+export function orderWord(category: OrderType | (string & {})): string {
+  return (active.orderCategories as Record<string, Word>)[category]?.word ?? category.replace(/_/g, ' ');
 }
 
-/** What a treaty type is called. */
-export function treatyWord(type: TreatyType): string {
-  return active.treatyTypes[type].word;
+/** What a treaty type is called; one outside the vocabulary is shown as its id, spaced. */
+export function treatyWord(type: TreatyType | (string & {})): string {
+  return (active.treatyTypes as Record<string, Word>)[type]?.word ?? type.replace(/_/g, ' ');
 }
 
 /** A promissory note's title. */
@@ -274,6 +297,11 @@ export function fleetKindWord(kind: FleetKind): string {
 /** What one of a kind of thing is called: "crew", "chart", "fixture". A kind outside the catalogue is counted as itself. */
 export function assetUnit(kind: string): string {
   return active.assetKinds[kind]?.unit ?? kind.replace(/_/g, ' ');
+}
+
+/** What a kind of thing is called in a sentence: "power plant", "prisoners". A kind outside the catalogue is shown as its id, spaced. */
+export function assetKindWord(kind: string): string {
+  return active.assetKinds[kind]?.word ?? kind.replace(/_/g, ' ');
 }
 
 /** A catalogue kind's words: its unit, what produces one and who wants it. */

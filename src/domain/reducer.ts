@@ -389,7 +389,7 @@ import {
   type WorldState,
 } from './state.js';
 import { asSentence, count, doneAt, possessive } from './words.js';
-import { assetUnit, countUnits, meaning, noteTitle, orderWord, rimEventTitle, rimEventWord, say, treatyWord, unitWord } from '../skin/lexicon.js';
+import { assetKindWord, assetUnit, countUnits, forceWord, meaning, noteTitle, orderWord, rimEventTitle, rimEventWord, say, treatyWord, unitWord } from '../skin/lexicon.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -1890,10 +1890,10 @@ function steal(
     .sort((a, b) => a.d - b.d || a.w.id.localeCompare(b.w.id))[0]?.w;
   mark.heldBy = thief;
   mark.atSystemId = home?.id ?? null;
-  const what = `${mark.kind.replace(/_/g, ' ')} (${mark.text.replace(/[.\s]+$/, '')})`;
+  const what = `${assetKindWord(mark.kind)} (${mark.text.replace(/[.\s]+$/, '')})`;
   logEvent(state, 'narrative', `Your ${what} is gone from ${host.name}, and nobody can say who took it.`, from, [from]);
   logEvent(state, 'narrative', `The ${what} is taken from ${host.name}${home ? ` and carried to ${home.name}` : ''}.`, thief, [thief]);
-  const taken = mark.kind.replace(/_/g, ' ');
+  const taken = assetKindWord(mark.kind);
   return `took ${taken} from ${host.name}${home ? ` and carried ${/s$/.test(taken) ? 'them' : 'it'} to ${home.name}` : ''} (${mark.text.replace(/[.\s]+$/, '')}).`;
 }
 
@@ -2122,7 +2122,7 @@ function supersedePriorTreaties(
     if (clash.length === 0) continue;
 
     prior.status = 'superseded';
-    const note = `Superseded ${prior.id}: the ${prior.type.replace(/_/g, ' ')} between ${prior.parties.map((p) => nameFor(state, p)).join(' and ')} is now set by the new accord, not added to it (${clash.join(', ')}).`;
+    const note = `Superseded ${prior.id}: the ${treatyWord(prior.type)} between ${prior.parties.map((p) => nameFor(state, p)).join(' and ')} is now set by the new accord, not added to it (${clash.join(', ')}).`;
     notes.push(note);
     logEvent(state, 'diplomacy', note, incoming.parties[0]);
   }
@@ -2426,7 +2426,7 @@ function applyCheat(
       const asset = AssetSchema.parse({
         id: mintId(state, 'ast'),
         kind: shape.kind,
-        text: `${shape.kind.replace(/_/g, ' ')} at ${sys.name}`,
+        text: `${assetKindWord(shape.kind)} at ${sys.name}`,
         heldBy: holder,
         quantity,
         unit: assetUnit(shape.kind),
@@ -2454,7 +2454,7 @@ function applyCheat(
         return refuse('no_presence', say`${f.name} neither holds ${sys.name} nor has {ships} there.`);
       }
       addShipsAt(sys, f.id, cheat.count, cheat.hull);
-      return log(`${cheat.count} ${cheat.hull.replace(/_/g, ' ')}${cheat.count === 1 ? '' : 's'} join ${f.name} at ${sys.name}.`, f.id);
+      return log(`${cheat.count} ${unitWord(cheat.hull)}${cheat.count === 1 ? '' : 's'} join ${f.name} at ${sys.name}.`, f.id);
     }
     case 'officer': {
       const f = faction(cheat.factionId);
@@ -2889,7 +2889,7 @@ function settleRider(state: WorldState, before: Agent, live: Agent | undefined, 
       .sort((a, b) => a.id.localeCompare(b.id));
     if (standing[0]) {
       standing[0].damage = (standing[0].damage ?? 0) + 1;
-      done = `and ${possessive(nameFor(state, holder))} ${standing[0].kind.replace(/_/g, ' ')} there is damaged`;
+      done = `and ${possessive(nameFor(state, holder))} ${assetKindWord(standing[0].kind)} there is damaged`;
     } else {
       const was = hullsAt(host, holder);
       setShipsAt(host, holder, Math.max(0, was - RIDER_SABOTAGE_HULLS));
@@ -5490,7 +5490,7 @@ function applyOpsUnderRules(
         }
         // Named by kind, its own sentence beside it: "the last of Sorted hull
         // plate … underwritten. Salvage stock fed …" ran two sentences together.
-        const what = `its ${asset.kind.replace(/_/g, ' ')} (${asset.text.replace(/[.\s]+$/, '')})`;
+        const what = `its ${assetKindWord(asset.kind)} (${asset.text.replace(/[.\s]+$/, '')})`;
         const note = left === 0
           ? `${nameFor(state, asset.heldBy)} spends the last of ${what}. ${op.reason}`.trim()
           : `${nameFor(state, asset.heldBy)} spends ${instrument ? `${spent} of its plays` : countOf(spent, asset.unit)} of ${what}; ${left} left. ${op.reason}`.trim();
@@ -5628,7 +5628,7 @@ function applyOpsUnderRules(
             state.assets = state.assets.filter((a) => a.id !== asset.id);
             // Named by count and kind, its own sentence beside it: "lets Crews
             // off hulls … held under guard at Arkane Prime. go." (bughunt 2026-10-28).
-            const note = `${nameFor(state, holder)} lets ${countOf(asset.quantity, asset.unit)} of ${asset.kind.replace(/_/g, ' ')} go (${asset.text.replace(/[.\s]+$/, '')}).`;
+            const note = `${nameFor(state, holder)} lets ${countOf(asset.quantity, asset.unit)} of ${assetKindWord(asset.kind)} go (${asset.text.replace(/[.\s]+$/, '')}).`;
             notes.push(note);
             logEvent(state, 'narrative', note, holder, [holder]);
           }
@@ -5797,7 +5797,7 @@ function applyOpsUnderRules(
             reject(
               raw,
               'illegal_value',
-              `${nameFor(state, holder)} and ${nameFor(state, issuer)} already have a ${type.replace(/_/g, ' ')} in force; the note would give nothing it does not.`,
+              `${nameFor(state, holder)} and ${nameFor(state, issuer)} already have a ${treatyWord(type)} in force; the note would give nothing it does not.`,
             );
             break;
           }
@@ -5808,7 +5808,7 @@ function applyOpsUnderRules(
             reject(
               raw,
               'treaty_conflict',
-              `${nameFor(state, bound.parties.find((p) => p === issuer || p === holder)!)} is already bound by an exclusive ${bound.type.replace(/_/g, ' ')} (${bound.id}), so the note cannot be honoured.`,
+              `${nameFor(state, bound.parties.find((p) => p === issuer || p === holder)!)} is already bound by an exclusive ${treatyWord(bound.type)} (${bound.id}), so the note cannot be honoured.`,
             );
             break;
           }
@@ -5837,7 +5837,7 @@ function applyOpsUnderRules(
             summary: `${title}: ${possessive(nameFor(state, issuer))} note, called in by ${nameFor(state, holder)}`,
           });
           state.treaties.push(treaty);
-          what = `a ${type.replace(/_/g, ' ')} in force until turn ${treaty.expiresTurn}`;
+          what = `a ${treatyWord(type)} in force until turn ${treaty.expiresTurn}`;
         } else {
           // A line of credit is a loan of money, and it is the issuer's money:
           // trimmed to what its treasury holds, as every transfer is.
@@ -5946,11 +5946,11 @@ function applyOpsUnderRules(
             break;
           }
           if (treatyBetween(state.treaties, state.turn, holder, debtor, [type])) {
-            reject(raw, 'illegal_value', `A ${type.replace(/_/g, ' ')} already binds them; calling the favour would give nothing.`);
+            reject(raw, 'illegal_value', `A ${treatyWord(type)} already binds them; calling the favour would give nothing.`);
             break;
           }
           if (conflictingTreaty(state.treaties, state.turn, type, [holder, debtor], false)) {
-            reject(raw, 'treaty_conflict', `An exclusive ${type.replace(/_/g, ' ')} already binds one of them to somebody else.`);
+            reject(raw, 'treaty_conflict', `An exclusive ${treatyWord(type)} already binds one of them to somebody else.`);
             break;
           }
           // Read before the treaty exists, for the reason `form_treaty` does: a
@@ -5966,11 +5966,11 @@ function applyOpsUnderRules(
             effectiveTurn: null,
             status: 'active',
             exclusive: false,
-            summary: `${type.replace(/_/g, ' ')} owed: ${nameFor(state, debtor)} pays a favour to ${nameFor(state, holder)}`,
+            summary: `${treatyWord(type)} owed: ${nameFor(state, debtor)} pays a favour to ${nameFor(state, holder)}`,
           });
           state.treaties.push(treaty);
           if (truces) leaveTruce(state, treaty, wereAtWar, notes);
-          what = `${nameFor(state, debtor)} signs a ${type.replace(/_/g, ' ')} until turn ${treaty.expiresTurn}`;
+          what = `${nameFor(state, debtor)} signs a ${treatyWord(type)} until turn ${treaty.expiresTurn}`;
         } else {
           const demand = (state.demands ?? []).find((d) => d.id === op.demandId);
           if (!demand || demand.status !== 'open') {
@@ -6884,7 +6884,7 @@ function applyOpsUnderRules(
               reject(
                 raw,
                 'illegal_value',
-                `${site.name} is ${site.worldType} ground and makes ${ground}; a ${shape.kind.replace(/_/g, ' ')} (${shape.modifies.join(' and ')}) cannot stand there. Raise one that names ${ground}.`,
+                `${site.name} is ${site.worldType} ground and makes ${ground}; a ${assetKindWord(shape.kind)} (${shape.modifies.join(' and ')}) cannot stand there. Raise one that names ${ground}.`,
               );
               break;
             }
@@ -6917,7 +6917,7 @@ function applyOpsUnderRules(
                 raw,
                 'illegal_value',
                 op.onComplete.fixtureKind
-                  ? `No damaged ${op.onComplete.fixtureKind.replace(/_/g, ' ')} stands at ${site.name}.`
+                  ? `No damaged ${assetKindWord(op.onComplete.fixtureKind)} stands at ${site.name}.`
                   : `Nothing standing at ${site.name} is damaged.`,
               );
               break;
@@ -6943,7 +6943,7 @@ function applyOpsUnderRules(
             if (filedType !== category) {
               const note =
                 hull === 'battleship'
-                  ? say`Filed the {battleship} programme as capital {ship} construction rather than ${category.replace(/_/g, ' ')}: a {battleship} is a capital {hull}, and capital {hulls} take ${CATEGORY_FLOORS.capital_ship_construction} turns to lay down.`
+                  ? say`Filed the {battleship} programme as capital {ship} construction rather than ${orderWord(category)}: a {battleship} is a capital {hull}, and capital {hulls} take ${CATEGORY_FLOORS.capital_ship_construction} turns to lay down.`
                   : say`Filed the ${unitWord(hull)} programme as a ${orderWord('refit')} rather than ${orderWord('capital_ship_construction')}: only a {battleship} is a capital {hull}, and lighter classes come off the slips in ${CATEGORY_FLOORS.refit}.`;
               notes.push(note);
               logEvent(state, 'clamp', note, op.factionId);
@@ -7324,7 +7324,7 @@ function applyOpsUnderRules(
         const plainLabel =
           effect?.kind === 'court'
             ? `envoy to ${targetName}`
-            : `${filedType.replace(/_/g, ' ')} ${isMovementType(op.type) ? 'to' : 'at'} ${targetName}`;
+            : `${orderWord(filedType)} ${isMovementType(op.type) ? 'to' : 'at'} ${targetName}`;
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -8098,7 +8098,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'treaty_conflict',
-            `${nameFor(state, blocked)} is already bound by an exclusive ${bound.type.replace(/_/g, ' ')} with ${nameFor(state, third)} (${bound.id}). That has to be dissolved before another can be entered.`,
+            `${nameFor(state, blocked)} is already bound by an exclusive ${treatyWord(bound.type)} with ${nameFor(state, third)} (${bound.id}). That has to be dissolved before another can be entered.`,
           );
           break;
         }
@@ -8131,7 +8131,7 @@ function applyOpsUnderRules(
             | 'superseded'
             | 'pending',
           exclusive: op.exclusive,
-          summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.map((p) => nameFor(state, p)).join(' and ')}`,
+          summary: op.summary || `${treatyWord(op.treatyType)} between ${op.parties.map((p) => nameFor(state, p)).join(' and ')}`,
         });
         state.treaties.push(treaty);
         // What each party did by signing it, for the lines that forbid it.
@@ -11654,7 +11654,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const earned = asset.quantity * (asset.valuePerUnit[buyer.id] ?? COMMODITY_VALUE);
     buyer.credits += earned;
     state.assets = state.assets.filter((a) => a.id !== asset.id);
-    const note = say`${buyer.name} sells ${countOf(asset.quantity, asset.unit)} of ${possessive(nameFor(state, asset.issuedBy!))} ${asset.kind.replace(/_/g, ' ')} at market for ${earned} {credits}.`;
+    const note = say`${buyer.name} sells ${countOf(asset.quantity, asset.unit)} of ${possessive(nameFor(state, asset.issuedBy!))} ${assetKindWord(asset.kind)} at market for ${earned} {credits}.`;
     if (buyer.id === state.playerFactionId || asset.issuedBy === state.playerFactionId) notes.push(note);
     logEvent(state, 'system', note, buyer.id, [buyer.id, asset.issuedBy!]);
   }
@@ -11837,7 +11837,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         continue;
       }
       if (!f.tollTargets.includes(lift.factionId)) f.tollTargets = [...f.tollTargets, lift.factionId].sort();
-      const why = treatyGone ? `the ${lift.whileTreaty!.replace(/_/g, ' ')} it was lifted for is over` : 'the term it was lifted for has run';
+      const why = treatyGone ? `the ${treatyWord(lift.whileTreaty!)} it was lifted for is over` : 'the term it was lifted for has run';
       const note = `${f.name} charges ${nameFor(state, lift.factionId)} for passage again: ${why}.`;
       notes.push(note);
       logEvent(state, 'diplomacy', note, f.id);
@@ -12433,8 +12433,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           state,
           'system',
           profile.oneShot
-            ? `${owner?.name ?? agent.ownerFactionId} decapitates the command on ${host.name}: ${target.name} loses ${count(lost, 'hull')}.`
-            : `Sabotage on ${host.name}: ${target.name} loses ${count(lost, 'hull')}.`,
+            ? `${owner?.name ?? agent.ownerFactionId} decapitates the command on ${host.name}: ${target.name} loses ${count(lost, forceWord('hull'), forceWord('hull', 2))}.`
+            : `Sabotage on ${host.name}: ${target.name} loses ${count(lost, forceWord('hull'), forceWord('hull', 2))}.`,
           target.id,
         );
       }
@@ -12457,7 +12457,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       } else {
         const whole = fixtureIntegrity(struck);
         struck.damage = Math.min(whole, (struck.damage ?? 0) + hits);
-        const label = struck.kind.replace(/_/g, ' ');
+        const label = assetKindWord(struck.kind);
         watchNotes.set(
           agent.id,
           `wrecked part of ${possessive(target.name)} ${label} on ${host.name} (now ${whole - struck.damage} of ${whole}).`,
@@ -12739,7 +12739,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
             ? fixtureSlotRefusal(state, target, outcome.fixture.kind, { underway: false })
             : null;
           if (occupant) {
-            note = say`${doneAt(order.label, target.name)}, but a ${occupant.kind.replace(/_/g, ' ')} already stands there and a {world} carries one.`;
+            note = say`${doneAt(order.label, target.name)}, but a ${assetKindWord(occupant.kind)} already stands there and a {world} carries one.`;
           } else if (full) {
             note = `${doneAt(order.label, target.name)}, but raised nothing: ${full}`;
           } else {
@@ -13194,7 +13194,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       publicEvent = true;
       moveRegard(state, a, b, -BORDER_INCIDENT_COST);
       moveRegard(state, b, a, -BORDER_INCIDENT_COST);
-      text = say`A border incident near ${s.name}: ${who(a)} and ${who(b)} {ships} trade fire nobody ordered, and each thinks worse of the other.`;
+      text = say`A ${rimEventWord('border_incident')} near ${s.name}: ${who(a)} and ${who(b)} {ships} trade fire nobody ordered, and each thinks worse of the other.`;
       break;
     }
 
@@ -13206,7 +13206,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       publicEvent = true;
       // "50% more", not "half as much again": the second is correct and reads
       // as a cut, which is the opposite of what a shortage does to a price.
-      text = say`A shortage of ${plan.assetKind.replace(/_/g, ' ')} runs through {rim}: buyers will pay ${Math.round((SHORTAGE_FACTOR - 1) * 100)}% more for it for ${SHORTAGE_TURNS} turns.`;
+      text = say`A ${rimEventWord('shortage')} of ${assetKindWord(plan.assetKind)} runs through {rim}: buyers will pay ${Math.round((SHORTAGE_FACTOR - 1) * 100)}% more for it for ${SHORTAGE_TURNS} turns.`;
       break;
     }
 
@@ -13219,7 +13219,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       const want = Math.max(MUTINY_MIN_TONS, Math.ceil(fleet * MUTINY_FRACTION));
       const cap = Math.max(1, Math.floor(fleet * MAX_ATTRITION_FRACTION));
       const gone = removeTons(state, f, Math.min(want, cap));
-      text = say`Mutiny in ${whose(f)} {fleet}: {crews} who have stopped believing their orders take ${gone} {tons} of shipping and go.`;
+      text = say`${rimEventTitle('mutiny')} in ${whose(f)} {fleet}: {crews} who have stopped believing their orders take ${gone} {tons} of shipping and go.`;
       break;
     }
 
@@ -13245,7 +13245,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       systemId = s.id;
       const raised = Math.max(0, Math.min(VOLUNTEERS_MAX, s.garrisonMax - s.garrison));
       s.garrison += raised;
-      text = `Volunteers come forward on ${s.name}: ${whose(f)} garrison rises by ${raised}, to ${s.garrison} of ${s.garrisonMax}.`;
+      text = `${rimEventTitle('volunteers')} come forward on ${s.name}: ${whose(f)} garrison rises by ${raised}, to ${s.garrison} of ${s.garrisonMax}.`;
       break;
     }
 

@@ -18,7 +18,7 @@ import {
   yardQueueTons,
   type WorldState,
 } from './state.js';
-import { say } from '../skin/lexicon.js';
+import { assetKindWord, say } from '../skin/lexicon.js';
 
 /**
  * What a power can do this turn, computed: its yards, the fixture slots its
@@ -64,7 +64,7 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
     const stat = WORLD_TYPE_STAT[site.worldType];
     const kinds = ASSET_ARCHETYPES.filter(
       (k) => k.fixture && k.modifies?.includes(stat) && fixtureSlotRefusal(state, site, k.kind) === null,
-    ).map((k) => k.kind.replace(/_/g, ' '));
+    ).map((k) => assetKindWord(k.kind));
     return kinds.length > 0 ? [`${site.name} (${room} free; its ${stat} ground takes ${kinds.slice(0, 4).join(', ')})`] : [];
   });
   out.push(

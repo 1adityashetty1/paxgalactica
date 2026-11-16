@@ -104,7 +104,7 @@ import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
 import { ACT_WORDS, linesCrossed, type Act } from './acts.js';
 import { count, possessive } from './words.js';
-import { say } from '../skin/lexicon.js';
+import { assetKindWord, forceWord, say } from '../skin/lexicon.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -397,7 +397,7 @@ function raise(ctx: Ctx): Ops {
       systemId: site.id,
       kind,
       durationTurns: 3,
-      label: `${kind.replace(/_/g, ' ')} at ${site.name}`,
+      label: `${assetKindWord(kind)} at ${site.name}`,
     },
   ];
 }
@@ -434,7 +434,7 @@ function mend(ctx: Ctx): Ops {
       kind: broken.kind,
       magnitude: points,
       durationTurns: 3,
-      label: `repair the ${broken.kind.replace(/_/g, ' ')} at ${site.name}`,
+      label: `repair the ${assetKindWord(broken.kind)} at ${site.name}`,
     },
   ];
 }
@@ -2508,8 +2508,8 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
       }
     }
   }
-  if (massed > 0) parts.unshift(say`{sails} ${count(massed, 'hull')} to concentrate`);
-  if (bought > 0) parts.unshift(`lays down ${count(bought, 'hull')}`);
+  if (massed > 0) parts.unshift(say`{sails} ${count(massed, forceWord('hull'), forceWord('hull', 2))} to concentrate`);
+  if (bought > 0) parts.unshift(`lays down ${count(bought, forceWord('hull'), forceWord('hull', 2))}`);
 
   return parts.length === 0 ? `${name} holds its position.` : `${name} ${parts.join(', ')}.`;
 }

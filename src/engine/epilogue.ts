@@ -11,7 +11,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { possessive } from '../domain/words.js';
-import { say } from '../skin/lexicon.js';
+import { placeWord, say } from '../skin/lexicon.js';
 
 /**
  * How a campaign ends, and why the facts are computed before anything is
@@ -261,7 +261,7 @@ export function campaignOutcome(
  * plain, accurate, and made only of numbers already on the board.
  */
 /** Plural agreement, because "1 worlds" in the last line the player reads is a shame. */
-const worlds = (n: number): string => `${n} ${n === 1 ? 'world' : 'worlds'}`;
+const worlds = (n: number): string => `${n} ${placeWord('world', n)}`;
 
 export function fallbackEpilogue(outcome: CampaignOutcome): { closing: string; slides: { factionId: string; text: string }[] } {
   const slides = outcome.factions.map((f) => {

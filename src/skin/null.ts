@@ -70,13 +70,17 @@ export function paxWords(options: { units?: boolean } = {}): string[] {
  * scan for leaks cannot police them.
  *
  * The test is appendix A's low-fantasy skin: a word it would keep unchanged —
- * a garrison, a blockade, a marriage, a ceasefire, unrest, a writ — names a
+ * a garrison, a blockade, a marriage, a ceasefire, a writ — names a
  * thing both settings have, and a literal using it is not evidence that the
  * lexicon was bypassed. A word it would change — a hull, a lane, an orbit, a
  * factory, an ion storm — is setting, and every literal carrying it is a
  * leak. The people's kinds are here because `officer` and `operative` are
  * also the game's own words for its rosters, which no lexicon family yet
  * names.
+ *
+ * **Never a hull class, a terrain or a Rim event.** Those three families are
+ * setting in every form, words and ids alike: "unrest" and "mutiny" are a
+ * skin's names for its events, whatever English also uses them for.
  */
 export const ORDINARY_WORDS: readonly string[] = [
   // places and phases; and an action "lands" when the turn ends, which no scan can tell from a fleet landing
@@ -89,8 +93,6 @@ export const ORDINARY_WORDS: readonly string[] = [
   'non aggression', 'mutual defense', 'trade accord', 'tribute', 'ceasefire', 'cession', 'contract', 'coalition', 'marriage',
   // orders
   'decree', 'political maneuver', 'espionage', 'counter intelligence', 'blockade', 'treaty ratification', 'garrison raising', 'fortification',
-  // events
-  'Unrest', 'Border incident', 'Shortage', 'Mutiny', 'Volunteers', 'Envoys of peace', 'Crackdown', 'A price on your head', 'Turned contact', 'Show of force',
   // notes
   'Most-favoured terms', 'Line of credit', 'Sanctuary', 'Safe passage',
 ];
@@ -107,8 +109,23 @@ export const UNROLED_WORDS: readonly string[] = [
   'convoy', 'convoys', 'boarding', 'pilot', 'pilots', 'galactic', 'starship', 'starships',
 ];
 
-/** The words a leak scan looks for: the default lexicon's, less its units and the ordinary ones, and the unroled ones. */
+/**
+ * The core ids that are themselves setting: every hull class, terrain and Rim
+ * event. `torpedo_boat`, `earthnight` and `ion_storm` are this skin's words in
+ * id form, and a model or player shown one is shown Pax Galactica whatever the
+ * lexicon says. Phase 3 gives them marked ids (`u_strike`, `t_guile`,
+ * `ev_lane_closure`); until then a scan counts every one it finds.
+ */
+export function settingIds(): string[] {
+  return [...Object.keys(PAX_LEXICON.units), ...Object.keys(PAX_LEXICON.terrains), ...Object.keys(PAX_LEXICON.rimEvents)];
+}
+
+/**
+ * The words a leak scan looks for: the default lexicon's, less its units and
+ * the ordinary ones; the unroled ones; and the setting ids, which no list of
+ * ordinary words can excuse.
+ */
 export function settingWords(): string[] {
   const ordinary = new Set(ORDINARY_WORDS.map((w) => w.toLowerCase()));
-  return [...paxWords({ units: false }).filter((w) => !ordinary.has(w.toLowerCase())), ...UNROLED_WORDS];
+  return [...paxWords({ units: false }).filter((w) => !ordinary.has(w.toLowerCase())), ...UNROLED_WORDS, ...settingIds()];
 }

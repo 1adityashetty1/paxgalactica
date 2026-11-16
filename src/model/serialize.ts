@@ -1,6 +1,6 @@
 import { fleetName, fleetsAt } from '../domain/fleets.js';
 import { ACT_WORDS } from '../domain/acts.js';
-import { noteTitle, orderWord, say } from '../skin/lexicon.js';
+import { assetKindWord, noteTitle, orderWord, say, treatyWord } from '../skin/lexicon.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -491,7 +491,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
     // commitments block has carried the same flag since exclusivity existed
     // there.
     const only = t.exclusive ? ' **[exclusive — one at a time]**' : '';
-    lines.push(`  - \`${t.id}\` ${t.type.replace(/_/g, ' ')} with ${other} (${until})${only} — ${t.summary}`);
+    lines.push(`  - \`${t.id}\` ${treatyWord(t.type)} with ${other} (${until})${only} — ${t.summary}`);
     const flow = t.terms.incomePerTurn[viewerId];
     if (flow) lines.push(`      income: ${flow > 0 ? '+' : ''}${flow}/turn`);
     for (const share of t.terms.incomeShares) {
@@ -858,7 +858,7 @@ export function serializeSystems(state: WorldState): string {
       .map((a) => {
         const whole = fixtureIntegrity(a);
         const hit = a.damage ?? 0;
-        return `${a.kind.replace(/_/g, ' ')} (${nameOfFaction(state, a.heldBy)}${hit > 0 ? `, DAMAGED ${whole - hit} of ${whole} working` : ''})`;
+        return `${assetKindWord(a.kind)} (${nameOfFaction(state, a.heldBy)}${hit > 0 ? `, DAMAGED ${whole - hit} of ${whole} working` : ''})`;
       })
       .join(', ');
     const line = [
@@ -891,7 +891,7 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
     const due = m.live
       ? `still under way, ${m.durationTurns - m.progress} of ${m.durationTurns} turns remaining`
       : `out of sight; due turn ${m.seenTurn + m.durationTurns - m.seenProgress} if it ran on`;
-    return `- [last seen turn ${m.seenTurn}] ${owner}: ${m.label} (${m.type.replace(/_/g, ' ')}) -> ${name(m.systemId)}${
+    return `- [last seen turn ${m.seenTurn}] ${owner}: ${m.label} (${orderWord(m.type)}) -> ${name(m.systemId)}${
       m.delivers ? `, delivers ${m.delivers}` : ''
     }, ${due}`;
   });
@@ -899,7 +899,7 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
     .rumours.filter((r) => r.type && r.factionId)
     .map((r) => {
       const owner = getFaction(state, r.factionId!)?.name ?? r.factionId;
-      return `- [rumoured, from what you know of them] ${owner}: ${r.type!.replace(/_/g, ' ')} at ${name(r.systemId)}${
+      return `- [rumoured, from what you know of them] ${owner}: ${orderWord(r.type!)} at ${name(r.systemId)}${
         r.delivers ? `, to deliver ${r.delivers}` : ''
       }, ${r.durationTurns - r.progress} of ${r.durationTurns} turns remaining`;
     });
@@ -913,7 +913,7 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
       const target = getSystem(state, o.targetId)?.name ?? o.targetId;
       const remaining = o.durationTurns - o.progress;
       const mine = o.factionId === viewerId ? 'YOURS' : 'observed';
-      const kind = isMovementType(o.type) ? say`{fleet} movement` : o.type.replace(/_/g, ' ');
+      const kind = isMovementType(o.type) ? say`{fleet} movement` : orderWord(o.type);
       const raidable = o.interruptible ? 'interruptible' : 'cannot be interrupted';
       // What it will deliver, so a project already paid for is not re-ordered
       // and so a rival can see what is worth interrupting.
