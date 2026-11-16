@@ -90,6 +90,15 @@ export interface Verb {
   synonyms: string[];
 }
 
+/**
+ * The game's words for the people it keeps on its rosters: an operative, an
+ * officer, a notable. "Operative" is the one that needed a home — its spy sense
+ * is 19th- and 20th-century, and a Byzantine or a Three Kingdoms skin says
+ * "agent" or "spy" — but all three are rosters a skin may name.
+ */
+export const PEOPLE_TERMS = ['operative', 'officer', 'notable'] as const;
+export type PeopleTerm = (typeof PEOPLE_TERMS)[number];
+
 /** The units every price and every fleet is counted in. */
 export const ACCOUNT_TERMS = ['credits', 'tons'] as const;
 export type AccountTerm = (typeof ACCOUNT_TERMS)[number];
@@ -133,6 +142,7 @@ export interface Words {
   fleetKinds: Record<FleetKind, Word>;
   places: Record<PlaceTerm, Term>;
   forces: Record<ForceTerm, Term>;
+  people: Record<PeopleTerm, Term>;
   verbs: Record<VerbTerm, Verb>;
   accounts: Record<AccountTerm, Term>;
   meanings: Meanings;
@@ -236,6 +246,12 @@ export function forceWord(force: ForceTerm, n = 1): string {
   return one(n) ? w.word : w.plural;
 }
 
+/** A roster's word for one of its people, singular or plural for `n`: "operative", "officers". */
+export function peopleWord(person: PeopleTerm, n = 1): string {
+  const w = active.people[person];
+  return one(n) ? w.word : w.plural;
+}
+
 /** A unit of account's word, singular or plural for `n`. */
 export function accountWord(account: AccountTerm, n = 2): string {
   const w = active.accounts[account];
@@ -316,13 +332,13 @@ export function assetWords(kind: string): AssetWord {
 /* ------------------------------------------------------------------ */
 
 type TokenSource =
-  | { family: 'places' | 'forces' | 'accounts'; key: string; plural: boolean }
+  | { family: 'places' | 'forces' | 'people' | 'accounts'; key: string; plural: boolean }
   | { family: 'units'; key: HullClass; plural: boolean }
   | { family: 'verbs'; key: VerbTerm; form: Exclude<keyof Verb, 'synonyms'> };
 
 function tokenTable(): Map<string, TokenSource> {
   const table = new Map<string, TokenSource>();
-  const add = (family: 'places' | 'forces' | 'accounts', key: string, one: string, many: string | null) => {
+  const add = (family: 'places' | 'forces' | 'people' | 'accounts', key: string, one: string, many: string | null) => {
     table.set(one, { family, key, plural: false });
     if (many) table.set(many, { family, key, plural: true });
   };
@@ -358,6 +374,9 @@ function tokenTable(): Map<string, TokenSource> {
     table.set(`${verb}ed`, { family: 'verbs', key: verb, form: 'past' });
     table.set(`${verb}ing`, { family: 'verbs', key: verb, form: 'ing' });
   }
+  add('people', 'operative', 'operative', 'operatives');
+  add('people', 'officer', 'officer', 'officers');
+  add('people', 'notable', 'notable', 'notables');
   add('accounts', 'credits', 'credit', 'credits');
   add('accounts', 'tons', 'ton', 'tons');
   for (const hull of ['battleship', 'escort', 'torpedo_boat', 'lifter', 'freighter', 'listener', 'courier'] as const) {
@@ -388,7 +407,9 @@ function tokenWord(name: string): string {
         ? active.places[source.key as PlaceTerm]
         : source.family === 'forces'
           ? active.forces[source.key as ForceTerm]
-          : active.accounts[source.key as AccountTerm];
+          : source.family === 'people'
+            ? active.people[source.key as PeopleTerm]
+            : active.accounts[source.key as AccountTerm];
   return capital(source.plural ? entry.plural : entry.word);
 }
 

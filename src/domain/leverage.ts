@@ -155,8 +155,8 @@ export function describeSecret(state: WorldState, secret: Secret): string {
     case 'covert_operation': {
       const agent = (state.agents ?? []).find((a) => a.id === secret.ref);
       return agent
-        ? `${who} has an operative working ${agent.mission ?? 'unseen'} at ${where(agent.systemId)}`
-        : `${who} runs an operative it has never owned to`;
+        ? say`${who} has an {operative} working ${agent.mission ?? 'unseen'} at ${where(agent.systemId)}`
+        : say`${who} runs an {operative} it has never owned to`;
     }
     case 'secret_programme': {
       const order = state.pendingOrders.find((o) => o.id === secret.ref);

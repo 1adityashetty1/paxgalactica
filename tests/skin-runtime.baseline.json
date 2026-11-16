@@ -11,11 +11,7 @@
   "help:actions": [
     "hyperlane"
   ],
-  "help:assets": [
-    "dossier"
-  ],
   "help:diplomacy": [
-    "basing rights",
     "fleets",
     "lanes",
     "systems",
@@ -29,7 +25,6 @@
   ],
   "help:fixtures": [
     "factory",
-    "military base",
     "stock exchange"
   ],
   "help:index": [
@@ -37,12 +32,6 @@
     "ship",
     "the rim",
     "worlds"
-  ],
-  "help:trade": [
-    "commerce raiding"
-  ],
-  "help:war": [
-    "convoy"
   ],
   "prompt:advisor:system": [
     "fleet",
@@ -61,7 +50,6 @@
     "worlds"
   ],
   "prompt:advisor:user": [
-    "convoy",
     "courier",
     "crew",
     "fleet",
@@ -71,7 +59,6 @@
     "hull",
     "hulls",
     "lane",
-    "lineofbattle",
     "listener",
     "space",
     "volunteers",
@@ -79,14 +66,11 @@
     "yards"
   ],
   "prompt:appraisal:system": [
-    "basing rights",
     "boarding",
-    "captains",
     "courier",
     "credits",
     "crews",
     "dock",
-    "dossier",
     "factory",
     "fleet",
     "fleet movement",
@@ -103,31 +87,26 @@
     "sail",
     "sailing",
     "sails",
-    "salvage",
     "ship",
     "ships",
     "shipyard",
     "space",
     "squadron",
     "system",
-    "university",
     "unrest",
     "world",
     "worlds",
     "yards"
   ],
   "prompt:appraisal:user": [
-    "convoy",
     "courier",
     "crew",
     "freighter",
     "gunnery",
-    "lineofbattle",
     "listener",
     "world"
   ],
   "prompt:diplomacy:system": [
-    "basing rights",
     "battleship",
     "credit",
     "credits",
@@ -147,19 +126,15 @@
     "yards"
   ],
   "prompt:diplomacy:user": [
-    "construction infrastructure",
-    "convoy",
     "courier",
     "freighter",
     "gunnery",
-    "lineofbattle",
     "listener",
     "retooling",
     "space",
     "ton"
   ],
   "prompt:epilogue:system": [
-    "dossier",
     "fleet",
     "galaxy",
     "hull",
@@ -173,9 +148,6 @@
     "worlds",
     "yards"
   ],
-  "prompt:epilogue:user": [
-    "dossier"
-  ],
   "prompt:event_flavour:system": [
     "crews",
     "mutiny",
@@ -188,12 +160,9 @@
     "world"
   ],
   "prompt:extraction:system": [
-    "basing rights",
     "battleship",
-    "commerce raiding",
     "credits",
     "crews",
-    "dossier",
     "escort",
     "fleet",
     "fleets",
@@ -217,12 +186,10 @@
     "yards"
   ],
   "prompt:extraction:user": [
-    "convoy",
     "courier",
     "crew",
     "freighter",
     "gunnery",
-    "lineofbattle",
     "listener",
     "space"
   ],
@@ -236,7 +203,6 @@
     "fleet movement",
     "fleets",
     "galaxy",
-    "hub",
     "hulls",
     "hyperlane",
     "jump",
@@ -248,7 +214,6 @@
     "orbital",
     "retooling",
     "sails",
-    "sector",
     "ships",
     "shipyard",
     "space",
@@ -261,12 +226,9 @@
     "yards"
   ],
   "prompt:reaction:user": [
-    "construction infrastructure",
-    "convoy",
     "courier",
     "freighter",
     "gunnery",
-    "lineofbattle",
     "listener",
     "retooling",
     "ton"
@@ -282,13 +244,9 @@
   "prompt:resolution:system": [
     "a price on your head",
     "arid",
-    "basing rights",
     "battleship",
     "battleships",
     "blueprints",
-    "cargo",
-    "charts",
-    "convoy",
     "courier",
     "crackdown",
     "credit",
@@ -296,7 +254,6 @@
     "crew",
     "crews",
     "dock",
-    "dossier",
     "earthlike",
     "earthnight",
     "escort",
@@ -311,7 +268,6 @@
     "gasgiant",
     "gunnery",
     "hospital",
-    "hub",
     "hull",
     "hulls",
     "hyperlane",
@@ -324,7 +280,6 @@
     "lanes",
     "lifter",
     "lifters",
-    "lineofbattle",
     "listener",
     "listeners",
     "navy",
@@ -337,8 +292,6 @@
     "sailed",
     "sailing",
     "sails",
-    "salvage",
-    "sector",
     "ship",
     "ships",
     "shipyard",
@@ -351,7 +304,6 @@
     "tons",
     "torpedo boat",
     "torpedo boats",
-    "university",
     "warship",
     "warships",
     "world",
@@ -359,14 +311,11 @@
     "yards"
   ],
   "prompt:resolution:user": [
-    "convoy",
     "courier",
     "credits",
     "crew",
-    "dossier",
     "freighter",
     "gunnery",
-    "lineofbattle",
     "listener",
     "world"
   ],
@@ -422,7 +371,6 @@
   ],
   "schema:extraction": [
     "battleship",
-    "convoy",
     "courier",
     "credits",
     "escort",
@@ -432,13 +380,11 @@
     "hull",
     "hulls",
     "lifter",
-    "lineofbattle",
     "listener",
     "torpedo_boat"
   ],
   "schema:reaction": [
     "battleship",
-    "convoy",
     "courier",
     "credits",
     "escort",
@@ -447,13 +393,11 @@
     "gunnery",
     "hull",
     "lifter",
-    "lineofbattle",
     "listener",
     "torpedo_boat"
   ],
   "schema:resolution": [
     "battleship",
-    "convoy",
     "courier",
     "credits",
     "escort",
@@ -462,7 +406,6 @@
     "gunnery",
     "hull",
     "lifter",
-    "lineofbattle",
     "listener",
     "torpedo_boat"
   ]

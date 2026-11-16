@@ -4600,8 +4600,19 @@ The lexicon is `PAX_LEXICON` in `src/skin/words.ts`.
 `tests/skin-leaks.test.ts` is the static check. It parses every literal,
 template and JSX text in the core, `src/ui` and the client with rolldown's
 parser, resolved through Vite, and looks for the default skin's setting words.
-Those are the lexicon's words, less the ones a low-fantasy skin would keep
-(`ORDINARY_WORDS`), plus `UNROLED_WORDS`.
+Those are the lexicon's words, less the neutral ones (`ORDINARY_WORDS`), plus
+`UNROLED_WORDS`.
+
+**A word is neutral by the thing it names.** It must make sense in a modern
+show about each of four periods: Three Kingdoms China, the Middle Byzantine
+Empire, the Seven Years' War and the First World War.
+- **The thing must exist there, whenever the word was coined.** A black
+  market passes; a torpedo does not.
+- **It may not presume ships,** because a skin may be landlocked. So every
+  naval word is setting: ship, hull, fleet, crew, sail, yards.
+- **Too modern is setting too:** a factory, a chamber of commerce.
+- **What passes:** the treaty types, most order categories, the people a
+  power keeps or holds, and most paper.
 
 Each file is held to the count recorded in `tests/skin-leaks.baseline.json`.
 A second ratchet, `tests/skin-ids.baseline.json`, counts ids and field names

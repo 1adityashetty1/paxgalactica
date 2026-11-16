@@ -115,7 +115,7 @@ import type { Briefing } from '../../../src/engine/briefing.js';
 import type { EffectiveStats } from '../../../src/api/contract.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { digestLog, logReader } from '../../../src/ui/logview.js';
-import { say } from '../../../src/skin/lexicon.js';
+import { orderWord, say, treatyWord } from '../../../src/skin/lexicon.js';
 
 type Tab =
   | 'factions'
@@ -1076,7 +1076,7 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
             </div>
             <div className="meta">
               {o.factionId === state.playerFactionId ? 'yours' : owner?.name} ·{' '}
-              {o.type.replace(/_/g, ' ')} ·{' '}
+              {orderWord(o.type)} ·{' '}
               {o.originId !== o.targetId ? `${nameOfSystem(state, o.originId)} → ` : '→ '}
               {nameOfSystem(state, o.targetId)} · {o.interruptible ? 'raidable' : 'locked'}
             </div>
@@ -1754,7 +1754,7 @@ function Standing({
             <div key={t.id} className="treaty">
               <div className="treaty-head">
                 <strong style={{ color: colourOf(state, other) }}>
-                  {t.type.replace(/_/g, ' ')}
+                  {treatyWord(t.type)}
                 </strong>
                 {/* Exclusivity is the actionable half: it is the reason the next
                     arrangement of this type will be refused at signature, and a
@@ -1764,7 +1764,7 @@ function Standing({
                 {t.exclusive && (
                   <span
                     className="chip"
-                    title={`Exclusive: no other ${t.type.replace(/_/g, ' ')} can be entered with anyone else while this stands. Breaking it costs 25 with ${getFaction(state, other)?.name ?? other} and standing with every onlooker.`}
+                    title={`Exclusive: no other ${treatyWord(t.type)} can be entered with anyone else while this stands. Breaking it costs 25 with ${getFaction(state, other)?.name ?? other} and standing with every onlooker.`}
                   >
                     exclusive
                   </span>

@@ -10,7 +10,7 @@ import { archetypeFor } from '../../../src/domain/assets.js';
 import { COMMANDER_ARCHETYPES } from '../../../src/domain/command.js';
 import { NAVY_CLASSES } from '../../../src/domain/hulls.js';
 import { hullsAt, type WorldState } from '../../../src/domain/state.js';
-import { say } from '../../../src/skin/lexicon.js';
+import { assetKindWord, say, unitWord } from '../../../src/skin/lexicon.js';
 
 /**
  * The cheat menu, opened with `:cheats`.
@@ -129,7 +129,7 @@ export function CheatPanel({
         <select value={assetKind} onChange={(e) => setAssetKind(e.target.value)}>
           {CHEAT_ASSET_KINDS.map((k) => (
             <option key={k} value={k}>
-              {k.replace(/_/g, ' ')}
+              {assetKindWord(k)}
               {archetypeFor(k)?.fixture ? ' (fixture)' : ''}
             </option>
           ))}
@@ -149,7 +149,7 @@ export function CheatPanel({
         <select value={hull} onChange={(e) => setHull(e.target.value as typeof hull)}>
           {NAVY_CLASSES.map((h) => (
             <option key={h} value={h}>
-              {h.replace(/_/g, ' ')}
+              {unitWord(h)}
             </option>
           ))}
         </select>

@@ -146,7 +146,7 @@ export async function literals(): Promise<Literal[]> {
 
 /**
  * A word or phrase as a whole-word, case-blind pattern: "torpedo boat" also
- * matches "torpedo  boat". An underscore is part of a word, so the dossier in
+ * matches "torpedo  boat", and "non aggression" matches "non-aggression". An underscore is part of a word, so the dossier in
  * `publish_dossier` is not the word "dossier" — but a setting id is itself in
  * the vocabulary (`settingIds`), so `torpedo_boat` named in prose is found as
  * the id it is.
@@ -156,7 +156,7 @@ export function wordPattern(word: string): RegExp {
     .trim()
     .split(/\s+/)
     .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('\\s+');
+    .join('[\\s-]+');
   return new RegExp(`(?<![A-Za-z_])${body}(?![A-Za-z_])`, 'gi');
 }
 

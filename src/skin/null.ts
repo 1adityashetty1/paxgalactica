@@ -66,35 +66,45 @@ export function paxWords(options: { units?: boolean } = {}): string[] {
 }
 
 /**
- * The default lexicon's words that are ordinary English in any setting, so a
- * scan for leaks cannot police them.
+ * The default lexicon's words that are neutral in any setting, so a scan for
+ * leaks does not police them.
  *
- * The test is appendix A's low-fantasy skin: a word it would keep unchanged —
- * a garrison, a blockade, a marriage, a ceasefire, a writ — names a
- * thing both settings have, and a literal using it is not evidence that the
- * lexicon was bypassed. A word it would change — a hull, a lane, an orbit, a
- * factory, an ion storm — is setting, and every literal carrying it is a
- * leak. The people's kinds are here because `officer` and `operative` are
- * also the game's own words for its rosters, which no lexicon family yet
- * names.
+ * **The test is four periods and the thing itself** (audit of 2026-11-16): a
+ * word is neutral when a modern show about Three Kingdoms China, the Middle
+ * Byzantine Empire, the Seven Years' War and the First World War could all
+ * use it without losing the viewer — because the thing it names existed
+ * there, whenever the word was coined. A black market passes, since illicit
+ * goods were sold in Byzantium; a torpedo fails, since the device did not
+ * exist.
  *
- * **Never a hull class, a terrain or a Rim event.** Those three families are
- * setting in every form, words and ids alike: "unrest" and "mutiny" are a
- * skin's names for its events, whatever English also uses them for.
+ * **And it may not presume ships.** A skin can be landlocked, its forces an
+ * army on roads, so every naval word is setting even though all four periods
+ * had navies: ship, hull, fleet, crew, sail, yards, voyage, a capital ship.
+ * Hull classes, terrains and Rim events are setting in every form (see
+ * `settingIds`), and so is anything too modern: a factory, a chamber of
+ * commerce, a power plant, a research lab.
+ *
+ * The words below pass. "Land" is here for another reason: an action "lands"
+ * when the turn ends, which no scan can tell from troops landing.
  */
 export const ORDINARY_WORDS: readonly string[] = [
-  // places and phases; and an action "lands" when the turn ends, which no scan can tell from a fleet landing
-  'garrison', 'garrisons', 'ground', 'strike', 'assault', 'land', 'lands', 'landed',
-  // the people a power keeps or holds
-  'prisoners', 'officer', 'operative', 'hostage', 'defector',
-  // paper and stuff
-  'writ', 'surety', 'relic', 'contraband', 'ore', 'ciphers', 'arsenal', 'black market',
+  // people
+  'prisoners', 'officer', 'officers', 'operative', 'operatives', 'notable', 'notables', 'hostage', 'defector',
   // treaties
-  'non aggression', 'mutual defense', 'trade accord', 'tribute', 'ceasefire', 'cession', 'contract', 'coalition', 'marriage',
+  'non aggression', 'mutual defense', 'mutual defence', 'trade accord', 'tribute', 'basing rights', 'ceasefire', 'cession',
+  'contract', 'coalition', 'marriage',
   // orders
-  'decree', 'political maneuver', 'espionage', 'counter intelligence', 'blockade', 'treaty ratification', 'garrison raising', 'fortification',
+  'decree', 'political maneuver', 'espionage', 'counter intelligence', 'blockade', 'commerce raiding', 'treaty ratification',
+  'garrison raising', 'fortification', 'construction infrastructure',
   // notes
   'Most-favoured terms', 'Line of credit', 'Sanctuary', 'Safe passage',
+  // things held, and fixtures that existed in all four
+  'dossier', 'charts', 'writ', 'surety', 'ciphers', 'ore', 'salvage', 'contraband', 'relic', 'cargo',
+  'military base', 'university', 'arsenal', 'black market', 'security bureau', 'civil service',
+  // places, phases and schools
+  'garrison', 'garrisons', 'hub', 'hubs', 'sector', 'sectors', 'ground', 'strike', 'assault', 'convoy', 'lineofbattle',
+  // an action lands
+  'land', 'lands', 'landed',
 ];
 
 /**
@@ -105,8 +115,7 @@ export const ORDINARY_WORDS: readonly string[] = [
  * the lexicon has, whose noun ("land changes hands") a scan cannot tell apart.
  */
 export const UNROLED_WORDS: readonly string[] = [
-  'admiral', 'admirals', 'captain', 'captains', 'dock', 'docks',
-  'convoy', 'convoys', 'boarding', 'pilot', 'pilots', 'galactic', 'starship', 'starships',
+  'admiral', 'admirals', 'dock', 'docks', 'boarding', 'pilot', 'pilots', 'galactic', 'starship', 'starships',
 ];
 
 /**

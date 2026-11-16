@@ -83,7 +83,7 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   const free = slots - mine.length;
   out.push(
     [
-      `Operatives: ${mine.length} of ${slots} slots used — ${working.length} at work, ${travelling.length} on the way, ${idle.length} awaiting orders.`,
+      say`{Operatives}: ${mine.length} of ${slots} slots used — ${working.length} at work, ${travelling.length} on the way, ${idle.length} awaiting orders.`,
       idle.length > 0
         ? `Free to send now: ${idle.map((a) => `${a.name || a.id}${a.agentClass ? ` (${a.agentClass})` : ''} at ${nameOf(a.systemId)}`).join(', ')}.`
         : 'Nobody is free to send: sending one means recruiting first, which takes a whole action.',

@@ -200,7 +200,7 @@ export const PAX_LEXICON: Words = {
   },
   treatyTypes: {
     non_aggression: spaced('non_aggression'),
-    mutual_defense: spaced('mutual_defense'),
+    mutual_defense: word('mutual_defense', 'mutual defense', ['mutual defence']),
     trade_accord: spaced('trade_accord'),
     tribute: spaced('tribute'),
     basing_rights: spaced('basing_rights'),
@@ -279,6 +279,11 @@ export const PAX_LEXICON: Words = {
     salvo: term('salvo'),
     torpedo: term('torpedo', 'torpedoes'),
     voyage: term('voyage'),
+  },
+  people: {
+    operative: term('operative'),
+    officer: term('officer'),
+    notable: term('notable'),
   },
   verbs: {
     sail: verb('sail'),

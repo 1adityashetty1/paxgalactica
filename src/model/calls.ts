@@ -801,7 +801,7 @@ export async function resolveAction(
     if (operative) {
       const again = await appraiseAction(state, action, undefined, {
         note: [
-          '## This act names one of your operatives',
+          say`## This act names one of your {operatives}`,
           '',
           `It names **${operative}**. If ${operative} carries it out, it is covert work: read it by its outcome and rule it with a \`covert\` part (or \`groundwork\`, if it only prepares). Rule it without one only if ${operative} has no hand in it.`,
         ].join('\n'),
@@ -1190,7 +1190,7 @@ export async function resolveAction(
             ...(sends
               ? [
                   '',
-                  'The covert half of this act is not part of that roll: its operatives are',
+                  say`The covert half of this act is not part of that roll: its {operatives} are`,
                   'sent, and their own chance is rolled on the tick. Narrate them setting out,',
                   'not what comes of it.',
                 ]
@@ -1200,9 +1200,9 @@ export async function resolveAction(
         : [
             '## This is covert work, and it is sent, not rolled',
             '',
-            'Nothing has been rolled. The operative sets out now; the engine rolls',
+            say`Nothing has been rolled. The {operative} sets out now; the engine rolls`,
             'their own chance on the tick and decides what comes of it. Narrate the',
-            'operative going to work, in a sentence or two, and not the result.',
+            say`{operative} going to work, in a sentence or two, and not the result.`,
             'Emit only `deploy_agent`, `lay_groundwork`, `recall_agent` and',
             '`log_narrative`. Charge nothing: the engine prices the mission and the',
             'method itself, and groundwork costs the action alone.',
@@ -1239,7 +1239,7 @@ export async function resolveAction(
         : []),
       ...(priced.appraisal.covert
         ? [
-            '### This is covert work, and covert work is run by operatives',
+            say`### This is covert work, and covert work is run by {operatives}`,
             '',
             `The arbiter ruled this ${priced.appraisal.covert.length === 1 ? 'a' : `${priced.appraisal.covert.length}`} covert operation${priced.appraisal.covert.length === 1 ? '' : 's'}: ${priced.appraisal.covert
               .map((c) => `**${c.mission}** at \`${c.systemId}\``)

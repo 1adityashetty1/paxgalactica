@@ -158,14 +158,14 @@ export function personViolations(state: WorldState): string[] {
   const listed = new Set((state.listedAgents ?? []).map((a) => a.id));
   const seen = new Set<string>();
   for (const a of state.agents ?? []) {
-    if (seen.has(a.id)) out.push(`operative ${a.id} is on the books twice`);
+    if (seen.has(a.id)) out.push(say`{operative} ${a.id} is on the books twice`);
     seen.add(a.id);
-    if (listed.has(a.id)) out.push(`operative ${a.id} is on the books and on the Lists`);
+    if (listed.has(a.id)) out.push(say`{operative} ${a.id} is on the books and on the Lists`);
     const held = holders('agentId', a.id).length;
-    if (!a.exposed && held > 0) out.push(`operative ${a.id} is at large and held as an asset`);
-    if (held > 1) out.push(`operative ${a.id} is held ${held} times`);
+    if (!a.exposed && held > 0) out.push(say`{operative} ${a.id} is at large and held as an asset`);
+    if (held > 1) out.push(say`{operative} ${a.id} is held ${held} times`);
   }
-  for (const id of listed) if (holders('agentId', id).length > 0) out.push(`operative ${id} is on the Lists and held as an asset`);
+  for (const id of listed) if (holders('agentId', id).length > 0) out.push(say`{operative} ${id} is on the Lists and held as an asset`);
 
   for (const n of state.notables ?? []) {
     const places = (n.systemId ? 1 : 0) + (n.livesAt ? 1 : 0) + holders('notableId', n.id).length;
@@ -177,7 +177,7 @@ export function personViolations(state: WorldState): string[] {
   for (const asset of state.assets ?? []) {
     if (asset.quantity <= 0) continue;
     if (asset.commanderId && !commanders.has(asset.commanderId)) out.push(`asset ${asset.id} holds an officer who does not exist`);
-    if (asset.agentId && !seen.has(asset.agentId)) out.push(`asset ${asset.id} holds an operative who is not on the books`);
+    if (asset.agentId && !seen.has(asset.agentId)) out.push(say`asset ${asset.id} holds an {operative} who is not on the books`);
     if (asset.notableId && !notables.has(asset.notableId)) out.push(`asset ${asset.id} holds a notable who does not exist`);
   }
   return out;

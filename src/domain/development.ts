@@ -535,7 +535,7 @@ export function boundPayloadsToOutcome(
           !!op && typeof op === 'object' && (op as { op?: unknown }).op === 'deploy_agent';
         if (isAgent) {
           notes.push(
-            'The attempt failed, so nobody was placed: the operative never reached their posting, and the fee bought nothing.',
+            say`The attempt failed, so nobody was placed: the {operative} never reached their posting, and the fee bought nothing.`,
           );
         }
         return !isAgent;
@@ -1030,7 +1030,7 @@ export function routeCovertAction(
     ],
     notes: added.map(
       (c) =>
-        `Covert work is run by operatives: a ${c.mission} agent was placed at ${c.systemId}, charged and capped like any other. It resolves on the tick.`,
+        say`Covert work is run by {operatives}: a ${c.mission} agent was placed at ${c.systemId}, charged and capped like any other. It resolves on the tick.`,
     ),
   };
 }

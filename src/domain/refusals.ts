@@ -455,7 +455,7 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
   const sends = sendsAsRuled(built.ops, bounds.covert, bounds.groundwork);
   if (sends.dropped.length > 0) {
     notes.push(
-      `An operative is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
+      say`An {operative} is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
     );
   }
   const sways = swaysAsRolled(sends.ops, bounds.stat, bounds.outcome);

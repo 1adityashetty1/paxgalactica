@@ -8,7 +8,7 @@ import { RIM_EVENT_KINDS as EVENT_KINDS } from '../domain/events.js';
 import { FLEET_KINDS } from '../domain/fleets.js';
 import { HULL_CLASSES } from '../domain/hulls.js';
 import { MOVEMENT_ORDER_TYPE, TRADE_ETHICS, WAR_ETHICS, WORLD_TYPES, type WorldState } from '../domain/state.js';
-import { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS, VERB_TERMS } from './lexicon.js';
+import { ACCOUNT_TERMS, FORCE_TERMS, PEOPLE_TERMS, PLACE_TERMS, VERB_TERMS } from './lexicon.js';
 import { PAX_LEXICON } from './words.js';
 import { ACT_KINDS } from '../domain/act-kinds.js';
 import { STAT_NAMES } from '../domain/checks.js';
@@ -82,7 +82,7 @@ export const ASSET_KINDS: readonly string[] = ASSET_ARCHETYPES.map((a) => a.kind
 export const RIM_EVENT_KINDS: readonly string[] = EVENT_KINDS;
 export const SCHOOLS: readonly string[] = COMMANDER_ARCHETYPES.map((a) => a.kind);
 
-export { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS, VERB_TERMS };
+export { ACCOUNT_TERMS, FORCE_TERMS, PEOPLE_TERMS, PLACE_TERMS, VERB_TERMS };
 
 /** A verb in the four forms English sentences need. */
 const VerbSchema = z.object({ base: WordSchema, s: WordSchema, past: WordSchema, ing: WordSchema, synonyms: z.array(WordSchema).default([]) });
@@ -100,6 +100,7 @@ export const LexiconSchema = z.object({
   fleetKinds: family(FLEET_KINDS, IdWordSchema),
   places: family(PLACE_TERMS, TermSchema),
   forces: family(FORCE_TERMS, TermSchema),
+  people: family(PEOPLE_TERMS, TermSchema),
   verbs: family(VERB_TERMS, VerbSchema),
   meanings: z.object({
     stats: family(STAT_NAMES, z.string().min(1)),
@@ -321,7 +322,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
       if (back !== core) out.push(`${fam}: ${core} goes out as ${toSkin.get(core)} and comes back as ${back}`);
     }
   }
-  for (const [label, entries] of [['places', skin.lexicon.places], ['forces', skin.lexicon.forces], ['accounts', skin.lexicon.accounts]] as const) {
+  for (const [label, entries] of [['places', skin.lexicon.places], ['forces', skin.lexicon.forces], ['people', skin.lexicon.people], ['accounts', skin.lexicon.accounts]] as const) {
     const seen = new Map<string, string>();
     for (const [key, t] of Object.entries(entries)) {
       for (const w of [t.word, t.plural, ...t.synonyms].map((x) => x.toLowerCase())) {
@@ -372,7 +373,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
       words.push(e.word, ...e.synonyms, ...(e.plural ? [e.plural] : []), ...(e.unit ? [e.unit] : []));
     }
   }
-  for (const t of [...Object.values(skin.lexicon.places), ...Object.values(skin.lexicon.forces), ...Object.values(skin.lexicon.accounts)]) {
+  for (const t of [...Object.values(skin.lexicon.places), ...Object.values(skin.lexicon.forces), ...Object.values(skin.lexicon.people), ...Object.values(skin.lexicon.accounts)]) {
     words.push(t.word, t.plural, ...t.synonyms);
   }
   for (const v of Object.values(skin.lexicon.verbs)) words.push(v.base, v.s, v.past, v.ing, ...v.synonyms);

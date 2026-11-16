@@ -624,7 +624,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   const ceiling = maxAgentsFor(state, viewerId);
   lines.push(
     '',
-    `**Your operatives: ${live} of ${ceiling}**` +
+    say`**Your {operatives}: ${live} of ${ceiling}**` +
       (live >= ceiling
         ? ' — AT YOUR LIMIT. You cannot place another until one is recalled or burned.'
         : ` (room for ${ceiling - live} more)`),
@@ -634,7 +634,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   const waiting = listedAgentsOf(state.listedAgents, viewerId);
   if (waiting.length > 0) {
     lines.push(
-      `Your operatives' Lists — recruit one with \`recruit_agent\` naming them (\`agent\`) or their class (\`agentClass\`). A class runs its own missions at +${CLASS_SUCCESS_SHIFT}% and a point less exposure, anyone else's at −${CLASS_SUCCESS_SHIFT}% and a point more (${AGENT_CLASSES.map((c) => `${c}: ${AGENT_CLASS_MEANING[c]}`).join('; ')}). Waiting: ${waiting
+      say`Your {operatives}' Lists — recruit one with \`recruit_agent\` naming them (\`agent\`) or their class (\`agentClass\`). A class runs its own missions at +${CLASS_SUCCESS_SHIFT}% and a point less exposure, anyone else's at −${CLASS_SUCCESS_SHIFT}% and a point more (${AGENT_CLASSES.map((c) => `${c}: ${AGENT_CLASS_MEANING[c]}`).join('; ')}). Waiting: ${waiting
         .map((a) => `${a.name}${a.agentClass ? `, ${a.agentClass}` : ''}${a.served ? ` (has served — ${a.operations} operation${a.operations === 1 ? '' : 's'}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''})` : ' (a fresh face)'}`)
         .join('; ')}.`,
     );
@@ -655,7 +655,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
       // The operative's NAME, and their power's display name rather than its
       // id — the same leak item 104 closed two lines further up this file, left
       // behind here because nothing reads this block back except the model.
-      `  - \`${a.id}\` ${a.name || a.cover || 'an operative'}${mine && a.agentClass ? ` (${a.agentClass})` : ''}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${doing} — ${agentStanding(a.operations)}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''}${a.exposed ? ' — BURNED' : ''}${mine && a.method ? ` — by "${a.method.text}" (${profileWords(a.method.profile)})` : ''}${mine && a.groundwork?.length ? ` — groundwork: ${a.groundwork.map((g) => `${g.text} on ${getSystem(state, g.systemId)?.name ?? g.systemId}, ${g.axis}${g.madeTurn >= state.turn ? `, tells from turn ${g.madeTurn + 1}` : ''}`).join('; ')}` : ''}`,
+      `  - \`${a.id}\` ${a.name || a.cover || say`an {operative}`}${mine && a.agentClass ? ` (${a.agentClass})` : ''}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${doing} — ${agentStanding(a.operations)}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''}${a.exposed ? ' — BURNED' : ''}${mine && a.method ? ` — by "${a.method.text}" (${profileWords(a.method.profile)})` : ''}${mine && a.groundwork?.length ? ` — groundwork: ${a.groundwork.map((g) => `${g.text} on ${getSystem(state, g.systemId)?.name ?? g.systemId}, ${g.axis}${g.madeTurn >= state.turn ? `, tells from turn ${g.madeTurn + 1}` : ''}`).join('; ')}` : ''}`,
     );
   }
 
