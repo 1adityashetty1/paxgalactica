@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NAME_STOCKS } from '../src/domain/command.js';
 import { FLEET_KINDS, fleetName, ordinal } from '../src/domain/fleets.js';
 import { HULL_CLASSES, HULL_SPEC } from '../src/domain/hulls.js';
+import { PAX_LEXICON } from '../src/skin/words.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { paxGalactica } from '../src/skin/paxgalactica.js';
 import {
@@ -31,7 +32,7 @@ describe('the Pax Galactica skin', () => {
 
   it('is read off the game\'s own tables', () => {
     const skin = paxGalactica();
-    for (const h of HULL_CLASSES) expect(skin.lexicon.units[h]!.word).toBe(HULL_SPEC[h].label);
+    expect(skin.lexicon).toEqual(PAX_LEXICON);
     for (const f of createSeedState('meridian').factions) {
       expect(skin.powers[f.id]!.name).toBe(f.name);
       expect(skin.powers[f.id]!.compulsions).toEqual(f.compulsions.map((c) => c.text));

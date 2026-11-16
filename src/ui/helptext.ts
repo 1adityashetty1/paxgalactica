@@ -1,6 +1,7 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { DARK_RAID_YIELD } from '../domain/trade.js';
-import { RIM_BOONS, RIM_EVENT_RATE, RIM_EVENT_TITLE, RIM_HAZARDS, RIM_NOTORIETY } from '../domain/events.js';
+import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS, RIM_NOTORIETY, type RimEventKind } from '../domain/events.js';
+import { rimEventTitle, unitWord } from '../skin/lexicon.js';
 import {
   COMMANDER_ARCHETYPES,
   COMMANDER_COST,
@@ -126,7 +127,7 @@ function names(list: string[]): string {
 }
 
 export function shipClassLines(): string[] {
-  const plural = (h: HullClass) => `${HULL_SPEC[h].label}s`;
+  const plural = (h: HullClass) => unitWord(h, 2);
   const unarmed = NAVY_CLASSES.filter((h) => HULL_SPEC[h].orbitalWeight < UNARMED).map(plural);
   const byLoss = [...NAVY_CLASSES].sort((a, b) => HULL_SPEC[a].lossOrder - HULL_SPEC[b].lossOrder);
   const first = byLoss[0]!;
@@ -134,7 +135,8 @@ export function shipClassLines(): string[] {
   return [
     `SHIP CLASSES — ${CREDITS_PER_TON} credits a ton to build, ${UPKEEP_PER_TON} a ton every turn after`,
     ...NAVY_CLASSES.map((h) => {
-      const { label, tonnage } = HULL_SPEC[h];
+      const { tonnage } = HULL_SPEC[h];
+      const label = unitWord(h);
       const cost = `${tonnage * CREDITS_PER_TON}cr`;
       return `  ${label.padEnd(13)} ${tonnage}t ${cost.padStart(5)}  ${JOB[h]}`;
     }),
@@ -509,7 +511,7 @@ export function allyLines(): string[] {
 /** The Rim's events by title, from the lists that draw them. */
 export function eventListLines(): string[] {
   const titles = (kinds: readonly string[]) =>
-    kinds.map((k) => RIM_EVENT_TITLE[k as keyof typeof RIM_EVENT_TITLE]).join(', ');
+    kinds.map((k) => rimEventTitle(k as RimEventKind)).join(', ');
   return [
     ...wrap(`Hazards: ${titles(RIM_HAZARDS)}.`),
     ...wrap(`Boons: ${titles(RIM_BOONS)}.`),

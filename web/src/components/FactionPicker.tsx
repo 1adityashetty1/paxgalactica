@@ -1,4 +1,5 @@
-import { RIM_EVENT_KINDS, RIM_EVENT_TITLE, type RimEventKind } from '../../../src/domain/events.js';
+import { RIM_EVENT_KINDS, type RimEventKind } from '../../../src/domain/events.js';
+import { rimEventTitle } from '../../../src/skin/lexicon.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SaveSummary } from '../../../src/api/contract.js';
 import { api } from '../api.js';
@@ -136,7 +137,7 @@ export function FactionPicker({
           <option value="">Off — a real campaign</option>
           {RIM_EVENT_KINDS.map((k) => (
             <option key={k} value={k}>
-              Only {RIM_EVENT_TITLE[k].toLowerCase()}, every turn
+              Only {rimEventTitle(k).toLowerCase()}, every turn
             </option>
           ))}
         </select>

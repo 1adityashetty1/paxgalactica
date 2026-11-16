@@ -1,5 +1,6 @@
 import { SOLO_CLASSES, fleetIdFor, settleCouriers, settleFleets, type FleetKind } from '../domain/fleets.js';
 import { seedRegard } from '../domain/regard.js';
+import { noteTitle } from '../skin/lexicon.js';
 import { seedEstates } from '../domain/estates.js';
 import { stockAgentLists, stockOfficerLists, withNameStock } from '../domain/command.js';
 import { fillSeats, stockLists } from '../domain/seats.js';
@@ -12,7 +13,6 @@ import {
   MAX_ASSET_STAT,
   NOTE_ASSET_KIND,
   NOTE_MEANING,
-  NOTE_TITLE,
   NOTE_VALUE,
   type Asset,
   type NoteKind,
@@ -926,7 +926,7 @@ function seedNotes(): Asset[] {
   return SEED_FACTIONS.map((f, i) => ({
     id: `ast-0-${9 + i}`,
     kind: NOTE_ASSET_KIND,
-    text: `${possessive(f.name)} note of ${NOTE_TITLE[f.note].toLowerCase()}: ${NOTE_MEANING[f.note]}.`,
+    text: `${possessive(f.name)} note of ${noteTitle(f.note).toLowerCase()}: ${NOTE_MEANING[f.note]}.`,
     heldBy: f.id,
     quantity: 1,
     unit: 'note',

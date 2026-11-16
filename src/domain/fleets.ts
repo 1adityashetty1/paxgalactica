@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fleetKindWord } from '../skin/lexicon.js';
 import { HULL_CLASSES, ShipStackSchema, hullsIn, mergeStacks, normaliseStack, type HullClass, type ShipStack } from './hulls.js';
 
 /**
@@ -335,19 +336,14 @@ const KIND_STYLE: Record<string, Partial<Record<Exclude<FleetKind, 'line'>, stri
   freeworlds: { listener: 'Watchtower', freighter: 'Caravan' },
   drajk: { listener: 'Scenthound', freighter: 'Lootship' },
 };
-const PLAIN_KIND: Record<Exclude<FleetKind, 'line'>, string> = {
-  listener: 'Listener',
-  freighter: 'Freighter',
-  courier: 'Courier',
-};
 
 /** A fleet's name: what its power called it, or the default for its kind and number. */
 export function fleetName(factionId: string, fleet: { number: number; name?: string | null; kind?: FleetKind }): string {
   if (fleet.name) return fleet.name;
   if (fleet.number === 0) return 'a new fleet';
   const kind = fleet.kind ?? 'line';
-  if (kind !== 'line') return `${KIND_STYLE[factionId]?.[kind] ?? PLAIN_KIND[kind]} ${fleet.number}`;
-  return (FLEET_STYLE[factionId] ?? ((n: number) => `${ordinal(n)} Fleet`))(fleet.number);
+  if (kind !== 'line') return `${KIND_STYLE[factionId]?.[kind] ?? fleetKindWord(kind)} ${fleet.number}`;
+  return (FLEET_STYLE[factionId] ?? ((n: number) => `${ordinal(n)} ${fleetKindWord('line')}`))(fleet.number);
 }
 
 /** The number a query names, in digits or as an ordinal word, if it names one. */

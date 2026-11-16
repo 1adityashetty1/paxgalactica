@@ -2,6 +2,7 @@ import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMissio
 import { MAX_DURATION, type DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { doneAt } from './words.js';
+import { assetUnit, unitWord } from '../skin/lexicon.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
 import {
   addShipsAt,
@@ -663,7 +664,7 @@ export function describeOrderEffect(effect: OrderEffect): string {
     case 'fortify':
       return `+${n} garrison capacity`;
     case 'commission_ships':
-      return `${n} new ${HULL_SPEC[effect.hull].label}${n === 1 ? '' : 's'}`;
+      return `${n} new ${unitWord(effect.hull, n)}`;
     case 'found_fixture':
       return `a ${effect.fixtureKind.replace(/_/g, ' ') || 'fixture'}`;
     case 'repair_fixture':
@@ -852,7 +853,7 @@ export function applyOrderEffect(
           text: `${shape.kind.replace(/_/g, ' ')} at ${system.name}`,
           heldBy: holder,
           quantity: 1,
-          unit: shape.unit,
+          unit: assetUnit(shape.kind),
           divisible: false,
           valuePerUnit: {},
           speculative: false,

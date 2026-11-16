@@ -776,14 +776,6 @@ export const NOTE_TREATY: Record<NoteKind, TreatyType | null> = {
   safe_passage: 'trade_accord',
 };
 
-export const NOTE_TITLE: Record<NoteKind, string> = {
-  most_favoured: 'Most-favoured terms',
-  escort: 'Escort of the line',
-  line_of_credit: 'Line of credit',
-  sanctuary: 'Sanctuary',
-  safe_passage: 'Safe passage',
-};
-
 export const NOTE_MEANING: Record<NoteKind, string> = {
   most_favoured: `a trade accord with the issuer for ${NOTE_TERM_TURNS} turns, and ${NOTE_INCOME_SHARE * 100}% of the income of the issuer's richest world`,
   escort: `a mutual defence pact for ${NOTE_TERM_TURNS} turns: an attack on the holder calls up to ${NOTE_ESCORT_HULLS} of the issuer's hulls to the fight`,

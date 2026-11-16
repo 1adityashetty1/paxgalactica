@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { HELP_TOPICS, exampleActions, helpIndex, helpPage, helpTopic } from '../src/ui/help.js';
 import { AGENT_COST, AGENT_MISSIONS, TREATY_TYPES } from '../src/domain/diplomacy.js';
-import { RIM_EVENT_TITLE } from '../src/domain/events.js';
+import { RIM_EVENT_KINDS } from '../src/domain/events.js';
+import { rimEventTitle } from '../src/skin/lexicon.js';
 import { createSeedState } from '../src/seed/scenario.js';
 
 /**
@@ -73,7 +74,7 @@ describe('the help pages', () => {
 
   it('names every event the Rim can draw on the events page', () => {
     const page = helpPage(state, 'events').lines.join(' ');
-    for (const title of Object.values(RIM_EVENT_TITLE)) expect(page.replace(/\s+/g, ' ')).toContain(title);
+    for (const title of RIM_EVENT_KINDS.map(rimEventTitle)) expect(page.replace(/\s+/g, ' ')).toContain(title);
   });
 
   it('shows examples on the index that name worlds the player holds', () => {

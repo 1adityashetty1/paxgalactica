@@ -1,5 +1,6 @@
 import { MAX_ASSET_STAT } from './diplomacy.js';
 import type { StatName } from './checks.js';
+import { assetUnit } from '../skin/lexicon.js';
 
 /**
  * The catalogue: what a thing usually is, so the arbiter reaches for a shape
@@ -39,8 +40,6 @@ import type { StatName } from './checks.js';
  */
 export interface AssetArchetype {
   kind: string;
-  /** What one of it is. */
-  unit: string;
   divisible: boolean;
   uses: number | null;
   speculative: boolean;
@@ -90,7 +89,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   /* --- People: worth most to whoever lost them ------------------------- */
   {
     kind: 'prisoners',
-    unit: 'crew',
     divisible: true,
     uses: null,
     speculative: false,
@@ -100,7 +98,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'officer',
-    unit: 'person',
     divisible: false,
     uses: null,
     speculative: false,
@@ -110,7 +107,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'operative',
-    unit: 'person',
     divisible: false,
     uses: null,
     speculative: false,
@@ -120,7 +116,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'hostage',
-    unit: 'person',
     divisible: false,
     uses: null,
     speculative: false,
@@ -130,7 +125,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'defector',
-    unit: 'person',
     divisible: false,
     uses: null,
     speculative: true,
@@ -141,7 +135,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   /* --- Paper: proves, authorises, or is simply a name ------------------- */
   {
     kind: 'dossier',
-    unit: 'dossier',
     divisible: false,
     uses: null,
     speculative: false,
@@ -151,7 +144,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'charts',
-    unit: 'chart',
     divisible: false,
     uses: null,
     speculative: true,
@@ -161,7 +153,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'blueprints',
-    unit: 'set',
     divisible: false,
     uses: null,
     speculative: true,
@@ -171,7 +162,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'writ',
-    unit: 'writ',
     divisible: false,
     uses: 1,
     speculative: false,
@@ -181,7 +171,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'surety',
-    unit: 'bond',
     divisible: false,
     uses: 1,
     speculative: false,
@@ -191,7 +180,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'ciphers',
-    unit: 'key',
     divisible: false,
     uses: 3,
     speculative: false,
@@ -202,7 +190,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   /* --- Stuff: counted, shipped, spent ----------------------------------- */
   {
     kind: 'ore',
-    unit: 'ton',
     divisible: true,
     uses: null,
     speculative: true,
@@ -212,7 +199,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'salvage',
-    unit: 'ton',
     divisible: true,
     uses: null,
     speculative: false,
@@ -222,7 +208,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'contraband',
-    unit: 'crate',
     divisible: true,
     uses: null,
     speculative: true,
@@ -232,7 +217,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'relic',
-    unit: 'relic',
     divisible: false,
     uses: null,
     speculative: true,
@@ -257,7 +241,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
      not need to be told what a factory improves. */
   {
     kind: 'military_base',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -268,7 +251,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'university',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -279,7 +261,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'factory',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -290,7 +271,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'stock_exchange',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -301,7 +281,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'hospital',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -321,7 +300,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
      leave forty-five per cent of the pairs unnamed. */
   {
     kind: 'special_forces_command',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -332,7 +310,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'arsenal',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -343,7 +320,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'defence_contractor',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -354,7 +330,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'military_academy',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -365,7 +340,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'research_lab',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -376,7 +350,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'black_market',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -387,7 +360,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'security_bureau',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -398,7 +370,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'chamber_of_commerce',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -409,7 +380,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'power_plant',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -420,7 +390,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'civil_service',
-    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -465,7 +434,7 @@ export function serializeArchetypes(): string {
     ]
       .filter((x): x is string => x !== null)
       .join(' · ');
-    return `| \`${a.kind}\` | ${a.unit} | ${shape} | ${a.from} | ${a.wanted} |`;
+    return `| \`${a.kind}\` | ${assetUnit(a.kind)} | ${shape} | ${a.from} | ${a.wanted} |`;
   };
   return [
     '| kind | unit | shape | what produces one | who wants it |',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countUnits } from '../skin/lexicon.js';
 
 /**
  * Ship classes, and the one number every fleet limit is measured in.
@@ -141,16 +142,14 @@ export interface HullSpec {
    * cannot drift apart silently again.
    */
   lossOrder: number;
-  /** For the UI and the order of battle. */
-  label: string;
 }
 
 export const HULL_SPEC: Record<HullClass, HullSpec> = {
-  escort: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 0, label: 'escort' },
+  escort: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 0 },
   // Useless in orbit and the only way to take ground. High carry is what pays
   // for that uselessness — and being second in the loss order is what it pays
   // in return: unarmed, unarmoured, and dead the moment the screen is gone.
-  lifter: { tonnage: 3, orbitalWeight: 0.01, carry: LIFTER_CARRY, lossOrder: 2, label: 'lifter' },
+  lifter: { tonnage: 3, orbitalWeight: 0.01, carry: LIFTER_CARRY, lossOrder: 2 },
   // Cheap, fragile, and built to kill things far above its weight — the Jeune
   // École boat, and the reason destroyers were originally called "torpedo boat
   // destroyers".
@@ -166,8 +165,8 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // per-class figures and can never beat the best single class — every
   // reweighting just moves which PURE fleet wins. A mixed optimum needs an
   // effect that is superadditive, and firing first is one.
-  torpedo_boat: { tonnage: 2, orbitalWeight: 0.1, carry: 0, lossOrder: 4, label: 'torpedo boat' },
-  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 5, label: 'battleship' },
+  torpedo_boat: { tonnage: 2, orbitalWeight: 0.1, carry: 0, lossOrder: 4 },
+  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 5 },
 
   /* --- hulls that do not fight ------------------------------------------ */
   //
@@ -188,7 +187,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // warship of the same tonnage does. See `FREIGHTER_LANE_WEIGHT`. It earns
   // nothing anywhere else, and that narrowness is the point — it is a hull for
   // the lawless middle of the map rather than a second way to be rich.
-  freighter: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 1, label: 'freighter' },
+  freighter: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 1 },
 
   // The hull an officer travels alone in: one ton, the nominal weight every
   // unarmed hull carries, and spent first. An officer is a unit with nominal
@@ -198,7 +197,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // they are down (`disembarkCouriers`), and is left out of a navy's tonnage
   // (`navyTons`), so the yards never bill it and it draws no upkeep — it is
   // the officer's, and the officer is paid for.
-  courier: { tonnage: 1, orbitalWeight: 0.01, carry: 0, lossOrder: -1, label: 'courier' },
+  courier: { tonnage: 1, orbitalWeight: 0.01, carry: 0, lossOrder: -1 },
 
   // SIGINT: it sees what an `intel` operative sees, at the world it sits on.
   //
@@ -217,7 +216,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // `maxAgentsFor` means a power with poor guile is bad at spies, and the Vigil
   // at 11 and Arkane at 12 are exactly that. A listener is bought with credits
   // and industry instead, so SIGINT is how a power with no spies sees.
-  listener: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 3, label: 'listener' },
+  listener: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 3 },
 };
 
 /**
@@ -462,9 +461,7 @@ export function drawProportional(stack: ShipStack, hulls: number): ShipStack {
 /** Every class in a stack, in a stable order, for a report or a label. */
 export function describeStack(stack: ShipStack | undefined): string {
   if (!stack) return '';
-  const parts = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0).map(
-    (h) => `${stack[h]} ${HULL_SPEC[h].label}${(stack[h] ?? 0) === 1 ? '' : 's'}`,
-  );
+  const parts = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0).map((h) => countUnits(h, stack[h] ?? 0));
   return parts.join(', ');
 }
 

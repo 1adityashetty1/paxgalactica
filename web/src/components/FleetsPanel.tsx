@@ -13,6 +13,7 @@ import { CommanderIcon, StackGlyphs } from './BattleIcons.js';
 import { archetypeOf, commandingAboard, commandingAt, veterancyLabel } from '../../../src/domain/command.js';
 import { FLEET_KINDS, fleetName, fleetsAt, type Fleet } from '../../../src/domain/fleets.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass } from '../../../src/domain/hulls.js';
+import { unitWord } from '../../../src/skin/lexicon.js';
 import type { OrganiseRequest } from '../../../src/api/contract.js';
 import { useState } from 'react';
 
@@ -477,7 +478,7 @@ function OwnFleet({
         >
           {classes.map((h) => (
             <label key={h} className="split-class">
-              {HULL_SPEC[h].label}
+              {unitWord(h)}
               <input
                 type="number"
                 min={0}

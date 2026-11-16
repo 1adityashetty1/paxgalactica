@@ -4,7 +4,8 @@ import { statModifier } from './checks.js';
 import { effectiveStats, getFaction, ledgerFor, orbitalWeightAt, stackAt, systemIncome, type WorldState } from './state.js';
 import { driftingCompulsions } from './compulsions.js';
 import { JOIN_LEAD, JOIN_REGARD } from './regard.js';
-import { NOTE_TITLE, isNote } from './diplomacy.js';
+import { isNote } from './diplomacy.js';
+import { noteTitle } from '../skin/lexicon.js';
 import { possessive } from './words.js';
 
 /**
@@ -139,7 +140,7 @@ export function paperOf(state: WorldState, me: string): string[] {
   out.push(iOwe.length > 0 ? `Favours you owe: ${iOwe.map((o) => `to ${name(o.holderFactionId)} — ${o.text}`).join('; ')}.` : 'Favours you owe: none.');
   out.push(
     notes.length > 0
-      ? `Promissory notes in your hands: ${notes.map((a) => (isNote(a) && a.issuedBy === me ? `your own ${NOTE_TITLE[a.note]} note — yours to give to another power, not to call in` : isNote(a) ? `${possessive(name(a.issuedBy))} ${NOTE_TITLE[a.note]} note — yours to call in` : a.kind)).join('; ')}.`
+      ? `Promissory notes in your hands: ${notes.map((a) => (isNote(a) && a.issuedBy === me ? `your own ${noteTitle(a.note)} note — yours to give to another power, not to call in` : isNote(a) ? `${possessive(name(a.issuedBy))} ${noteTitle(a.note)} note — yours to call in` : a.kind)).join('; ')}.`
       : 'Promissory notes in your hands: none.',
   );
   out.push(

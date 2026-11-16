@@ -228,20 +228,3 @@ export function isBoon(kind: RimEventKind): boolean {
   return (RIM_BOONS as readonly string[]).includes(kind);
 }
 
-/** A short title for a card: what kind of thing happened. */
-export const RIM_EVENT_TITLE: Record<RimEventKind, string> = {
-  ion_storm: 'Ion storm',
-  derelict: 'Derelict',
-  unrest: 'Unrest',
-  border_incident: 'Border incident',
-  shortage: 'Shortage',
-  mutiny: 'Mutiny',
-  rich_seam: 'Rich seam',
-  volunteers: 'Volunteers',
-  free_captains: 'Free captains',
-  envoys_of_peace: 'Envoys of peace',
-  crackdown: 'Crackdown',
-  bounty_posted: 'A price on your head',
-  turned_contact: 'Turned contact',
-  show_of_force: 'Show of force',
-};

@@ -1,4 +1,5 @@
 import type { WorldType } from '../domain/state.js';
+import { lexicon } from '../skin/lexicon.js';
 
 /**
  * A line about what a world is like, keyed on what it is and who settled it.
@@ -164,20 +165,11 @@ export function worldFlavour(
 export const FLAVOUR_KEYS = Object.keys(FLAVOUR) as Key[];
 
 /**
- * What a world's type is called on screen. One table, read by the System panel
- * under the world's picture and by the help text's fixture section, so the two
- * cannot call the same ground by different names.
+ * What a world's type is called on screen: the lexicon's terrain word. One
+ * reading, by the System panel under the world's picture and by the help
+ * text's fixture section, so the two cannot call the same ground by different
+ * names.
  */
-const TYPE_LABEL: Record<WorldType, string> = {
-  earthlike: 'Terrestrial',
-  earthnight: 'Terrestrial, settled',
-  oceanic: 'Oceanic',
-  arid: 'Arid',
-  ice: 'Ice',
-  industrialmoon: 'Ringed moon',
-  gasgiant: 'Gas giant',
-};
-
 export function worldTypeLabel(type: WorldType): string {
-  return TYPE_LABEL[type] ?? 'Unsurveyed';
+  return lexicon().terrains[type]?.word ?? 'Unsurveyed';
 }

@@ -1,5 +1,6 @@
 import { fleetName, fleetsAt } from '../domain/fleets.js';
 import { ACT_WORDS } from '../domain/acts.js';
+import { noteTitle } from '../skin/lexicon.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -31,7 +32,6 @@ import { describeOrderEffect } from '../domain/development.js';
 import {
   COMMODITY_VALUE,
   NOTE_MEANING,
-  NOTE_TITLE,
   TRUCE_BREAKING_REPUTATION_COST,
   agentStanding,
   assetWorthRangeTo,
@@ -1179,8 +1179,8 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
         : '';
       const own = isNote(a)
         ? a.issuedBy === viewerId
-          ? ` · YOUR OWN promissory note (${NOTE_TITLE[a.note]}): give it to a power and they may call it in for ${NOTE_MEANING[a.note]}; it comes home when played`
-          : ` · ${nameOfFaction(state, a.issuedBy)}'s promissory note (${NOTE_TITLE[a.note]}): play it (play_note) for ${NOTE_MEANING[a.note]}; it then goes home to them`
+          ? ` · YOUR OWN promissory note (${noteTitle(a.note)}): give it to a power and they may call it in for ${NOTE_MEANING[a.note]}; it comes home when played`
+          : ` · ${nameOfFaction(state, a.issuedBy)}'s promissory note (${noteTitle(a.note)}): play it (play_note) for ${NOTE_MEANING[a.note]}; it then goes home to them`
         : isCommodity(a) && a.issuedBy === viewerId
           ? ` · your own goods: worth nothing to you, and ${COMMODITY_VALUE} a ${a.unit} to any power that comes to hold them — given, or carried by a trade accord`
           : '';

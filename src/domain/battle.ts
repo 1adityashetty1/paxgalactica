@@ -36,6 +36,7 @@ import { ShipStackSchema } from './hulls.js';
 
 /** A battle's phases, in the order they are fought. */
 export const BATTLE_PHASES = ['strike', 'orbital', 'ground'] as const;
+export type BattlePhase = (typeof BATTLE_PHASES)[number];
 
 export const BATTLE_OUTCOMES = [
   /** Nobody in orbit, nobody on the ground. Walked in. */

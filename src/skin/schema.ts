@@ -4,10 +4,11 @@ import { BATTLE_PHASES } from '../domain/battle.js';
 import { COMMANDER_ARCHETYPES } from '../domain/command.js';
 import { NOTE_KINDS, TREATY_TYPES } from '../domain/diplomacy.js';
 import { DURATION_CATEGORIES } from '../domain/duration.js';
-import { RIM_EVENT_TITLE } from '../domain/events.js';
+import { RIM_EVENT_KINDS as EVENT_KINDS } from '../domain/events.js';
 import { FLEET_KINDS } from '../domain/fleets.js';
 import { HULL_CLASSES } from '../domain/hulls.js';
 import { WORLD_TYPES, type WorldState } from '../domain/state.js';
+import { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS } from './lexicon.js';
 
 /**
  * A skin: the words, names and art that sit over the core's mechanics.
@@ -75,14 +76,10 @@ function family<T extends z.ZodTypeAny>(keys: readonly string[], entry: T) {
 /* ------------------------------------------------------------------ */
 
 export const ASSET_KINDS: readonly string[] = ASSET_ARCHETYPES.map((a) => a.kind);
-export const RIM_EVENT_KINDS: readonly string[] = Object.keys(RIM_EVENT_TITLE);
+export const RIM_EVENT_KINDS: readonly string[] = EVENT_KINDS;
 export const SCHOOLS: readonly string[] = COMMANDER_ARCHETYPES.map((a) => a.kind);
 
-/** The words for where things are, which every prompt and panel uses and no op names. */
-export const PLACE_TERMS = ['world', 'system', 'sector', 'lane', 'jump', 'hub', 'orbit', 'garrison', 'yards', 'rim'] as const;
-
-/** The units every price and every fleet is counted in. */
-export const ACCOUNT_TERMS = ['credits', 'tons'] as const;
+export { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS };
 
 export const LexiconSchema = z.object({
   units: family(HULL_CLASSES, CountedIdWordSchema),
@@ -96,6 +93,7 @@ export const LexiconSchema = z.object({
   phases: family(BATTLE_PHASES, IdWordSchema),
   fleetKinds: family(FLEET_KINDS, IdWordSchema),
   places: family(PLACE_TERMS, TermSchema),
+  forces: family(FORCE_TERMS, TermSchema),
   accounts: family(ACCOUNT_TERMS, TermSchema),
 });
 export type Lexicon = z.infer<typeof LexiconSchema>;
@@ -299,7 +297,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
       if (back !== core) out.push(`${fam}: ${core} goes out as ${toSkin.get(core)} and comes back as ${back}`);
     }
   }
-  for (const [label, entries] of [['places', skin.lexicon.places], ['accounts', skin.lexicon.accounts]] as const) {
+  for (const [label, entries] of [['places', skin.lexicon.places], ['forces', skin.lexicon.forces], ['accounts', skin.lexicon.accounts]] as const) {
     const seen = new Map<string, string>();
     for (const [key, t] of Object.entries(entries)) {
       for (const w of [t.word, t.plural, ...t.synonyms].map((x) => x.toLowerCase())) {
@@ -350,7 +348,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
       words.push(e.word, ...e.synonyms, ...(e.plural ? [e.plural] : []), ...(e.unit ? [e.unit] : []));
     }
   }
-  for (const t of [...Object.values(skin.lexicon.places), ...Object.values(skin.lexicon.accounts)]) {
+  for (const t of [...Object.values(skin.lexicon.places), ...Object.values(skin.lexicon.forces), ...Object.values(skin.lexicon.accounts)]) {
     words.push(t.word, t.plural, ...t.synonyms);
   }
   for (const p of Object.values(skin.powers)) {

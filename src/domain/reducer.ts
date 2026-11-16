@@ -88,7 +88,6 @@ import {
   NOTE_ESCORT_HULLS,
   NOTE_INCOME_SHARE,
   NOTE_TERM_TURNS,
-  NOTE_TITLE,
   NOTE_TREATY,
   TreatyTermsSchema,
   TreatySchema,
@@ -390,6 +389,7 @@ import {
   type WorldState,
 } from './state.js';
 import { asSentence, count, doneAt, possessive } from './words.js';
+import { assetUnit, countUnits, noteTitle, unitWord } from '../skin/lexicon.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -2429,7 +2429,7 @@ function applyCheat(
         text: `${shape.kind.replace(/_/g, ' ')} at ${sys.name}`,
         heldBy: holder,
         quantity,
-        unit: shape.unit,
+        unit: assetUnit(shape.kind),
         divisible: shape.divisible,
         valuePerUnit: shape.fixture
           ? {}
@@ -2443,7 +2443,7 @@ function applyCheat(
         acquiredTurn: state.turn,
       });
       (state.assets ??= []).push(asset);
-      return log(`${quantity} ${shape.unit}${quantity === 1 ? '' : 's'} of ${shape.kind} placed at ${sys.name}, held by ${nameFor(state, holder)}.`, holder);
+      return log(`${quantity} ${assetUnit(shape.kind)}${quantity === 1 ? '' : 's'} of ${shape.kind} placed at ${sys.name}, held by ${nameFor(state, holder)}.`, holder);
     }
     case 'ships': {
       const f = faction(cheat.factionId);
@@ -3964,8 +3964,7 @@ function applyOpsUnderRules(
     const faction = state.factions.find((f) => f.id === factionId)!;
     const tons = HULL_SPEC[hull].tonnage;
     const unit = tons * CREDITS_PER_TON;
-    const label = HULL_SPEC[hull].label;
-    const plural = (n: number): string => `${n} ${label}${n === 1 ? '' : 's'}`;
+    const plural = (n: number): string => countUnits(hull, n);
     const affordable = Math.floor(faction.credits / unit);
     let count = Math.min(asked, affordable);
     if (count < asked) {
@@ -3984,7 +3983,7 @@ function applyOpsUnderRules(
       later = 0;
     }
     if (later > MAX_QUEUED_HULLS) {
-      const note = `One order can queue at most ${MAX_QUEUED_HULLS} hulls; ${later - MAX_QUEUED_HULLS} ${label}s were not ordered.`;
+      const note = `One order can queue at most ${MAX_QUEUED_HULLS} hulls; ${later - MAX_QUEUED_HULLS} ${unitWord(hull, 2)} were not ordered.`;
       notes.push(note);
       logEvent(state, 'clamp', note, factionId);
       later = MAX_QUEUED_HULLS;
@@ -4026,7 +4025,7 @@ function applyOpsUnderRules(
     }
     const note = now > 0
       ? `${faction.name} lays down ${plural(now)} at ${yard.name} for ${now * unit} credits${queued}.`
-      : `${possessive(faction.name)} yards have no room left this turn for a ${label} (${yardRoomFor(state, factionId)} of ${capacity} tons free)${queued}.`;
+      : `${possessive(faction.name)} yards have no room left this turn for a ${unitWord(hull)} (${yardRoomFor(state, factionId)} of ${capacity} tons free)${queued}.`;
     notes.push(note);
     logEvent(state, 'system', note, factionId);
   };
@@ -5381,7 +5380,7 @@ function applyOpsUnderRules(
           text: op.text,
           heldBy: op.heldBy,
           quantity: op.quantity,
-          unit: shape && !stated('unit') ? shape.unit : op.unit,
+          unit: shape && !stated('unit') ? assetUnit(shape.kind) : op.unit,
           // A file is one file. Forced rather than trusted, because atomicity
           // is what keeps a dossier simple: no half a file, so no question
           // about how value divides, so no decay model and no lineage.
@@ -5787,7 +5786,7 @@ function applyOpsUnderRules(
           );
           break;
         }
-        const title = NOTE_TITLE[asset.note];
+        const title = noteTitle(asset.note);
         const type = NOTE_TREATY[asset.note];
         let what: string;
         if (type !== null) {
@@ -6945,7 +6944,7 @@ function applyOpsUnderRules(
               const note =
                 hull === 'battleship'
                   ? `Filed the battleship programme as capital ship construction rather than ${category.replace(/_/g, ' ')}: a battleship is a capital hull, and capital hulls take ${CATEGORY_FLOORS.capital_ship_construction} turns to lay down.`
-                  : `Filed the ${HULL_SPEC[hull].label} programme as a refit rather than capital ship construction: only a battleship is a capital hull, and lighter classes come off the slips in ${CATEGORY_FLOORS.refit}.`;
+                  : `Filed the ${unitWord(hull)} programme as a refit rather than capital ship construction: only a battleship is a capital hull, and lighter classes come off the slips in ${CATEGORY_FLOORS.refit}.`;
               notes.push(note);
               logEvent(state, 'clamp', note, op.factionId);
             }
@@ -7146,11 +7145,11 @@ function applyOpsUnderRules(
           const left = yardCapacityFor(state, op.factionId) - (programmeTons.get(op.factionId) ?? 0);
           const fits = Math.max(0, Math.floor(left / perHull));
           if (fits === 0) {
-            reject(raw, 'illegal_value', `${possessive(nameFor(state, op.factionId))} yards have no berths left this turn for a ${HULL_SPEC[op.onComplete.hull].label} programme.`);
+            reject(raw, 'illegal_value', `${possessive(nameFor(state, op.factionId))} yards have no berths left this turn for a ${unitWord(op.onComplete.hull)} programme.`);
             break;
           }
           if (op.onComplete.magnitude > fits) {
-            const note = `${possessive(nameFor(state, op.factionId))} yards have berths for ${fits} ${HULL_SPEC[op.onComplete.hull].label}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
+            const note = `${possessive(nameFor(state, op.factionId))} yards have berths for ${fits} ${unitWord(op.onComplete.hull)}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
             notes.push(note);
             logEvent(state, 'clamp', note, op.factionId);
             op.onComplete = { ...op.onComplete, magnitude: fits };

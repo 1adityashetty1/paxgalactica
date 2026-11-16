@@ -2,8 +2,8 @@ import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
 import { atWork, describeEffect } from '../domain/diplomacy.js';
 import { observeOrders, rememberedBy } from '../domain/intel.js';
+import { rimEventTitle } from '../skin/lexicon.js';
 import {
-  RIM_EVENT_TITLE,
   isBoon,
   rimEventsVisibleTo,
   type RimEventKind,
@@ -337,7 +337,7 @@ export function briefingEvents(state: WorldState, factionId: string): BriefingEv
       id: e.id,
       turn: e.turn,
       kind: e.kind,
-      title: RIM_EVENT_TITLE[e.kind],
+      title: rimEventTitle(e.kind),
       text: e.text,
       flavour: null,
       boon: isBoon(e.kind),

@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CREDITS_PER_TON, HULL_CLASSES, HULL_SPEC, hullCost, hullUpkeep } from '../src/domain/hulls.js';
+import { unitWord } from '../src/skin/lexicon.js';
 import {
   COMPULSION_BREACH_DISSENT,
   DOCTRINE_CHANGE_DISSENT_CEILING,
@@ -116,7 +117,7 @@ describe('prompts do not quote ship prices the yards do not charge', () => {
     it(`${file} prices each named class correctly`, () => {
       const text = readFileSync(join(PROMPTS, file), 'utf8');
       for (const hull of HULL_CLASSES) {
-        const label = HULL_SPEC[hull].label;
+        const label = unitWord(hull);
         // "60 for a battleship", "45 for a lifter".
         for (const m of text.matchAll(
           new RegExp(`(\\d+)\\s+for\\s+an?\\s+${label}`, 'gi'),
