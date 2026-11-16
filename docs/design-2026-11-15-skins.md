@@ -642,6 +642,15 @@ they were played.
    - The transition checks for the machines listed above, beside
      `personViolations`, run in the gate and the harness.
    - The skin schema, with the Pax Galactica skin built from today's values.
+   - **Built (2026-11-15).** `src/domain/transitions.ts` (`worldViolations`,
+     `transitionViolations`, `watchMachines`), run by the bug-hunt gate over
+     every step of every save and by `tests/transitions.test.ts` over 60 bot
+     turns. `src/skin/schema.ts` (`SkinSchema`, `skinViolations`) and
+     `src/skin/paxgalactica.ts`. The four boards and fleetlab are
+     byte-identical to main.
+   - A refinement to decision 9: a skin **id** may carry an underscore, since
+     today's are `torpedo_boat` and `ion_storm`, but may not match the marked
+     prefix or an ordinal. A skin **word** carries neither.
 2. **Lexicon.**
    - `src/skin/`, and the player-facing generators routed through it:
      `describeStack` and its plurals first, then help, the briefing, battle

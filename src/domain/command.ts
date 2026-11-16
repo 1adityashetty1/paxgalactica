@@ -908,7 +908,7 @@ export function stockAgentLists(state: {
  * front, the Combine carries it behind the house name the way it carries every
  * other obligation.
  */
-interface NameStock {
+export interface NameStock {
   first: string[];
   last: string[];
   /** One per archetype. The name a power gives that school of officer. */
@@ -1094,6 +1094,9 @@ export const GENERATED_PERSON_WORDS: readonly string[] = [
 
 /** The name stock an independent world's notable is drawn from. */
 export const RIM_STOCK = 'rim';
+
+/** Every stock, read-only, for the skin to be built from: the five powers' and `RIM_STOCK`. */
+export const NAME_STOCKS: Readonly<Record<string, Readonly<NameStock>>> = NAME_STOCK;
 
 const FALLBACK = NAME_STOCK['drajk']!;
 

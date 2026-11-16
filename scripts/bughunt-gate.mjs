@@ -4,8 +4,10 @@
  * typechecks, the whole suite, and every bug-hunt save replaying with no more
  * rejections than it had before the round (a fix that makes an old journal
  * reject is a fix that changed history; pin it to a journal version instead),
- * and with every person in exactly one place at every step of it
- * (`personViolations` in `src/domain/people.ts`).
+ * and with every state machine keeping its rules at every step of it: every
+ * person in one place, and every treaty, truce, debt, loan, favour, ultimatum,
+ * bounty, commitment, officer, order, fixture and seat moving only as its
+ * lifecycle allows (`watchMachines` in `src/domain/transitions.ts`).
  *
  *   node scripts/bughunt-gate.mjs            # check, and print the baseline
  *   node scripts/bughunt-gate.mjs --record   # write the replay baseline
@@ -58,21 +60,22 @@ if (record) {
   console.log(`Recorded the replay baseline for ${saves.length} save(s).`);
   process.exit(0);
 }
-// Every person in exactly one place, at every step of every save.
+// Every machine keeps its rules, at every step of every save.
 const { replay } = await import(resolve(root, 'dist/engine/journal.js'));
-const { personViolations } = await import(resolve(root, 'dist/domain/people.js'));
+const { watchMachines } = await import(resolve(root, 'dist/domain/transitions.js'));
 for (const name of saves) {
   const save = JSON.parse(readFileSync(resolve(root, 'saves', `${name}.json`), 'utf8'));
   const broken = new Set();
+  const watch = watchMachines();
   try {
     replay(save.journal ?? save, (state) => {
-      for (const v of personViolations(state)) broken.add(`turn ${state.turn}: ${v}`);
+      for (const v of watch.step(state)) broken.add(`turn ${state.turn}: ${v}`);
     });
   } catch {
     continue; // reported as a failed replay above
   }
   if (broken.size > 0) {
-    console.log(`FAIL people ${name}: ${[...broken].slice(0, 3).join('; ')}${broken.size > 3 ? ` (+${broken.size - 3})` : ''}`);
+    console.log(`FAIL machines ${name}: ${[...broken].slice(0, 3).join('; ')}${broken.size > 3 ? ` (+${broken.size - 3})` : ''}`);
     failed = true;
   }
 }

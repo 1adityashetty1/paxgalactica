@@ -49,7 +49,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
 | `pnpm app:macos` | build `dist-app/Pax Galactica.app`: the packed game, the official Node runtime and the Claude binary in one Mac app that starts the server and opens the browser, and stops it on Quit. Saves go to `~/.paxgalactica/saves`, the log to `~/Library/Logs/Pax Galactica.log`. The icon is drawn by `scripts/draw-app-icon.mjs` from the game's own sprites |
 | `node scripts/bughunt-scan.mjs <campaign>` | the mechanical half of a bug hunt: replays a played campaign and lists raw ids, bad plurals, spliced sentences, rejections by code, double payments, drift charged on an act, failed model calls — each with its turn and evidence |
-| `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline |
+| `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline and every state machine keeping its rules at every step (`watchMachines`) |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
 
 **The bug-hunt loop** is the `bughunt` skill (`.claude/skills/bughunt/SKILL.md`):
@@ -4479,8 +4479,7 @@ Eight lifecycles in this game were stored as combinations of fields and read
 by whoever needed them, each reader its own way. Each is now worked out by one
 function from the fields that already exist. Nothing new is stored except the
 one rule below, so saves replay as they were played and the four harness
-boards are unchanged (5/5/5/5/5 three times, 5/6/5/5/4 at 100 turns without
-events).
+boards are unchanged (5/5/5/5/5 in all four, measured again on 2026-11-15).
 
 | machine | read by | what disagreed |
 |---|---|---|
@@ -4496,6 +4495,86 @@ events).
 The standing orders change only a prompt, so nothing replays differently;
 whether reactions keep their plans is the next playtest's to read off the
 trace.
+
+### Every machine keeps its rules, checked with no UI attached
+
+`src/domain/transitions.ts`, phase 1 of `docs/design-2026-11-15-skins.md`.
+A reading says what a machine is; this says what it may become.
+
+- **`worldViolations(state)`** holds any one world to its rules:
+  - `personViolations`, folded in;
+  - every keyed record named once;
+  - the relation reading the same both ways;
+  - one live truce a pair, and none past its last turn;
+  - a live debt owing something and a settled one nothing;
+  - an open bounty with money in it and a closed one empty;
+  - an order within its term;
+  - fixtures on a world, within their slots, no two alike, damage within the budget;
+  - one notable a seat, on a world that has it.
+- **`transitionViolations(before, after)`** holds two consecutive worlds to
+  each lifecycle's graph (`TREATY_MOVES`, `DEBT_MOVES`, `LOAN_MOVES`,
+  `OFFICER_MOVES` and five more):
+  - no record that is never removed goes missing;
+  - no status moves where its graph cannot reach;
+  - the fixed facts stay fixed: who a treaty binds, where a fixture stands,
+    and that a notable never moves from one estate to another;
+  - counts run one way only: a debt's balance, a bounty's payouts, an
+    officer's battles, an order's progress;
+  - an order that ended never comes back.
+- **The graphs are keyed by each status enum**, so a status added to a schema
+  fails the typecheck until it is given its edges. Reachability is checked
+  rather than single edges, because the harness samples once a turn and the
+  gate once a batch.
+- **`watchMachines()`** feeds both checks one world after another. The
+  bug-hunt gate runs it over every step of every save, and
+  `tests/transitions.test.ts` over 60 bot turns.
+
+Built against the code, then run over all 13 saves step by step and 100 bot
+turns with and without events. One rule was wrong and was changed: an
+independent world's notable takes an estate when the world joins a power, and
+gives it up when the world rises. Read-only, so nothing replays differently.
+
+## A skin names the core's slots
+
+`src/skin/`, phase 1 of `docs/design-2026-11-15-skins.md`. A skin never
+changes a number. It supplies words for:
+
+- the **lexicon**: a word for every role a model or player reads (unit
+  classes, terrains, order categories, asset kinds, Rim events, treaty types,
+  officer schools, note kinds, battle phases, fleet kinds, places, units of
+  account);
+- the five **powers**: name, title, voice, doctrine, each line's text,
+  estates, name stock, fleet names;
+- the 25 **systems** and four **sectors**;
+- the **art** each slot is drawn with.
+
+`SkinSchema` checks the skin's shape and completeness: every family keyed
+exhaustively, and stocks at the 20 given and 60 family names the draw is
+indexed by. `skinViolations(skin, coreSlotsOf(world))` checks what a schema
+cannot see:
+
+- the skin names exactly the core's slots;
+- each id family is a bijection that round-trips;
+- no family name sits in two stocks;
+- no power gives two schools one title;
+- no skin id could pass for a marked core id (`MARKED_ID`) or an ordinal
+  (`ORDINAL_ID`);
+- no word carries an underscore.
+
+A skin id may carry an underscore (`torpedo_boat`) as long as it does not
+begin like a marked id.
+
+**`paxGalactica()` is read off the game's own tables** rather than written out:
+
+- hull labels, `worldTypeLabel`, `RIM_EVENT_TITLE` and `NOTE_TITLE`;
+- the seed's sheets, `NAME_STOCKS`;
+- each power's fleet names as `fleetName` gives them, tested equal for every
+  power, kind and number up to 25.
+
+Families with no word table today (order categories, treaty types, schools)
+take their ids, as the screen shows them now. The places and units of account
+are the one part written in the skin. Nothing reads the skin yet; phase 2
+routes the game's text through it.
 
 ## Treaties and agents
 
@@ -9107,6 +9186,8 @@ src/
               provider-ids.ts is the one I/O-free piece the browser imports.
   server/     index (node:http), router, session, settings, events, static, errors
   seed/       the 25-system Rim scenario
+  skin/       schema.ts (what a skin must name), paxgalactica.ts (the default,
+              read off the game's tables)
   ui/         layout.ts (pure map geometry), portrait.ts (avatar crops)
               + ansi256.ts
 web/          React + Vite client → dist/web
