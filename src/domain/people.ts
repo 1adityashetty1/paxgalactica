@@ -1,6 +1,7 @@
 import { atWork } from './diplomacy.js';
 import { heldAs, whereabouts } from './seats.js';
 import { getFaction, type WorldState } from './state.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Where a person is, for all three kinds of person, in one union.
@@ -145,7 +146,7 @@ export function personViolations(state: WorldState): string[] {
     const held = holders('commanderId', c.id).length;
     if (c.status === 'active') {
       if ((c.atSystemId ? 1 : 0) + voyages !== 1) {
-        out.push(`officer ${c.id} is active and ${c.atSystemId ? 'standing somewhere' : 'standing nowhere'} on ${voyages} voyage(s)`);
+        out.push(say`officer ${c.id} is active and ${c.atSystemId ? 'standing somewhere' : 'standing nowhere'} on ${voyages} {voyage}(s)`);
       }
       if (held > 0) out.push(`officer ${c.id} is active and held as an asset`);
     } else {

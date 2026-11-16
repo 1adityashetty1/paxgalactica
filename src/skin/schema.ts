@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { ASSET_ARCHETYPES } from '../domain/assets.js';
-import { BATTLE_PHASES } from '../domain/battle.js';
+import { BATTLE_OUTCOMES, BATTLE_PHASES } from '../domain/battle.js';
 import { AGENT_CLASSES, COMMANDER_ARCHETYPES } from '../domain/command.js';
 import { AGENT_MISSIONS, NOTE_KINDS, TREATY_TYPES } from '../domain/diplomacy.js';
 import { DURATION_CATEGORIES } from '../domain/duration.js';
 import { RIM_EVENT_KINDS as EVENT_KINDS } from '../domain/events.js';
 import { FLEET_KINDS } from '../domain/fleets.js';
 import { HULL_CLASSES } from '../domain/hulls.js';
-import { TRADE_ETHICS, WAR_ETHICS, WORLD_TYPES, type WorldState } from '../domain/state.js';
+import { MOVEMENT_ORDER_TYPE, TRADE_ETHICS, WAR_ETHICS, WORLD_TYPES, type WorldState } from '../domain/state.js';
 import { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS, VERB_TERMS } from './lexicon.js';
 import { PAX_LEXICON } from './words.js';
 import { ACT_KINDS } from '../domain/act-kinds.js';
@@ -60,7 +60,7 @@ const IdWordSchema = z.object({
 const CountedIdWordSchema = IdWordSchema.extend({ plural: WordSchema });
 
 /** A kind of thing that can be held, with what one of it is called ("40 crew", "3 charts"). */
-const AssetWordSchema = IdWordSchema.extend({ unit: WordSchema });
+const AssetWordSchema = IdWordSchema.extend({ unit: WordSchema, from: z.string().min(1), wanted: z.string().min(1) });
 
 /** A word with no id: a place or a unit of account, which no op names. */
 const TermSchema = z.object({
@@ -90,11 +90,11 @@ const VerbSchema = z.object({ base: WordSchema, s: WordSchema, past: WordSchema,
 export const LexiconSchema = z.object({
   units: family(HULL_CLASSES, CountedIdWordSchema),
   terrains: family(WORLD_TYPES, IdWordSchema),
-  orderCategories: family(DURATION_CATEGORIES, IdWordSchema),
+  orderCategories: family([MOVEMENT_ORDER_TYPE, ...DURATION_CATEGORIES], IdWordSchema),
   assetKinds: family(ASSET_KINDS, AssetWordSchema),
   rimEvents: family(RIM_EVENT_KINDS, IdWordSchema),
   treatyTypes: family(TREATY_TYPES, IdWordSchema),
-  schools: family(SCHOOLS, IdWordSchema),
+  schools: family(SCHOOLS, IdWordSchema.extend({ phase: z.string().min(1), effect: z.string().min(1), known: z.string().min(1) })),
   noteKinds: family(NOTE_KINDS, IdWordSchema),
   phases: family(BATTLE_PHASES, IdWordSchema),
   fleetKinds: family(FLEET_KINDS, IdWordSchema),
@@ -110,6 +110,12 @@ export const LexiconSchema = z.object({
     agentClasses: family(AGENT_CLASSES, z.string().min(1)),
     missions: family(AGENT_MISSIONS, z.string().min(1)),
     acts: family(ACT_KINDS, z.string().min(1)),
+    battleOutcomes: family(BATTLE_OUTCOMES, z.string().min(1)),
+    wants: family(Object.keys(PAX_LEXICON.meanings.wants), z.string().min(1)),
+    unitJobs: family(HULL_CLASSES, z.string().min(1)),
+    terrainLines: family(WORLD_TYPES, z.string().min(1)),
+    finds: family(Object.keys(PAX_LEXICON.meanings.finds), z.string().min(1)),
+    difficulty: family(Object.keys(PAX_LEXICON.meanings.difficulty), z.string().min(1)),
     bands: family(Object.keys(PAX_LEXICON.meanings.bands), z.string().min(1)),
   }),
   accounts: family(ACCOUNT_TERMS, TermSchema),

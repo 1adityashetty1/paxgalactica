@@ -82,8 +82,8 @@ describe('assets', () => {
         }
         // A fixture IS its world, so it cannot come in tradeable lots.
         if (a.fixture) expect(a.divisible).toBe(false);
-        expect(a.from.length).toBeGreaterThan(0);
-        expect(a.wanted.length).toBeGreaterThan(0);
+        expect(PAX_LEXICON.assetKinds[a.kind]!.from.length).toBeGreaterThan(0);
+        expect(PAX_LEXICON.assetKinds[a.kind]!.wanted.length).toBeGreaterThan(0);
       }
     });
 
@@ -109,7 +109,7 @@ describe('assets', () => {
       const table = serializeArchetypes();
       for (const a of ASSET_ARCHETYPES) {
         expect(table).toContain(`\`${a.kind}\``);
-        expect(table).toContain(a.from);
+        expect(table).toContain(PAX_LEXICON.assetKinds[a.kind]!.from);
       }
       expect(table).toContain('worth is a BAND');
       expect(table).toContain('played once, then spent');

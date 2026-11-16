@@ -78,9 +78,7 @@ export function ChannelPanel({
       </header>
 
       <p className="channel-warning">
-        Nothing said here changes the galaxy. When you close the channel, a
-        separate pass reads the transcript and enacts only what was actually
-        agreed.
+        {say`Nothing said here changes the {galaxy}. When you close the channel, a separate pass reads the transcript and enacts only what was actually agreed.`}
       </p>
 
       <div className="channel-log" ref={scroller}>

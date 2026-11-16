@@ -126,14 +126,19 @@ export async function literals(): Promise<Literal[]> {
   return out;
 }
 
-/** A word or phrase as a whole-word, case-blind pattern: "torpedo boat" also matches "torpedo  boat". */
+/**
+ * A word or phrase as a whole-word, case-blind pattern: "torpedo boat" also
+ * matches "torpedo  boat". An underscore is part of a word, so an op or id
+ * named in prose (`publish_dossier`, `capital_ship_construction`) is protocol,
+ * not the word inside it.
+ */
 export function wordPattern(word: string): RegExp {
   const body = word
     .trim()
     .split(/\s+/)
     .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('\\s+');
-  return new RegExp(`(?<![A-Za-z])${body}(?![A-Za-z])`, 'gi');
+  return new RegExp(`(?<![A-Za-z_])${body}(?![A-Za-z_])`, 'gi');
 }
 
 /** One word of the skin, found in one string of the source. */

@@ -14,7 +14,7 @@ import {
 } from '../../../src/domain/trade.js';
 import { stormbound } from '../../../src/domain/events.js';
 import { ansi256ToHex } from '../color.js';
-import { say } from '../../../src/skin/lexicon.js';
+import { rimEventWord, say } from '../../../src/skin/lexicon.js';
 
 /**
  * The lane network, made visible.
@@ -116,7 +116,7 @@ export function TradePanel({
         {earnings.uncollected > 0 && (
           <div className="ledger-row sub">
             <span title={say`Trade crossing unaligned {systems} nobody has a {fleet} on.`}>
-              Unclaimed on neutral space
+              {say`Unclaimed on neutral {space}`}
             </span>
             <span>{earnings.uncollected}/turn</span>
           </div>
@@ -124,12 +124,11 @@ export function TradePanel({
       </section>
 
       <h4>
-        Your lanes <span className="muted">({mine.length} of {all.length})</span>
+        {say`Your {lanes} `}<span className="muted">({mine.length} of {all.length})</span>
       </h4>
       {mine.length === 0 && (
         <p className="muted">
-          You touch none of the galaxy's trade lanes. Take a hub, or park a fleet on a neutral
-          junction to work the traffic crossing it.
+          {say`You touch none of the {galaxy}'s trade {lanes}. Take a {hub}, or park a {fleet} on a neutral junction to work the traffic crossing it.`}
         </p>
       )}
       <ul className="lane-list">
@@ -228,7 +227,7 @@ function Lane({
           {x.raiders.length > 0 && (
             <>Raided at {nameOf(x.id)} by {x.raiders.map(nameFaction).join(', ')}. </>
           )}
-          {x.storm && <>An ion storm closes {nameOf(x.id)}; only smugglers run it.</>}
+          {x.storm && <>An {rimEventWord('ion_storm')} closes {nameOf(x.id)}; only smugglers run it.</>}
         </div>
       ))}
     </li>

@@ -1,6 +1,6 @@
 import { fleetName, fleetsAt } from '../domain/fleets.js';
 import { ACT_WORDS } from '../domain/acts.js';
-import { noteTitle, say } from '../skin/lexicon.js';
+import { noteTitle, orderWord, say } from '../skin/lexicon.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -962,7 +962,7 @@ export function serializeState(
     `Viewpoint: **${viewer?.name ?? viewerId}** (\`${viewerId}\`)`,
     say`Treasury: ${viewer?.credits ?? 0} {credits} · income ${ledger.gross}/turn (${ledger.territory} territory + ${ledger.routes} trade {lanes}), upkeep ${ledger.upkeep}/turn (net ${ledger.net >= 0 ? '+' : ''}${ledger.net})`,
     ledger.tolls > 0 ? say`Tolls levied on other powers' {cargo}: ${ledger.tolls}/turn.` : '',
-    ledger.raided > 0 ? `Taken by commerce raiding: ${ledger.raided}/turn.` : '',
+    ledger.raided > 0 ? `Taken by ${orderWord('commerce_raiding')}: ${ledger.raided}/turn.` : '',
     (ledger.bounties ?? 0) > 0 ? `Bounties collected on those prizes: ${ledger.bounties}/turn.` : '',
     // What raiders took, named or not: a raid run dark shows up here and
     // nowhere else for its victim.

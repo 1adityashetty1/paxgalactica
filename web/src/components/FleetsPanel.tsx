@@ -115,7 +115,7 @@ export function FleetsPanel({
       {(mine.length > 0 || mineUnderWay.length > 0) && (
         <>
           <h4>
-            Your fleets <span className="muted">({mine.length + mineUnderWay.length})</span>
+            {say`Your {fleets} `}<span className="muted">({mine.length + mineUnderWay.length})</span>
           </h4>
           <p className="hint">
             Move one by name. Renaming, splitting and merging are free and land with the turn.
@@ -194,8 +194,7 @@ export function FleetsPanel({
             <span className="muted">({notable.length})</span>
           </h4>
           <p className="hint">
-            Ships in a system you do not own still take a share of its income, and
-            can blockade, raid or suborn from there.
+            {say`{Ships} in a {system} you do not own still take a share of its income, and can blockade, raid or suborn from there.`}
           </p>
           <ul className="fleet-list">
             {notable.map(({ system, crews }) => (
@@ -215,7 +214,7 @@ export function FleetsPanel({
       )}
 
       <h4>
-        All hulls by system <span className="muted">({occupied.length}{say` {systems})`}</span>
+        {say`All {hulls} by {system} `}<span className="muted">({occupied.length}{say` {systems})`}</span>
       </h4>
       <ul className="fleet-list">
         {occupied.map(({ system, crews }) => (

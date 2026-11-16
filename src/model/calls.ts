@@ -403,7 +403,7 @@ export async function verifyBreachRelevance(
     '',
     'Say `relevant: false` when the line is simply about something else. A line',
     'about preying on shipping has nothing to say about an assassination; a line',
-    'about refusing tribute has nothing to say about building a shipyard. Being',
+    say`about refusing tribute has nothing to say about building a {shipyard}. Being`,
     'generally out of character is not enough — the line has to be about THIS.',
     '',
     'You are not deciding whether the act is wise, legal or in character. Only',

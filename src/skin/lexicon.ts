@@ -1,13 +1,13 @@
 import type { ActKind } from '../domain/act-kinds.js';
-import type { BattlePhase } from '../domain/battle.js';
+import type { BattleOutcome, BattlePhase } from '../domain/battle.js';
+import type { Want } from '../domain/regard.js';
 import type { StatName } from '../domain/checks.js';
 import type { AgentClass, CommanderArchetype } from '../domain/command.js';
 import type { AgentMission, NoteKind, TreatyType } from '../domain/diplomacy.js';
-import type { DurationCategory } from '../domain/duration.js';
 import type { RimEventKind } from '../domain/events.js';
 import type { FleetKind } from '../domain/fleets.js';
 import type { HullClass } from '../domain/hulls.js';
-import type { TradeEthic, WarEthic, WorldType } from '../domain/state.js';
+import type { OrderType, TradeEthic, WarEthic, WorldType } from '../domain/state.js';
 import { PAX_LEXICON } from './words.js';
 
 /**
@@ -43,9 +43,23 @@ export interface CountedWord extends Word {
   plural: string;
 }
 
-/** A kind of thing that can be held, with what one of it is called ("40 crew", "3 charts"). */
+/** An officer school: its word, the part of a battle it helps, and how a report and a prompt describe it. */
+export interface SchoolWord extends Word {
+  /** Where in a battle it helps: "the landing". */
+  phase: string;
+  /** What it reads as in a battle report. */
+  effect: string;
+  /** Voice for a prompt: what this officer is known for. */
+  known: string;
+}
+
+/** A kind of thing that can be held: what one of it is called ("40 crew"), what produces one, and who wants it. */
 export interface AssetWord extends Word {
   unit: string;
+  /** The kind of attempt that produces one, for the arbiter's rubric. */
+  from: string;
+  /** Who tends to want it, in words. Never a number: the board decides that. */
+  wanted: string;
 }
 
 /** A word with no id: a place, a force or a unit of account, which no op names. */
@@ -56,11 +70,11 @@ export interface Term {
 }
 
 /** The words for where things are, which every prompt and panel uses and no op names. */
-export const PLACE_TERMS = ['world', 'system', 'sector', 'lane', 'jump', 'hub', 'orbit', 'garrison', 'yards', 'rim', 'space', 'galaxy'] as const;
+export const PLACE_TERMS = ['world', 'system', 'sector', 'lane', 'hyperlane', 'jump', 'hub', 'orbit', 'garrison', 'yards', 'shipyard', 'berth', 'rim', 'space', 'galaxy'] as const;
 export type PlaceTerm = (typeof PLACE_TERMS)[number];
 
 /** The words for armed force in general, whatever its class: a hull, a fleet, a crew, a navy. */
-export const FORCE_TERMS = ['hull', 'ship', 'warship', 'fleet', 'squadron', 'crew', 'navy', 'cargo'] as const;
+export const FORCE_TERMS = ['hull', 'ship', 'warship', 'fleet', 'squadron', 'crew', 'navy', 'cargo', 'salvo', 'torpedo', 'voyage'] as const;
 export type ForceTerm = (typeof FORCE_TERMS)[number];
 
 /** The verbs a fleet does: it sails, and it lands. */
@@ -96,6 +110,12 @@ export interface Meanings {
   agentClasses: Record<AgentClass, string>;
   missions: Record<AgentMission, string>;
   acts: Record<ActKind, string>;
+  battleOutcomes: Record<BattleOutcome, string>;
+  wants: Record<Want, string>;
+  unitJobs: Record<HullClass, string>;
+  terrainLines: Record<WorldType, string>;
+  finds: Record<'salvage' | 'blueprints' | 'prisoners', string>;
+  difficulty: Record<string, string>;
   bands: Record<string, string>;
 }
 
@@ -103,11 +123,11 @@ export interface Meanings {
 export interface Words {
   units: Record<HullClass, CountedWord>;
   terrains: Record<WorldType, Word>;
-  orderCategories: Record<DurationCategory, Word>;
+  orderCategories: Record<OrderType, Word>;
   assetKinds: Record<string, AssetWord>;
   rimEvents: Record<RimEventKind, Word>;
   treatyTypes: Record<TreatyType, Word>;
-  schools: Record<CommanderArchetype, Word>;
+  schools: Record<CommanderArchetype, SchoolWord>;
   noteKinds: Record<NoteKind, Word>;
   phases: Record<BattlePhase, Word>;
   fleetKinds: Record<FleetKind, Word>;
@@ -218,9 +238,32 @@ export function terrainName(type: WorldType): string {
   return active.terrains[type].word;
 }
 
+/** A Rim event's name inside a sentence: "an ion storm settles", "a rich seam is struck". */
+export function rimEventWord(kind: RimEventKind): string {
+  const title = active.rimEvents[kind].word;
+  return title[0]!.toLowerCase() + title.slice(1);
+}
+
+/** What an order category is called, a fleet movement included. */
+export function orderWord(category: OrderType): string {
+  return active.orderCategories[category].word;
+}
+
+/** What a treaty type is called. */
+export function treatyWord(type: TreatyType): string {
+  return active.treatyTypes[type].word;
+}
+
 /** A promissory note's title. */
 export function noteTitle(kind: NoteKind): string {
   return active.noteKinds[kind].word;
+}
+
+/** An officer school's words, read when asked for. */
+export function schoolWords(kind: string): SchoolWord {
+  const words = (active.schools as Record<string, SchoolWord>)[kind];
+  if (!words) throw new Error(`lexicon: no school ${kind}`);
+  return words;
 }
 
 /** What a fleet of a kind is called, before its number. */
@@ -231,6 +274,13 @@ export function fleetKindWord(kind: FleetKind): string {
 /** What one of a kind of thing is called: "crew", "chart", "fixture". A kind outside the catalogue is counted as itself. */
 export function assetUnit(kind: string): string {
   return active.assetKinds[kind]?.unit ?? kind.replace(/_/g, ' ');
+}
+
+/** A catalogue kind's words: its unit, what produces one and who wants it. */
+export function assetWords(kind: string): AssetWord {
+  const words = active.assetKinds[kind];
+  if (!words) throw new Error(`lexicon: no asset kind ${kind}`);
+  return words;
 }
 
 /* ------------------------------------------------------------------ */
@@ -252,11 +302,14 @@ function tokenTable(): Map<string, TokenSource> {
   add('places', 'system', 'system', 'systems');
   add('places', 'sector', 'sector', 'sectors');
   add('places', 'lane', 'lane', 'lanes');
+  add('places', 'hyperlane', 'hyperlane', 'hyperlanes');
   add('places', 'jump', 'jump', 'jumps');
   add('places', 'hub', 'hub', 'hubs');
   add('places', 'orbit', 'orbit', 'orbits');
   add('places', 'garrison', 'garrison', 'garrisons');
   add('places', 'yards', 'yards', null);
+  add('places', 'shipyard', 'shipyard', 'shipyards');
+  add('places', 'berth', 'berth', 'berths');
   add('places', 'rim', 'rim', null);
   add('places', 'space', 'space', null);
   add('places', 'galaxy', 'galaxy', 'galaxies');
@@ -268,6 +321,9 @@ function tokenTable(): Map<string, TokenSource> {
   add('forces', 'crew', 'crew', 'crews');
   add('forces', 'navy', 'navy', 'navies');
   add('forces', 'cargo', 'cargo', null);
+  add('forces', 'salvo', 'salvo', 'salvos');
+  add('forces', 'torpedo', 'torpedo', 'torpedoes');
+  add('forces', 'voyage', 'voyage', 'voyages');
   for (const verb of ['sail', 'land'] as const) {
     table.set(verb, { family: 'verbs', key: verb, form: 'base' });
     table.set(`${verb}s`, { family: 'verbs', key: verb, form: 's' });
@@ -290,10 +346,12 @@ export const SAY_TOKENS: readonly string[] = [...TOKENS.keys()];
 
 /** A token's word in the lexicon in force. `{World}` is the same token, capitalised. */
 function tokenWord(name: string): string {
-  const lower = name[0]!.toLowerCase() + name.slice(1);
+  const shouting = name.length > 1 && name === name.toUpperCase();
+  const lower = shouting ? name.toLowerCase() : name[0]!.toLowerCase() + name.slice(1);
   const source = TOKENS.get(lower);
   if (!source) throw new Error(`say: no lexicon token {${name}}`);
-  const capital = (word: string) => (name[0] === lower[0] ? word : word[0]!.toUpperCase() + word.slice(1));
+  const capital = (word: string) =>
+    shouting ? word.toUpperCase() : name[0] === lower[0] ? word : word[0]!.toUpperCase() + word.slice(1);
   if (source.family === 'verbs') return capital(active.verbs[source.key][source.form]);
   const entry =
     source.family === 'units'
@@ -306,7 +364,7 @@ function tokenWord(name: string): string {
   return capital(source.plural ? entry.plural : entry.word);
 }
 
-/** A token in a `say` template: a name in braces, `{world}`, `{Fleets}`, `{torpedo_boats}`. */
+/** A token in a `say` template: a name in braces, `{world}`, `{Fleets}`, `{torpedo_boats}`, and `{SHIP}` for a heading in capitals. */
 export const SAY_TOKEN = /\{([A-Za-z][A-Za-z_]*)\}/g;
 
 /**

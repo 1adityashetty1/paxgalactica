@@ -1,7 +1,7 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { DARK_RAID_YIELD } from '../domain/trade.js';
 import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS, RIM_NOTORIETY, type RimEventKind } from '../domain/events.js';
-import { rimEventTitle, say, unitWord } from '../skin/lexicon.js';
+import { liveMeanings, rimEventTitle, say, unitWord } from '../skin/lexicon.js';
 import {
   COMMANDER_ARCHETYPES,
   COMMANDER_COST,
@@ -109,15 +109,7 @@ import { foundingLine } from './fixtureoptions.js';
  * a row fits the feed's width with the rest of the help — longer, and the
  * table wraps into a ragged column.
  */
-const JOB: Record<HullClass, string> = {
-  battleship: 'the line, and what wins the exchange',
-  escort: 'the screen: lost first, turns torpedoes aside',
-  torpedo_boat: 'fires once, first, at the heaviest hulls',
-  lifter: `carries ${LIFTER_CARRY} troops — the only way to take a world`,
-  freighter: 'more of the trade over unclaimed ground',
-  listener: `sees work where it stands; hears raids ${EMISSION_RANGE} jumps out`,
-  courier: 'an officer travelling alone; never built',
-};
+const JOB: Readonly<Record<HullClass, string>> = liveMeanings('unitJobs', { carry: LIFTER_CARRY, range: EMISSION_RANGE });
 
 /** A class too light to count in the exchange: it is there to be protected. */
 const UNARMED = 0.1;
@@ -133,7 +125,7 @@ export function shipClassLines(): string[] {
   const first = byLoss[0]!;
   const last = byLoss.at(-1)!;
   return [
-    say`SHIP CLASSES — ${CREDITS_PER_TON} {credits} a {ton} to build, ${UPKEEP_PER_TON} a {ton} every turn after`,
+    say`{SHIP} CLASSES — ${CREDITS_PER_TON} {credits} a {ton} to build, ${UPKEEP_PER_TON} a {ton} every turn after`,
     ...NAVY_CLASSES.map((h) => {
       const { tonnage } = HULL_SPEC[h];
       const label = unitWord(h);
@@ -203,7 +195,7 @@ export function spanLines(): string[] {
  */
 export function worldLines(): string[] {
   return [
-    'WORLDS WITH A VIEW OF THEIR OWN',
+    say`{WORLDS} WITH A VIEW OF THEIR OWN`,
     say`  Every {world} has a standing with every power. One that answers to nobody`,
     `  joins the power it regards at ${JOIN_REGARD} or better, ${JOIN_LEAD} clear of the next:`,
     say`  send it an envoy, and give it what it wants. A {world} you hold stays while`,
@@ -332,7 +324,7 @@ export function officerLines(): string[] {
 export function rimLines(): string[] {
   const oneIn = Math.round(1 / RIM_EVENT_RATE);
   return [
-    'THE RIM MOVES ON ITS OWN',
+    say`{RIM} MOVES ON ITS OWN`,
     `  About one turn in ${count(oneIn)}, something happens nobody ordered: one of`,
     `  ${count(RIM_HAZARDS.length)} hazards, which lean on whoever is ahead, or one of ${count(RIM_BOONS.length)} boons, which`,
     '  lean on whoever is behind. Never two in a turn. A card in the feed says',

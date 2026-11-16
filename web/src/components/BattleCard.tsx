@@ -10,6 +10,7 @@ import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { CommanderIcon, GarrisonIcon, ShipIcon, StackGlyphs } from './BattleIcons.js';
 import { subtractStack, type ShipStack } from '../../../src/domain/hulls.js';
+import { liveMeanings } from '../../../src/skin/lexicon.js';
 
 /**
  * A battle, shown as the arithmetic that produced it.
@@ -22,19 +23,7 @@ import { subtractStack, type ShipStack } from '../../../src/domain/hulls.js';
  * the headline of, and expanded on click when they want to know why they lost.
  */
 
-const OUTCOME_LABEL: Record<BattleRound['outcome'], string> = {
-  unopposed: 'walked in unopposed',
-  defender_broke_off: 'defenders broke off',
-  attacker_driven_off: 'attack driven off',
-  exchange: 'both sides traded losses',
-  no_landing: 'defenders held the orbitals — no landing',
-  force_spent: 'attacking force spent',
-  world_taken: 'garrison broken, world taken',
-  landing_thrown_back: 'landing thrown back',
-  no_lift: 'orbitals won — no troops aboard to land',
-  torpedo_strike: 'torpedoes ran in ahead of the fleets',
-  orbit_cleared: 'orbit cleared of rival ships',
-};
+const OUTCOME_LABEL: Readonly<Record<BattleRound['outcome'], string>> = liveMeanings('battleOutcomes');
 
 function Side({
   title,

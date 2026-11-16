@@ -81,7 +81,7 @@ export function BriefingPanel({
               {briefing.ledger.net}/turn
             </span>
             <span className="sub">
-              +{briefing.ledger.territory} territory · +{briefing.ledger.routes} lanes · −
+              +{briefing.ledger.territory} territory · +{briefing.ledger.routes}{say` {lanes} · −`}
               {briefing.ledger.upkeep} upkeep
               {briefing.ledger.agentUpkeep > 0 && ` · −${briefing.ledger.agentUpkeep} agents`}
               {/* Its own term, because it rises with the count: the next

@@ -623,7 +623,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
         const mine = state.systems.flatMap((x) => (x.fleets ?? []).filter((f) => f.factionId === actor));
         const named = mine.find((f) => lower(action).includes(lower(fleetName(actor, f))));
         if (named && voyage.fleet?.id !== named.id) {
-          return `"${id}" is ${voyage.fleet ? fleetName(actor, voyage.fleet) : 'another voyage'}, not ${fleetName(actor, named)}, which stands at ${state.systems.find((x) => (x.fleets ?? []).includes(named))?.name} with no order.`;
+          return `"${id}" is ${voyage.fleet ? fleetName(actor, voyage.fleet) : say`another {voyage}`}, not ${fleetName(actor, named)}, which stands at ${state.systems.find((x) => (x.fleets ?? []).includes(named))?.name} with no order.`;
         }
       }
       // Work under way makes an order already so only where it is, and only if

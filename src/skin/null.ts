@@ -36,6 +36,9 @@ export function nullLexicon(): Words {
         if ('id' in entry) swapped.id = id;
         if ('plural' in entry) swapped.plural = `${w}s`;
         if ('unit' in entry) swapped.unit = `${w}u`;
+        if ('from' in entry) swapped.from = `${w}from`;
+        if ('wanted' in entry) swapped.wanted = `${w}wanted`;
+        for (const k of ['phase', 'effect', 'known'] as const) if (k in entry) swapped[k] = `${w}${k}`;
         return [key, swapped];
       }),
     );
@@ -76,8 +79,8 @@ export function paxWords(options: { units?: boolean } = {}): string[] {
  * names.
  */
 export const ORDINARY_WORDS: readonly string[] = [
-  // places and phases
-  'garrison', 'garrisons', 'ground', 'strike', 'assault',
+  // places and phases; and an action "lands" when the turn ends, which no scan can tell from a fleet landing
+  'garrison', 'garrisons', 'ground', 'strike', 'assault', 'land', 'lands', 'landed',
   // the people a power keeps or holds
   'prisoners', 'officer', 'operative', 'hostage', 'defector',
   // paper and stuff
@@ -100,8 +103,7 @@ export const ORDINARY_WORDS: readonly string[] = [
  * the lexicon has, whose noun ("land changes hands") a scan cannot tell apart.
  */
 export const UNROLED_WORDS: readonly string[] = [
-  'salvo', 'salvos', 'torpedo', 'torpedoes', 'berth', 'berths', 'shipyard', 'shipyards',
-  'admiral', 'admirals', 'captain', 'captains', 'voyage', 'voyages', 'dock', 'docks',
+  'admiral', 'admirals', 'captain', 'captains', 'dock', 'docks',
   'convoy', 'convoys', 'boarding', 'pilot', 'pilots', 'galactic', 'starship', 'starships',
 ];
 

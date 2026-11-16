@@ -2,7 +2,7 @@ import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
 import { atWork, describeEffect } from '../domain/diplomacy.js';
 import { observeOrders, rememberedBy } from '../domain/intel.js';
-import { rimEventTitle, say } from '../skin/lexicon.js';
+import { rimEventTitle, say, treatyWord } from '../skin/lexicon.js';
 import {
   isBoon,
   rimEventsVisibleTo,
@@ -305,7 +305,7 @@ export function ultimatumLines(state: WorldState, me: string): { text: string; t
         : d.kind === 'cession'
           ? (state.systems.find((x) => x.id === d.systemId)?.name ?? say`a {world}`)
           : d.kind === 'basing_rights'
-            ? 'basing rights'
+            ? treatyWord('basing_rights')
             : d.kind === 'trade_accord'
               ? 'a trade accord'
               : 'that a treaty be broken';

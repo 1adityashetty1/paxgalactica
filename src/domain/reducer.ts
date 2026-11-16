@@ -389,7 +389,7 @@ import {
   type WorldState,
 } from './state.js';
 import { asSentence, count, doneAt, possessive } from './words.js';
-import { assetUnit, countUnits, noteTitle, say, unitWord } from '../skin/lexicon.js';
+import { assetUnit, countUnits, meaning, noteTitle, orderWord, rimEventTitle, rimEventWord, say, treatyWord, unitWord } from '../skin/lexicon.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -4312,7 +4312,7 @@ function applyOpsUnderRules(
         reject(
           raw,
           'no_presence',
-          say`${there.name} is held by ${nameFor(state, holder)}, and you are not at war: {ships} take station in another power's {orbit} only with its basing rights. Open talks with ${nameFor(state, holder)} for them; {sailing} in without is an attack.`,
+          say`${there.name} is held by ${nameFor(state, holder)}, and you are not at war: {ships} take station in another power's {orbit} only with its ${treatyWord('basing_rights')}. Open talks with ${nameFor(state, holder)} for them; {sailing} in without is an attack.`,
         );
         continue;
       }
@@ -4541,7 +4541,7 @@ function applyOpsUnderRules(
               id: fleetIdFor(op.factionId, number, 'courier'),
               kind: 'courier',
               number,
-              name: standing?.name ?? `courier of ${officer.name}`.slice(0, 60),
+              name: standing?.name ?? `${unitWord('courier')} of ${officer.name}`.slice(0, 60),
               detached: false,
               commanderId: officer.id,
             },
@@ -6805,7 +6805,7 @@ function applyOpsUnderRules(
         // Only a raid can run dark: a blockade's ships sit in the orbit they
         // close, and a fleet movement is public by design.
         if (op.dark && op.type !== 'commerce_raiding') {
-          reject(raw, 'illegal_value', `Only commerce raiding can be run dark, not a ${op.type.replace(/_/g, ' ')}.`);
+          reject(raw, 'illegal_value', `Only ${orderWord('commerce_raiding')} can be run dark, not a ${orderWord(op.type)}.`);
           break;
         }
 
@@ -6944,7 +6944,7 @@ function applyOpsUnderRules(
               const note =
                 hull === 'battleship'
                   ? say`Filed the {battleship} programme as capital {ship} construction rather than ${category.replace(/_/g, ' ')}: a {battleship} is a capital {hull}, and capital {hulls} take ${CATEGORY_FLOORS.capital_ship_construction} turns to lay down.`
-                  : say`Filed the ${unitWord(hull)} programme as a refit rather than capital {ship} construction: only a {battleship} is a capital {hull}, and lighter classes come off the slips in ${CATEGORY_FLOORS.refit}.`;
+                  : say`Filed the ${unitWord(hull)} programme as a ${orderWord('refit')} rather than ${orderWord('capital_ship_construction')}: only a {battleship} is a capital {hull}, and lighter classes come off the slips in ${CATEGORY_FLOORS.refit}.`;
               notes.push(note);
               logEvent(state, 'clamp', note, op.factionId);
             }
@@ -6979,18 +6979,18 @@ function applyOpsUnderRules(
             reject(
               raw,
               'unreachable_target',
-              `No hyperlane route from "${op.originId}" to "${op.targetId}".`,
+              say`No {hyperlane} route from "${op.originId}" to "${op.targetId}".`,
             );
             break;
           }
           if (op.durationTurns !== undefined && op.durationTurns !== computed) {
-            const note = `Discarded model duration ${op.durationTurns} for movement ${op.originId}->${op.targetId}; recomputed ${computed} from hyperlane path.`;
+            const note = say`Discarded model duration ${op.durationTurns} for movement ${op.originId}->${op.targetId}; recomputed ${computed} from {hyperlane} path.`;
             notes.push(note);
             logEvent(state, 'system', note, op.factionId);
           }
           duration = computed;
           path = shortestPath(state.systems, op.originId, op.targetId) ?? [];
-          rationale = say`${computed} {jump}(s) along the shortest hyperlane path.`;
+          rationale = say`${computed} {jump}(s) along the shortest {hyperlane} path.`;
 
           // A movement commits a stated force, drawn from the origin. Sending
           // "the fleet" without saying how much used to commit every ship the
@@ -7145,11 +7145,11 @@ function applyOpsUnderRules(
           const left = yardCapacityFor(state, op.factionId) - (programmeTons.get(op.factionId) ?? 0);
           const fits = Math.max(0, Math.floor(left / perHull));
           if (fits === 0) {
-            reject(raw, 'illegal_value', say`${possessive(nameFor(state, op.factionId))} {yards} have no berths left this turn for a ${unitWord(op.onComplete.hull)} programme.`);
+            reject(raw, 'illegal_value', say`${possessive(nameFor(state, op.factionId))} {yards} have no {berths} left this turn for a ${unitWord(op.onComplete.hull)} programme.`);
             break;
           }
           if (op.onComplete.magnitude > fits) {
-            const note = say`${possessive(nameFor(state, op.factionId))} {yards} have berths for ${fits} ${unitWord(op.onComplete.hull)}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
+            const note = say`${possessive(nameFor(state, op.factionId))} {yards} have {berths} for ${fits} ${unitWord(op.onComplete.hull)}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
             notes.push(note);
             logEvent(state, 'clamp', note, op.factionId);
             op.onComplete = { ...op.onComplete, magnitude: fits };
@@ -7675,7 +7675,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'illegal_value',
-            `Movement durations are computed from the hyperlane graph and cannot be extended.`,
+            say`Movement durations are computed from the {hyperlane} graph and cannot be extended.`,
           );
           break;
         }
@@ -13084,7 +13084,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       // of the tick, so the first income it can close is the next one.
       untilTurn = turn + plan.turns;
       publicEvent = true;
-      text = say`An ion storm settles over ${s.name}: every {lane} through it is closed for ${plan.turns} turn${plan.turns === 1 ? '' : 's'}, and only smugglers will run it.`;
+      text = say`An ${rimEventWord('ion_storm')} settles over ${s.name}: every {lane} through it is closed for ${plan.turns} turn${plan.turns === 1 ? '' : 's'}, and only smugglers will run it.`;
       break;
     }
 
@@ -13100,9 +13100,9 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
         plan.find === 'salvage'
           ? {
               kind: 'salvage',
-              text: `Salvage off a derelict hulk drifting over ${s.name}`,
+              text: meaning('finds', 'salvage', { world: s.name }),
               quantity: 40,
-              unit: 'ton',
+              unit: assetUnit('salvage'),
               divisible: true,
               valuePerUnit: Object.fromEntries([...others.map((id) => [id, 3]), [finder, 2]]),
               speculative: false,
@@ -13111,9 +13111,9 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
           : plan.find === 'blueprints'
             ? {
                 kind: 'blueprints',
-                text: `Drawings from a derelict's yard office over ${s.name} — nobody yet knows whether they build anything`,
+                text: meaning('finds', 'blueprints', { world: s.name }),
                 quantity: 1,
-                unit: 'set',
+                unit: assetUnit('blueprints'),
                 divisible: false,
                 valuePerUnit: {},
                 speculative: true,
@@ -13124,9 +13124,9 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
               }
             : {
                 kind: 'prisoners',
-                text: `Ten of ${whose(plan.crewOf ?? finder)} spacers, found alive in a derelict over ${s.name}`,
+                text: meaning('finds', 'prisoners', { whose: whose(plan.crewOf ?? finder), world: s.name }),
                 quantity: 10,
-                unit: 'crew',
+                unit: assetUnit('prisoners'),
                 divisible: true,
                 // Worth most to the power that lost them, the same claim
                 // `prisoners` makes everywhere else.
@@ -13150,7 +13150,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
         agentId: null,
       });
       (state.assets ??= []).push(find);
-      text = say`${whose(finder)} {ships} over ${s.name} find a derelict and board it: ${find.text.charAt(0).toLowerCase()}${find.text.slice(1)}.`;
+      text = say`${whose(finder)} {ships} over ${s.name} find a ${rimEventWord('derelict')} and board it: ${find.text.charAt(0).toLowerCase()}${find.text.slice(1)}.`;
       break;
     }
 
@@ -13234,7 +13234,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       const windfall = (systemIncome(state, s).shares[f] ?? 0) * RICH_SEAM_TURNS;
       const faction = state.factions.find((x) => x.id === f);
       if (faction) faction.credits += windfall;
-      text = say`A rich seam is struck on ${s.name}: ${who(f)} banks ${windfall} {credits}, ${RICH_SEAM_TURNS} turns of what the {world} pays.`;
+      text = say`A ${rimEventWord('rich_seam')} is struck on ${s.name}: ${who(f)} banks ${windfall} {credits}, ${RICH_SEAM_TURNS} turns of what the {world} pays.`;
       break;
     }
 
@@ -13263,7 +13263,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       // "three hulls" as naturally as it says anything, and the number guard
       // refuses any figure the plain line lacks, so without it this was the
       // one event that almost always lost its flavour line.
-      text = say`Free captains sign on with ${who(f)} at ${s.name}: ${hullsIn(squadron)} {hulls} (${describeStack(squadron)}) join the {fleet}, asking nothing but a flag to fly.`;
+      text = say`${rimEventTitle('free_captains')} sign on with ${who(f)} at ${s.name}: ${hullsIn(squadron)} {hulls} (${describeStack(squadron)}) join the {fleet}, asking nothing but a flag to fly.`;
       break;
     }
 
@@ -13872,7 +13872,7 @@ function resolveBattle(
     const who = [...arriving.keys()].map(nameOf).join(' and ');
     const note =
       guests.length > 0 && holder !== null
-        ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
+        ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under ${treatyWord('basing_rights')}.`
         : guests.length > 0
           ? `${guests.map(([id]) => nameOf(id)).join(' and ')} ${guests.length > 1 ? 'take' : 'takes'} station over ${target.name}${
               presentAt(target).some(([id, n]) => n > 0 && !guests.some(([g]) => g === id))
@@ -14356,7 +14356,7 @@ function resolveBattle(
       : defenders.map(([, st]) => st);
     if (torpedoStrike(boats) <= 0) continue;
     strikeBonus[side] = commanderStrike(officer);
-    officerNote(officer, `+${Math.round(strikeBonus[side] * 100)}% on the opening salvo`);
+    officerNote(officer, say`+${Math.round(strikeBonus[side] * 100)}% on the opening {salvo}`);
   }
   /**
    * What survives a withdrawal, spending the loss order.
@@ -14447,7 +14447,7 @@ function resolveBattle(
       for (const [i, entry] of defenders.entries()) {
         defenders[i] = [entry[0], stackAt(target, entry[0])];
       }
-      const struck = say`Torpedoes run in ahead of the {fleets} over ${target.name}: ${coalition} ${verb('loses', 'lose')} ${ships(beforeAtk - attackHulls())}, the defenders lose ${beforeDef - defenceForce}.`;
+      const struck = say`{Torpedoes} run in ahead of the {fleets} over ${target.name}: ${coalition} ${verb('loses', 'lose')} ${ships(beforeAtk - attackHulls())}, the defenders lose ${beforeDef - defenceForce}.`;
       notes.push(struck);
       rounds.push({
         turn: state.turn, phase: 'strike', outcome: 'torpedo_strike',

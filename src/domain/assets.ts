@@ -1,6 +1,6 @@
 import { MAX_ASSET_STAT } from './diplomacy.js';
 import type { StatName } from './checks.js';
-import { assetUnit, say } from '../skin/lexicon.js';
+import { assetWords, say } from '../skin/lexicon.js';
 
 /**
  * The catalogue: what a thing usually is, so the arbiter reaches for a shape
@@ -44,10 +44,6 @@ export interface AssetArchetype {
   uses: number | null;
   speculative: boolean;
   fixture: boolean;
-  /** The kind of attempt that produces one, for the arbiter's rubric. */
-  from: string;
-  /** Who tends to want it, in words. Never a number: the board decides that. */
-  wanted: string;
   /**
    * For a **fixture**, the stat it is worth to whoever holds the ground.
    *
@@ -93,8 +89,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: false,
-    from: 'sweeping a battlefield you hold, boarding a hull, taking a world',
-    wanted: 'the power that lost them, and almost nobody else',
   },
   {
     kind: 'officer',
@@ -102,8 +96,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: false,
-    from: 'taking them alive when the fleet they commanded was broken',
-    wanted: 'the power that lost them, badly; anybody else only as leverage',
   },
   {
     kind: 'operative',
@@ -111,8 +103,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: false,
-    from: 'taking a burned operative alive rather than merely closing the line',
-    wanted: 'the power that ran them, and anyone who wants to know what they knew',
   },
   {
     kind: 'hostage',
@@ -120,8 +110,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: false,
-    from: 'a negotiated exchange, a fostering, or seizing someone who matters',
-    wanted: 'their own house, enormously; a rival house, as leverage',
   },
   {
     kind: 'defector',
@@ -129,8 +117,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'suborning an officer, sheltering someone who fled',
-    wanted: 'whoever they fled — to silence them; whoever they fled TO — for what they know',
   },
   /* --- Paper: proves, authorises, or is simply a name ------------------- */
   {
@@ -139,8 +125,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: false,
-    from: 'a bargain across a table — the one kind an accord may create',
-    wanted: 'whoever it is about, to bury it; their rival, to use it',
   },
   {
     kind: 'charts',
@@ -148,8 +132,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a survey run, a theft from a pilot house',
-    wanted: 'anybody who moves cargo through that space — if they are true',
   },
   {
     kind: 'blueprints',
@@ -157,8 +139,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'espionage against a yard, buying a foreman',
-    wanted: 'a power with the industry to use them and not the design',
   },
   {
     kind: 'writ',
@@ -166,8 +146,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: 1,
     speculative: false,
     fixture: false,
-    from: 'a political manoeuvre — a letter of marque, a warrant, a commission',
-    wanted: 'whoever it licenses; it is played once and is then spent',
   },
   {
     kind: 'surety',
@@ -175,8 +153,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: 1,
     speculative: false,
     fixture: false,
-    from: 'a bargain where one side had to put something in escrow',
-    wanted: 'the party it is held against — it is called in once, and is gone',
   },
   {
     kind: 'ciphers',
@@ -184,8 +160,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: 3,
     speculative: false,
     fixture: false,
-    from: 'a theft from a signals office, a turned cryptographer',
-    wanted: 'anybody reading that traffic — until the keys are changed',
   },
   /* --- Stuff: counted, shipped, spent ----------------------------------- */
   {
@@ -194,8 +168,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a survey, a seizure, an industrial plant on a world you hold',
-    wanted: 'a power building hulls, at a price nobody has settled',
   },
   {
     kind: 'salvage',
@@ -203,8 +175,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: false,
-    from: 'holding the ground after a battle, breaking a wreck',
-    wanted: 'a yard, at scrap rates, by anyone who can lift it',
   },
   {
     kind: 'contraband',
@@ -212,8 +182,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a smuggling run, a customs seizure',
-    wanted: 'whoever will move it; worth nothing to a power that will not',
   },
   {
     kind: 'relic',
@@ -221,8 +189,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a raid on a seat of government, a tomb, a chapter house',
-    wanted: 'whoever it was taken from, for reasons that are not commercial',
   },
   /* --- Works: they stand on a world and produce ------------------------- */
   /* --- fixtures: they stand on a world, and make its holder better at something
@@ -246,8 +212,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['might'],
-    from: 'standing up a garrison post, a fleet station, a training range',
-    wanted: 'whoever holds the world — it arms them, and changes hands with the ground',
   },
   {
     kind: 'university',
@@ -256,8 +220,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['guile'],
-    from: 'endowing a university, a research faculty, a school of languages',
-    wanted: 'whoever holds the world — it teaches them, and changes hands with the ground',
   },
   {
     kind: 'factory',
@@ -266,8 +228,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['industry'],
-    from: 'opening a plant, a refinery, an assembly line',
-    wanted: 'whoever holds the world — it builds for them, and changes hands with the ground',
   },
   {
     kind: 'stock_exchange',
@@ -276,8 +236,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['influence'],
-    from: 'chartering an exchange, licensing a clearing house',
-    wanted: 'whoever holds the world — it speaks for them, and changes hands with the ground',
   },
   {
     kind: 'hospital',
@@ -286,8 +244,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['resolve'],
-    from: 'building a hospital, a housing programme, anything that keeps a population well',
-    wanted: 'whoever holds the world — it steadies them, and changes hands with the ground',
   },
 
   /* Split works: one budget, two attributes. The pure five above are the same
@@ -305,8 +261,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['might', 'guile'],
-    from: 'standing up a special operations command — soldiers who are not seen',
-    wanted: 'whoever holds the world — it fights for them quietly',
   },
   {
     kind: 'arsenal',
@@ -315,8 +269,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['might', 'industry'],
-    from: 'opening a state arsenal — weapons built where they are proved',
-    wanted: 'whoever holds the world — it builds the guns and tests them',
   },
   {
     kind: 'defence_contractor',
@@ -325,8 +277,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['might', 'influence'],
-    from: 'licensing a defence contractor — a firm that sells force and lobbies for it',
-    wanted: 'whoever holds the world — it musters companies and works the room',
   },
   {
     kind: 'military_academy',
@@ -335,8 +285,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['might', 'resolve'],
-    from: 'endowing a staff academy, a command and general staff school',
-    wanted: 'whoever holds the world — it teaches an army to hold as well as to fight',
   },
   {
     kind: 'research_lab',
@@ -345,8 +293,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['guile', 'industry'],
-    from: 'funding a laboratory beside the plant it serves',
-    wanted: 'whoever holds the world — it designs what the line then builds',
   },
   {
     kind: 'black_market',
@@ -355,8 +301,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['guile', 'influence'],
-    from: 'letting a market run without asking what crosses it',
-    wanted: 'whoever holds the world — an exchange that also hears things',
   },
   {
     kind: 'security_bureau',
@@ -365,8 +309,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['guile', 'resolve'],
-    from: 'standing up an internal security service — files kept and order held',
-    wanted: 'whoever holds the world — it watches, and it does not rattle',
   },
   {
     kind: 'chamber_of_commerce',
@@ -375,8 +317,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['industry', 'influence'],
-    from: 'chartering a chamber of commerce — a trade that speaks for itself',
-    wanted: 'whoever holds the world — it makes things, and is heard when it asks',
   },
   {
     kind: 'power_plant',
@@ -385,8 +325,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['industry', 'resolve'],
-    from: 'commissioning a reactor, a grid, the works a population runs on',
-    wanted: 'whoever holds the world — it produces, and it does not go dark under siege',
   },
   {
     kind: 'civil_service',
@@ -395,8 +333,6 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     speculative: false,
     fixture: true,
     modifies: ['influence', 'resolve'],
-    from: 'staffing a permanent administration — registries, courts, inspectors',
-    wanted: 'whoever holds the world — it speaks for them, and steadies them',
   },
 ];
 
@@ -434,7 +370,8 @@ export function serializeArchetypes(): string {
     ]
       .filter((x): x is string => x !== null)
       .join(' · ');
-    return `| \`${a.kind}\` | ${assetUnit(a.kind)} | ${shape} | ${a.from} | ${a.wanted} |`;
+    const words = assetWords(a.kind);
+    return `| \`${a.kind}\` | ${words.unit} | ${shape} | ${words.from} | ${words.wanted} |`;
   };
   return [
     '| kind | unit | shape | what produces one | who wants it |',

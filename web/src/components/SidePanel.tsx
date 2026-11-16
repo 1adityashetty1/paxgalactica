@@ -131,10 +131,10 @@ type Tab =
   | 'standing'
   | 'log';
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: Tab; label: string | (() => string) }[] = [
   { id: 'factions', label: 'Factions' },
-  { id: 'system', label: 'System' },
-  { id: 'fleets', label: 'Fleets' },
+  { id: 'system', label: () => say`{System}` },
+  { id: 'fleets', label: () => say`{Fleets}` },
   // Beside Fleets, not beside Factions. An officer is a fact about a FLEET —
   // who takes it into its next battle — and putting the line under a faction's
   // doctrine read as a claim about the power itself, which is what the ethics
@@ -204,7 +204,7 @@ export function SidePanel({
           const count = t.id === 'assets' ? heldCount : 0;
           return (
             <button key={t.id} className={t.id === tab ? 'tab active' : 'tab'} onClick={() => setTab(t.id)}>
-              {t.label}
+              {typeof t.label === 'function' ? t.label() : t.label}
               {count > 0 && <span className="tab-count">{count}</span>}
             </button>
           );
@@ -324,12 +324,12 @@ function Factions({
               )}
             </header>
             <div className="meta">
-              fleet {fleetStrengthOf(state, f.id)} · {f.credits}cr ·{' '}
+              {say`{fleet} `}{fleetStrengthOf(state, f.id)} · {f.credits}cr ·{' '}
               <span
                 className={span.over > 0 ? 'bad' : undefined}
                 title={say`{Worlds} held against the span of control: ${span.span} can be governed, set by influence and never below the homeland. Each {world} past it costs a point of dissent every turn.`}
               >
-                {span.held}/{span.span} worlds
+                {span.held}/{span.span}{say` {worlds}`}
               </span>
               {isPlayer && (
                 <>
@@ -761,7 +761,7 @@ function SystemTab({
         </ul>
       )}
 
-      <h4>Hyperlanes</h4>
+      <h4>{say`{Hyperlanes}`}</h4>
       <ul className="lanes-list">
         {sys.hyperlaneEdges.map((id) => (
           <li key={id}>
@@ -1008,7 +1008,7 @@ function SailButton({
             )
           }
         >
-          move their fleet
+          {say`move their {fleet}`}
         </button>
       ) : (
         <button
@@ -1016,7 +1016,7 @@ function SailButton({
           title={say`Writes the start of a {fleet} movement with this officer aboard; add where it goes.`}
           onClick={() => onDraft(say`Send {ships} from ${where}, with ${callName} aboard, without {landing}, to `)}
         >
-          sail with a fleet
+          {say`{sail} with a {fleet}`}
         </button>
       )}
       <button
@@ -1424,9 +1424,7 @@ function Assets({
     // reads as a broken one. Say what would fill it.
     return (
       <p className="muted">
-        You are holding nothing but credits, ships and the fixtures on your worlds (those are on the
-        System tab). Prisoners taken in battle, operatives your people catch, salvage, and anything
-        bargained for across a table are held here.
+        {say`You are holding nothing but {credits}, {ships} and the fixtures on your {worlds} (those are on the {System} tab). Prisoners taken in battle, operatives your people catch, salvage, and anything bargained for across a table are held here.`}
       </p>
     );
   }
@@ -2025,7 +2023,7 @@ function Standing({
                   <p className="muted">
                     posted by {b.postedBy === null ? say`{rim}'s merchants (${b.note})` : name(b.postedBy)}
                     {b.paidOut > 0 ? ` · ${b.paidOut} paid out` : ''}{say` · prizes raided pay {credit} for {credit}, {hulls} destroyed`}{' '}
-                    {BOUNTY_PER_TON} a ton
+                    {BOUNTY_PER_TON}{say` a {ton}`}
                     {b.postedBy === me ? ' · yours: withdraw it to take back what is left' : ''}
                     {b.targetFactionId === me ? ' · a price on your head' : ''}
                   </p>
@@ -2365,7 +2363,7 @@ function CourtTab({
       <h4>Marriages</h4>
       {view.marriages.length === 0 ? (
         <p className="empty">
-          None. A notable of yours can marry a rival's, agreed in a channel, or an independent world's that regards you at{' '}
+          {say`None. A notable of yours can marry a rival's, agreed in a channel, or an independent {world}'s that regards you at`}{' '}
           {MARRIAGE_CONSENT_REGARD}.
         </p>
       ) : (
@@ -2723,8 +2721,7 @@ function AgentsTab({
         })()}
       </div>
       <p className="muted">
-        How many you can run is set by your guile. Recruiting takes one off your Lists and is an action, and so is
-        sending one; they travel three jumps a turn. :help espionage has the missions.
+        {say`How many you can run is set by your guile. Recruiting takes one off your Lists and is an action, and so is sending one; they travel three {jumps} a turn. :help espionage has the missions.`}
       </p>
 
       {section('At work', r.atWork)}
@@ -2757,7 +2754,7 @@ function AgentsTab({
       <h4>Theirs, discovered</h4>
       {r.theirs.length === 0 ? (
         <p className="empty">
-          None you know of. A rival's people show once caught, or on your own worlds once you know that power well.
+          {say`None you know of. A rival's people show once caught, or on your own {worlds} once you know that power well.`}
         </p>
       ) : (
         r.theirs.map(({ ownerId, agents }) => (

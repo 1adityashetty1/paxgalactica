@@ -1,6 +1,6 @@
 import { BATTLESHIP_GLYPH, ESCORT_GLYPH, polygonPath } from '../../../src/ui/glyphs.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass, type ShipStack } from '../../../src/domain/hulls.js';
-import { countUnits } from '../../../src/skin/lexicon.js';
+import { countUnits, say } from '../../../src/skin/lexicon.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
  *
@@ -493,7 +493,7 @@ export function StackGlyphs({
   if (classes.length === 0) {
     if (!fallback || fallback <= 0) return null;
     return (
-      <span className="ob-strength" title={`${fallback} ships`}>
+      <span className="ob-strength" title={say`${fallback} {ships}`}>
         <ShipIcon size={size} />
         <span className="ob-count">×{fallback}</span>
       </span>

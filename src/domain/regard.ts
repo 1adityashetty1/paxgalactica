@@ -13,7 +13,7 @@ import {
 } from './state.js';
 import type { BattleReport } from './battle.js';
 import { MARRIAGE_REGARD } from './estates.js';
-import { say } from '../skin/lexicon.js';
+import { liveMeanings, say } from '../skin/lexicon.js';
 
 /**
  * A world's regard for each power — its **standing** with them — and the two
@@ -100,13 +100,7 @@ export const WANT_OF_STAT: Record<StatName, Want> = {
   resolve: 'protection',
 };
 /** What meeting each want takes, in one clause. */
-export const WANT_MEANS: Record<Want, string> = {
-  arms: 'a fortification programme you pay for there',
-  trade: 'your freighters over it, and its lanes open',
-  development: 'a development programme you pay for there',
-  peace: 'you at war with nobody',
-  protection: 'your warships over it, and no raid on it',
-};
+export const WANT_MEANS: Readonly<Record<Want, string>> = liveMeanings('wants');
 
 export function wantOf(system: StarSystem): Want {
   return WANT_OF_STAT[WORLD_TYPE_STAT[system.worldType]];

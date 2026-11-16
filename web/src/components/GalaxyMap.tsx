@@ -255,7 +255,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
                 {carried > 0 && (
                   <title>
                     {cut ? 'Interdicted. ' : ''}
-                    {Math.round(carried)} credits of trade a turn ride this lane.
+                    {Math.round(carried)}{say` {credits} of trade a turn ride this {lane}.`}
                   </title>
                 )}
               </line>

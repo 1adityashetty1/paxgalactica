@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { fleetKindWord, say } from '../skin/lexicon.js';
+import { fleetKindWord, say, unitWord } from '../skin/lexicon.js';
 import { HULL_CLASSES, ShipStackSchema, hullsIn, mergeStacks, normaliseStack, type HullClass, type ShipStack } from './hulls.js';
 
 /**
@@ -442,7 +442,7 @@ export function settleCouriers(state: {
         factionId: officer.factionId,
         kind: 'courier',
         number: 0,
-        name: `courier of ${officer.name}`.slice(0, 60),
+        name: `${unitWord('courier')} of ${officer.name}`.slice(0, 60),
         stack: { courier: 1 },
         commanderId: officer.id,
       });
