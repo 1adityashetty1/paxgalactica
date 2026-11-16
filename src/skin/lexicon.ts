@@ -160,3 +160,87 @@ export function fleetKindWord(kind: FleetKind): string {
 export function assetUnit(kind: string): string {
   return active.assetKinds[kind]?.unit ?? kind.replace(/_/g, ' ');
 }
+
+/* ------------------------------------------------------------------ */
+/* say: prose with the lexicon's words in it                           */
+/* ------------------------------------------------------------------ */
+
+type TokenSource = { family: 'places' | 'forces' | 'accounts'; key: string; plural: boolean } | { family: 'units'; key: HullClass; plural: boolean };
+
+function tokenTable(): Map<string, TokenSource> {
+  const table = new Map<string, TokenSource>();
+  const add = (family: 'places' | 'forces' | 'accounts', key: string, one: string, many: string | null) => {
+    table.set(one, { family, key, plural: false });
+    if (many) table.set(many, { family, key, plural: true });
+  };
+  add('places', 'world', 'world', 'worlds');
+  add('places', 'system', 'system', 'systems');
+  add('places', 'sector', 'sector', 'sectors');
+  add('places', 'lane', 'lane', 'lanes');
+  add('places', 'jump', 'jump', 'jumps');
+  add('places', 'hub', 'hub', 'hubs');
+  add('places', 'orbit', 'orbit', 'orbits');
+  add('places', 'garrison', 'garrison', 'garrisons');
+  add('places', 'yards', 'yards', null);
+  add('places', 'rim', 'rim', null);
+  add('forces', 'hull', 'hull', 'hulls');
+  add('forces', 'ship', 'ship', 'ships');
+  add('forces', 'fleet', 'fleet', 'fleets');
+  add('forces', 'crew', 'crew', 'crews');
+  add('forces', 'navy', 'navy', 'navies');
+  add('accounts', 'credits', 'credit', 'credits');
+  add('accounts', 'tons', 'ton', 'tons');
+  for (const hull of ['battleship', 'escort', 'torpedo_boat', 'lifter', 'freighter', 'listener', 'courier'] as const) {
+    table.set(hull, { family: 'units', key: hull, plural: false });
+    table.set(`${hull}s`, { family: 'units', key: hull, plural: true });
+  }
+  return table;
+}
+
+const TOKENS = tokenTable();
+
+/** The tokens `say` knows, by name: `world`, `worlds`, `credits`, `battleships` … */
+export const SAY_TOKENS: readonly string[] = [...TOKENS.keys()];
+
+/** A token's word in the lexicon in force. `{World}` is the same token, capitalised. */
+function tokenWord(name: string): string {
+  const lower = name[0]!.toLowerCase() + name.slice(1);
+  const source = TOKENS.get(lower);
+  if (!source) throw new Error(`say: no lexicon token {${name}}`);
+  const entry =
+    source.family === 'units'
+      ? active.units[source.key]
+      : source.family === 'places'
+        ? active.places[source.key as PlaceTerm]
+        : source.family === 'forces'
+          ? active.forces[source.key as ForceTerm]
+          : active.accounts[source.key as AccountTerm];
+  const word = source.plural ? entry.plural : entry.word;
+  return name[0] === lower[0] ? word : word[0]!.toUpperCase() + word.slice(1);
+}
+
+/** A token in a `say` template: a name in braces, `{world}`, `{Fleets}`, `{torpedo_boats}`. */
+export const SAY_TOKEN = /\{([A-Za-z][A-Za-z_]*)\}/g;
+
+/**
+ * Prose written with the lexicon's words in it: say`Your {fleet} at ${name}`.
+ *
+ * The template's own text names a role by token — `{world}`, `{worlds}`,
+ * `{credits}`, `{battleships}`, `{rim}` for "the Rim", capitalised for the
+ * start of a sentence (`{Worlds}`) — and `say` fills each from the lexicon in
+ * force, so the sentence a skin reads is in the skin's words and the source
+ * holds none of Pax Galactica's. What is interpolated (`${name}`) is left as it
+ * is: a name comes from the world, a count from arithmetic, and a word from a
+ * lexicon helper (`unitWord`, `placeWord` …) already.
+ *
+ * An unknown token throws rather than printing braces at a player, so a typo
+ * fails the first test that writes the sentence.
+ */
+export function say(strings: TemplateStringsArray, ...values: unknown[]): string {
+  let out = '';
+  for (let i = 0; i < strings.length; i++) {
+    out += strings[i]!.replace(SAY_TOKEN, (_, name: string) => tokenWord(name));
+    if (i < values.length) out += String(values[i]);
+  }
+  return out;
+}

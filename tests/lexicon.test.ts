@@ -5,7 +5,7 @@ import { serializeArchetypes } from '../src/domain/assets.js';
 import { RIM_EVENT_KINDS } from '../src/domain/events.js';
 import { worldTypeLabel } from '../src/ui/worldtext.js';
 import { eventListLines, shipClassLines } from '../src/ui/helptext.js';
-import { lexicon, rimEventTitle, withLexicon } from '../src/skin/lexicon.js';
+import { lexicon, rimEventTitle, say, SAY_TOKENS, withLexicon } from '../src/skin/lexicon.js';
 import { nullLexicon, paxWords } from '../src/skin/null.js';
 import { PAX_LEXICON } from '../src/skin/words.js';
 import { paxGalactica } from '../src/skin/paxgalactica.js';
@@ -61,5 +61,29 @@ describe('what reads it', () => {
       expect(eventListLines().join(' ')).not.toMatch(/ion storm|derelict|free captains/i);
       expect(serializeArchetypes()).not.toMatch(/\| (crew|chart|fixture) \|/);
     });
+  });
+});
+
+describe('say', () => {
+  it('fills its tokens from the lexicon in force, capitalised where the token is', () => {
+    const n = 3;
+    expect(say`{Worlds} you hold pay ${n} {credits} across {rim}; {torpedo_boats} strike first`).toBe(
+      'Worlds you hold pay 3 credits across the Rim; torpedo boats strike first',
+    );
+    expect(say`{Rim}`).toBe('The Rim');
+    withLexicon(nullLexicon(), () => {
+      expect(say`{Worlds} you hold pay ${n} {credits} across {rim}`).toMatch(/^Qxplaces\d+s you hold pay 3 Qxaccounts\d+s across Qxplaces\d+$/);
+    });
+  });
+
+  it('leaves what is interpolated alone, and throws on a token it does not know', () => {
+    expect(say`${'{world}'} stays`).toBe('{world} stays');
+    expect(() => say`{planet}`).toThrow('{planet}');
+  });
+
+  it('has a token for every place, force, account and hull class', () => {
+    for (const t of ['world', 'worlds', 'lanes', 'orbit', 'yards', 'rim', 'hulls', 'fleets', 'navies', 'credits', 'tons', 'battleships', 'courier']) {
+      expect(SAY_TOKENS).toContain(t);
+    }
   });
 });
