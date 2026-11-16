@@ -1,7 +1,7 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { DARK_RAID_YIELD } from '../domain/trade.js';
 import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS, RIM_NOTORIETY, type RimEventKind } from '../domain/events.js';
-import { liveMeanings, rimEventTitle, say, treatyWord, unitWord } from '../skin/lexicon.js';
+import { assetKindWord, liveMeanings, rimEventTitle, say, treatyWord, unitWord } from '../skin/lexicon.js';
 import {
   COMMANDER_ARCHETYPES,
   COMMANDER_COST,
@@ -160,7 +160,7 @@ export function fixtureLines(state: WorldState | null): string[] {
   return [
     say`FIXTURES — what a {world} can be built into`,
     say`  A fixture is a building that raises your stats while you hold its {world}:`,
-    say`  a factory, a military base, a stock exchange. Each {world} carries ${count(MAX_FIXTURES_PER_WORLD)},`,
+    say`  a ${assetKindWord('factory')}, a ${assetKindWord('military_base')}, a ${assetKindWord('stock_exchange')}. Each {world} carries ${count(MAX_FIXTURES_PER_WORLD)},`,
     '  no two of the same kind, and its ground decides which: each must raise',
     '  the stat the ground does.',
     ...ground,
@@ -354,19 +354,7 @@ export function wrap(text: string, indent = '  ', width = 76): string[] {
  * What each mission does, in a phrase. Keyed on every mission, so a new one
  * fails the typecheck here rather than being missing from the help.
  */
-const MISSION_JOB: Record<AgentMission, string> = {
-  surveillance: 'watches a world: hidden work there shows',
-  embezzlement: 'skims credits off the world it sits on',
-  larceny: 'steals one thing there, or copies paper',
-  subversion: 'wears down a stat, or turns a notable',
-  sabotage: 'wrecks hulls and fixtures',
-  defection: 'talks crews into your service',
-  discord: 'sets the holder against a third power',
-  incitement: 'turns a world against whoever holds it',
-  assassination: 'one strike, at a power, officer or notable',
-  seduction: 'courts a notable: kin, and an affair to prove',
-  kidnapping: 'seizes a named notable or officer there',
-};
+const MISSION_JOB: Readonly<Record<AgentMission, string>> = liveMeanings('missionJobs');
 
 /** Operatives, from the mission table that prices and risks them. */
 export function operativeLines(): string[] {
@@ -448,18 +436,7 @@ export function intelLines(): string[] {
  * What each treaty type does, in a phrase. Keyed on every type, so a new one
  * fails the typecheck here rather than being missing from the help.
  */
-const TREATY_JOB: Record<TreatyType, string> = {
-  non_aggression: 'neither attacks the other; breaking it is public',
-  ceasefire: 'hostilities stop for a set number of turns',
-  mutual_defense: 'an attack on one, by anyone, brings the other in',
-  coalition: 'the same, but only against the powers it names',
-  trade_accord: 'lanes stay open between you; goods can flow',
-  basing_rights: 'one\'s fleets may sit in the other\'s systems',
-  tribute: 'one pays the other every turn to be left alone',
-  contract: 'paid work: a hire, a charter, a letter of marque',
-  cession: 'worlds change hands, once; a price may ride along',
-  marriage: 'a notable of each side wed: a peace, and kin',
-};
+const TREATY_JOB: Readonly<Record<TreatyType, string>> = liveMeanings('treatyJobs');
 
 /** Talking, and what it takes to make anything said real. */
 export function channelLines(): string[] {

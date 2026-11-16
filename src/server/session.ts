@@ -46,7 +46,7 @@ import {
   type Retraction,
 } from '../domain/diplomacy.js';
 import { withinBudget } from '../domain/leverage.js';
-import { say } from '../skin/lexicon.js';
+import { say, slugWords } from '../skin/lexicon.js';
 
 export type Emit = (event: ServerEvent) => void;
 
@@ -831,7 +831,7 @@ export class GameSession {
       throw new ApiFailure('bad_request', trial.rejections.map((r) => r.message).join(' '));
     }
     // Labelled by what it did, which is what the declared list shows the player.
-    const label = trial.notes[0]?.replace(/\.$/, '') ?? request.op.replace(/_/g, ' ');
+    const label = trial.notes[0]?.replace(/\.$/, '') ?? slugWords(request.op);
     const res = campaign.stage(ops, label, trial.notes.join(' '), 'model', player, {
       path: 'organise',
       secret: true,

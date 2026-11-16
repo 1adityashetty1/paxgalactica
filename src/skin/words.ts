@@ -449,6 +449,33 @@ export const PAX_LEXICON: Words = {
       formidable: 'toppling a government, or building beyond your means',
       'near-impossible': 'what your faction was never built to do',
     },
+    /** Each mission in a phrase, for the help page. */
+    missionJobs: {
+      surveillance: 'watches a world: hidden work there shows',
+      embezzlement: 'skims credits off the world it sits on',
+      larceny: 'steals one thing there, or copies paper',
+      subversion: 'wears down a stat, or turns a notable',
+      sabotage: 'wrecks hulls and fixtures',
+      defection: 'talks crews into your service',
+      discord: 'sets the holder against a third power',
+      incitement: 'turns a world against whoever holds it',
+      assassination: 'one strike, at a power, officer or notable',
+      seduction: 'courts a notable: kin, and an affair to prove',
+      kidnapping: 'seizes a named notable or officer there',
+    },
+    /** Each treaty type in a phrase, for the help page. */
+    treatyJobs: {
+      non_aggression: 'neither attacks the other; breaking it is public',
+      ceasefire: 'hostilities stop for a set number of turns',
+      mutual_defense: 'an attack on one, by anyone, brings the other in',
+      coalition: 'the same, but only against the powers it names',
+      trade_accord: 'lanes stay open between you; goods can flow',
+      basing_rights: 'one\'s fleets may sit in the other\'s systems',
+      tribute: 'one pays the other every turn to be left alone',
+      contract: 'paid work: a hire, a charter, a letter of marque',
+      cession: 'worlds change hands, once; a price may ride along',
+      marriage: 'a notable of each side wed: a peace, and kin',
+    },
     bands: {
       'regard.war': 'at war, unless a treaty or a truce holds the two apart',
       'regard.hostile': 'ill-willed enough to join a coalition against the power it regards so',

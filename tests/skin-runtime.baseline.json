@@ -8,31 +8,6 @@
     "show_of_force",
     "turned_contact"
   ],
-  "help:actions": [
-    "hyperlane"
-  ],
-  "help:diplomacy": [
-    "fleets",
-    "lanes",
-    "systems",
-    "worlds"
-  ],
-  "help:espionage": [
-    "credits",
-    "crews",
-    "hulls",
-    "world"
-  ],
-  "help:fixtures": [
-    "factory",
-    "stock exchange"
-  ],
-  "help:index": [
-    "lanes",
-    "ship",
-    "the rim",
-    "worlds"
-  ],
   "prompt:advisor:system": [
     "fleet",
     "hulls",
@@ -130,7 +105,6 @@
     "freighter",
     "gunnery",
     "listener",
-    "retooling",
     "space",
     "ton"
   ],
@@ -230,7 +204,6 @@
     "freighter",
     "gunnery",
     "listener",
-    "retooling",
     "ton"
   ],
   "prompt:reconcile:system": [

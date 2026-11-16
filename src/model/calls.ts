@@ -58,7 +58,7 @@ import {
   serializeState,
   serializeTheirAssets,
 } from './serialize.js';
-import { say } from '../skin/lexicon.js';
+import { say, slugWords } from '../skin/lexicon.js';
 
 /**
  * The duration rubric, for the passes that actually set a duration.
@@ -385,7 +385,7 @@ export async function verifyBreachRelevance(
   sheet?: { lineActs?: readonly { text: string; forbids: readonly string[] }[] } | null,
 ): Promise<{ relevant: boolean; why: string; costUsd: number }> {
   const forbids = sheet?.lineActs?.find((t) => t.text === principle)?.forbids ?? [];
-  const named = forbids.map((a) => (ACT_WORDS as Record<string, string>)[a] ?? a.replace(/_/g, ' '));
+  const named = forbids.map((a) => (ACT_WORDS as Record<string, string>)[a] ?? slugWords(a));
   const system = [
     'You check one thing and answer nothing else.',
     '',

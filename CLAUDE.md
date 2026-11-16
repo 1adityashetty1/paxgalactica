@@ -4574,7 +4574,7 @@ begin like a marked id.
 
 The lexicon is `PAX_LEXICON` in `src/skin/words.ts`.
 
-### The game writes through the lexicon (phase 2, in progress)
+### The game writes through the lexicon (phase 2)
 
 `src/skin/lexicon.ts` holds the lexicon in force, read from a scope
 (`withLexicon`) the way `withNameStock` scopes the name stock.

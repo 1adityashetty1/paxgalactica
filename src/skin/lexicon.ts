@@ -125,6 +125,8 @@ export interface Meanings {
   terrainLines: Record<WorldType, string>;
   finds: Record<'salvage' | 'blueprints' | 'prisoners', string>;
   difficulty: Record<string, string>;
+  missionJobs: Record<AgentMission, string>;
+  treatyJobs: Record<TreatyType, string>;
   bands: Record<string, string>;
 }
 
@@ -223,14 +225,19 @@ export function liveMeanings<T extends keyof Meanings>(
   return Object.freeze(live) as unknown as Readonly<Meanings[T]>;
 }
 
-/** A hull class's word, singular or plural for `n`. */
-export function unitWord(hull: HullClass, n = 1): string {
-  const w = active.units[hull];
+/**
+ * A hull class's word, singular or plural for `n`. A class a model wrote that
+ * is no class at all is shown as written, spaced, with an "s" for the plural,
+ * which is what the refusal quoting it said before there was a lexicon.
+ */
+export function unitWord(hull: HullClass | (string & {}), n = 1): string {
+  const w = (active.units as Record<string, CountedWord>)[hull];
+  if (!w) return `${hull.replace(/_/g, ' ')}${one(n) ? '' : 's'}`;
   return one(n) ? w.word : w.plural;
 }
 
 /** "3 battleships", "1 torpedo boat". */
-export function countUnits(hull: HullClass, n: number): string {
+export function countUnits(hull: HullClass | (string & {}), n: number): string {
   return `${n} ${unitWord(hull, n)}`;
 }
 
@@ -318,6 +325,16 @@ export function assetUnit(kind: string): string {
 /** What a kind of thing is called in a sentence: "power plant", "prisoners". A kind outside the catalogue is shown as its id, spaced. */
 export function assetKindWord(kind: string): string {
   return active.assetKinds[kind]?.word ?? kind.replace(/_/g, ' ');
+}
+
+/**
+ * A free-form slug shown as words: a commitment's kind a model coined
+ * (`mining_operation`), an outcome band, an op's name. Never for an id a
+ * lexicon family names — a hull class, an asset kind, a treaty type — which
+ * has a word of its own (`unitWord`, `assetKindWord`, `treatyWord`).
+ */
+export function slugWords(slug: string): string {
+  return slug.replace(/_/g, ' ');
 }
 
 /** A catalogue kind's words: its unit, what produces one and who wants it. */

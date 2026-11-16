@@ -115,7 +115,7 @@ import type { Briefing } from '../../../src/engine/briefing.js';
 import type { EffectiveStats } from '../../../src/api/contract.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { digestLog, logReader } from '../../../src/ui/logview.js';
-import { orderWord, say, treatyWord } from '../../../src/skin/lexicon.js';
+import { orderWord, rimEventWord, say, slugWords, treatyWord } from '../../../src/skin/lexicon.js';
 
 type Tab =
   | 'factions'
@@ -671,7 +671,7 @@ function SystemTab({
                   {hit > 0 && (
                     <span
                       className="chip bad"
-                      title="Sabotaged. Each point of damage costs a point of what it yields, and it is still charged upkeep. A repair programme (construction, conversion or retooling) puts it back at 40 a point."
+                      title={`Sabotaged. Each point of damage costs a point of what it yields, and it is still charged upkeep. A repair programme (construction, conversion or ${orderWord('retooling')}) puts it back at 40 a point.`}
                     >
                       damaged {fixtureIntegrity(w) - hit}/{fixtureIntegrity(w)}
                     </span>
@@ -1590,7 +1590,7 @@ function Standing({
           {commitments.map((c) => (
             <div key={c.id} className="commitment">
               <div className="commitment-head">
-                <span>{c.kind.replace(/_/g, ' ')}</span>
+                <span>{slugWords(c.kind)}</span>
                 {c.exclusive && (
                   <span className="chip" title="You may hold only one of these at a time.">
                     exclusive
@@ -1995,7 +1995,7 @@ function Standing({
                   </div>
                   <p className="treaty-summary">{d.text}</p>
                   <p className="muted">
-                    {d.kind.replace(/_/g, ' ')}
+                    {treatyWord(d.kind)}
                     {forDemand.length > 0 ? ` · backing the demand: ${forDemand.join(', ')}` : ''}
                     {forTarget.length > 0 ? ` · backing ${name(d.toFactionId)}: ${forTarget.join(', ')}` : ''}
                     {d.toFactionId === me ? ' · give way before the deadline, or it is war' : ''}
@@ -2025,7 +2025,7 @@ function Standing({
                     {b.paidOut > 0 ? ` · ${b.paidOut} paid out` : ''}{say` · prizes raided pay {credit} for {credit}, {hulls} destroyed`}{' '}
                     {BOUNTY_PER_TON}{say` a {ton}`}
                     {b.postedBy === me ? ' · yours: withdraw it to take back what is left' : ''}
-                    {b.targetFactionId === me ? ' · a price on your head' : ''}
+                    {b.targetFactionId === me ? ` · ${rimEventWord('bounty_posted')}` : ''}
                   </p>
                 </div>
               );

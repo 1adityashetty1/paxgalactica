@@ -117,6 +117,8 @@ export const LexiconSchema = z.object({
     terrainLines: family(WORLD_TYPES, z.string().min(1)),
     finds: family(Object.keys(PAX_LEXICON.meanings.finds), z.string().min(1)),
     difficulty: family(Object.keys(PAX_LEXICON.meanings.difficulty), z.string().min(1)),
+    missionJobs: family(AGENT_MISSIONS, z.string().min(1)),
+    treatyJobs: family(TREATY_TYPES, z.string().min(1)),
     bands: family(Object.keys(PAX_LEXICON.meanings.bands), z.string().min(1)),
   }),
   accounts: family(ACCOUNT_TERMS, TermSchema),

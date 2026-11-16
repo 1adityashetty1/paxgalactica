@@ -6,7 +6,7 @@ import { fleetName, resolveFleet } from './fleets.js';
 import { hullsIn } from './hulls.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import { FIXTURE_COST } from './diplomacy.js';
-import { assetKindWord, say } from '../skin/lexicon.js';
+import { assetKindWord, say, slugWords, unitWord } from '../skin/lexicon.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -362,11 +362,11 @@ export function spendsAsSaid(
     }
     const o = op as { op?: string; assetId?: string; count?: number; hull?: string } | null;
     if (o?.op === 'scuttle_ships' && !scuttling) {
-      dropped.push(`${o.count ?? 'some'} ${String(o.hull ?? 'hull').replace(/_/g, ' ')}${o.count === 1 ? '' : 's'} struck off`);
+      dropped.push(`${o.count ?? 'some'} ${unitWord(String(o.hull ?? 'hull'), o.count === 1 ? 1 : 2)} struck off`);
       continue;
     }
     if (o?.op === 'consume_asset' && o.assetId && !named(o.assetId)) {
-      dropped.push(`the ${(held.find((a) => a.id === o.assetId)?.kind ?? o.assetId).replace(/_/g, ' ')}`);
+      dropped.push(`the ${assetKindWord(held.find((a) => a.id === o.assetId)?.kind ?? o.assetId)}`);
       continue;
     }
     kept.push(op);
@@ -468,7 +468,7 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
   // nobody ruled is money the player might have expected, so it is said.
   if (committed.paying.length > 0) {
     notes.push(
-      `An income is recorded only when the arbiter ruled one: left out ${[...new Set(committed.paying)].map((k) => k.replace(/_/g, ' ')).join(', ')}.`,
+      `An income is recorded only when the arbiter ruled one: left out ${[...new Set(committed.paying)].map(slugWords).join(', ')}.`,
     );
   }
   const spent = bounds.said !== undefined ? spendsAsSaid(committed.ops, bounds.said, bounds.held ?? []) : { ops: committed.ops, dropped: [] };
@@ -640,9 +640,9 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
           return `"${id}" (${work.label}) is at ${worlds[0]?.name ?? say`another {world}`}, not at ${elsewhere[0]!.name}.`;
         }
         const building = work.onComplete?.kind === 'found_fixture' ? work.onComplete.fixtureKind : null;
-        const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(k.kind.replace(/_/g, ' ')));
+        const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(assetKindWord(k.kind)));
         if (building && asked && asked.kind !== building) {
-          return `"${id}" raises a ${building.replace(/_/g, ' ')}, not a ${assetKindWord(asked.kind)}.`;
+          return `"${id}" raises a ${assetKindWord(building)}, not a ${assetKindWord(asked.kind)}.`;
         }
       }
       const exists = [

@@ -24,7 +24,7 @@ import {
   worldLines,
   wrap,
 } from './helptext.js';
-import { say } from '../skin/lexicon.js';
+import { placeWord, say } from '../skin/lexicon.js';
 
 /**
  * The help, as an index and a page per part of the game.
@@ -41,12 +41,12 @@ import { say } from '../skin/lexicon.js';
  */
 
 export interface HelpTopic {
-  /** What the player types after `:help`. */
-  key: string;
+  /** What the player types after `:help`. A getter where it names a role. */
+  readonly key: string;
   /** Other words that reach the same page. */
-  aliases: readonly string[];
-  /** One line on the index. */
-  about: string;
+  readonly aliases: readonly string[];
+  /** One line on the index. A getter where it names a role, so it reads the lexicon in force. */
+  readonly about: string;
   lines: (state: WorldState | null) => string[];
 }
 
@@ -102,7 +102,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         [
           'TIME',
           say`  Nothing takes longer than 5 turns. {Fleet} movement costs one turn per`,
-          say`  hyperlane {jump} and is never estimated. Everything else is estimated once,`,
+          say`  {hyperlane} {jump} and is never estimated. Everything else is estimated once,`,
           '  when the order is issued, and never re-rolled.',
         ],
         [
@@ -116,7 +116,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   {
     key: 'war',
     aliases: ['fleets', 'fleet', 'ships', 'battle', 'battles', 'combat', 'officers', 'military'],
-    about: 'ship classes, battles, standing orders, officers',
+    get about() {
+      return say`{ship} classes, battles, standing orders, officers`;
+    },
     lines: () =>
       sections(
         shipClassLines(),
@@ -141,8 +143,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       ),
   },
   {
-    key: 'worlds',
-    aliases: ['world', 'standing', 'territory', 'courting', 'envoy', 'envoys'],
+    // What the player types after :help, so the lexicon's word for them.
+    get key() {
+      return placeWord('world', 2);
+    },
+    get aliases() {
+      return [placeWord('world'), 'standing', 'territory', 'courting', 'envoy', 'envoys'];
+    },
     about: 'standing, courting, holding down, risings, span of control',
     lines: () =>
       sections(worldLines(), ['SPAN OF CONTROL', ...spanLines()]),
@@ -150,7 +157,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   {
     key: 'trade',
     aliases: ['money', 'economy', 'income', 'lanes', 'tolls', 'raiding', 'raids', 'bounty', 'bounties'],
-    about: 'income, lanes, tolls, blockades, raiding, bounties, goods',
+    get about() {
+      return say`income, {lanes}, tolls, blockades, raiding, bounties, goods`;
+    },
     lines: () =>
       sections(
         [
@@ -213,7 +222,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   {
     key: 'events',
     aliases: ['event', 'rim', 'random', 'luck'],
-    about: 'what the Rim does on its own',
+    get about() {
+      return say`what {rim} does on its own`;
+    },
     lines: () => [...rimLines(), ...eventListLines()],
   },
 ];

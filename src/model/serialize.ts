@@ -1,6 +1,6 @@
 import { fleetName, fleetsAt } from '../domain/fleets.js';
 import { ACT_WORDS } from '../domain/acts.js';
-import { assetKindWord, noteTitle, orderWord, say, treatyWord } from '../skin/lexicon.js';
+import { assetKindWord, noteTitle, orderWord, say, slugWords, treatyWord } from '../skin/lexicon.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -429,7 +429,7 @@ export function serializeCharacter(faction: Faction, opts: { enumerates?: boolea
       ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}${heldTo(faction, c.text)}`).join('\n')}`
       : '',
     faction.buildBias.length > 0
-      ? `\nWhen you build, you reach first for: ${faction.buildBias.map((b) => b.replace(/_/g, ' ')).join(', ')}.`
+      ? `\nWhen you build, you reach first for: ${faction.buildBias.map(orderWord).join(', ')}.`
       : '',
   ]
     .filter(Boolean)
@@ -592,7 +592,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
             ? 'YOURS'
             : 'between others — you may back either side';
       lines.push(
-        `  - \`${d.id}\` ${nameOfFaction(state, d.fromFactionId)} demands of ${nameOfFaction(state, d.toFactionId)}: ${d.text} (${d.kind.replace(/_/g, ' ')}). Answer before turn ${d.deadlineTurn} begins, ${left} turn${left === 1 ? '' : 's'} left. ${whose}.${
+        `  - \`${d.id}\` ${nameOfFaction(state, d.fromFactionId)} demands of ${nameOfFaction(state, d.toFactionId)}: ${d.text} (${treatyWord(d.kind)}). Answer before turn ${d.deadlineTurn} begins, ${left} turn${left === 1 ? '' : 's'} left. ${whose}.${
           backers('from').length > 0 ? ` Backing the demand: ${backers('from').join(', ')}.` : ''
         }${backers('to').length > 0 ? ` Backing the target: ${backers('to').join(', ')}.` : ''}`,
       );
@@ -1268,7 +1268,7 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
         c.factionIds.length === 1 && c.incomePerTurn === 0 && c.share === undefined && c.contingencies.length === 0
           ? ' · **a statement of policy, owed to nobody — changing course on it breaks no promise**'
           : '';
-      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${chartered}${cut}${flag}${policy}\n  _as agreed, in their words: ${c.text}_`;
+      return `- \`${c.id}\` ${slugWords(c.kind)} · ${who} · since turn ${c.establishedTurn}${worth}${chartered}${cut}${flag}${policy}\n  _as agreed, in their words: ${c.text}_`;
     })
     .join('\n');
 }

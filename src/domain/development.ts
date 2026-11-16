@@ -2,7 +2,7 @@ import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMissio
 import { MAX_DURATION, type DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { doneAt } from './words.js';
-import { assetKindWord, assetUnit, say, unitWord } from '../skin/lexicon.js';
+import { assetKindWord, assetUnit, say, slugWords, unitWord } from '../skin/lexicon.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
 import {
   addShipsAt,
@@ -460,13 +460,13 @@ export function boundPayloadsToOutcome(
         continue;
       }
       touched = true;
-      const hull = String(o.hull ?? 'battleship').replace(/_/g, ' ');
+      const hulls = unitWord(String(o.hull ?? 'battleship'), 2);
       if (failed) {
-        notes.push(say`The {yards} lay down nothing: the attempt to build ${o.count} ${hull}s failed, and nothing is spent on it.`);
+        notes.push(say`The {yards} lay down nothing: the attempt to build ${o.count} ${hulls} failed, and nothing is spent on it.`);
         continue;
       }
       const half = Math.max(1, Math.floor(o.count / 2));
-      if (half < o.count) notes.push(say`A partial result: the {yards} lay down ${half} ${hull}s rather than ${o.count}.`);
+      if (half < o.count) notes.push(say`A partial result: the {yards} lay down ${half} ${hulls} rather than ${o.count}.`);
       bounded.push({ ...o, count: half });
     }
     if (touched) ops = bounded;
@@ -557,7 +557,7 @@ export function boundPayloadsToOutcome(
       continue;
     }
     // A label is a name the writer gave the work, quoted; the op is a kind of it.
-    const what = o.label ? `"${String(o.label)}"` : `the ${String(o.op).replace(/_/g, ' ')}`;
+    const what = o.label ? `"${String(o.label)}"` : `the ${slugWords(String(o.op))}`;
     if (failed) {
       notes.push(`The attempt failed, so ${what} was never started and nothing was paid for it.`);
       strippedWork = true;

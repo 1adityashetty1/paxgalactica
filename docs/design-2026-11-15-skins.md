@@ -662,61 +662,60 @@ they were played.
      - the static check passes;
      - the null-skin scan (*"Leak prevention"* 3) passes over every driven
        path.
-   - **In progress (2026-11-16).** Built:
-     - `src/skin/lexicon.ts`: the lexicon in a scope (`withLexicon`), helpers,
-       and `say`, a tagged template whose `{world}`-style tokens it fills.
-     - `src/skin/words.ts`: the default words, a leaf, holding the moved
-       tables: hull labels, Rim titles, note titles, terrain names, the
-       archetypes' texts and seventeen sentence tables (`meanings`).
+   - **Built (2026-11-16)**, with what remains assigned to the phases that
+     own it.
+     - `src/skin/lexicon.ts`: the lexicon in a scope (`withLexicon`,
+       `withLexiconAsync`), its helpers, and `say`, a tagged template whose
+       `{world}`-style tokens it fills.
+     - `src/skin/words.ts`: the default words, a leaf. It holds the moved
+       tables (hull labels, Rim titles, note titles, terrain names, the
+       archetypes' texts) and nineteen sentence tables (`meanings`).
      - `src/skin/null.ts`: the null lexicon, which checks as a skin.
-     - `tests/skin-leaks.test.ts`: the static check, built on rolldown's
-       parser and ratcheted per file.
-   - Two refinements to the plan:
-     - The static check looks for the default skin's setting words in any
-       prose literal, rather than requiring every sentence to be inside `say`.
-       Requiring `say` catches nothing the word scan does not.
-     - Ids and field names (`torpedo_boat`, `unknown_system`, `systemId`) are
-       counted on a second ratchet. Phases 3 and 4 rename them, and phase 2
-       only stops new ones arriving. 1,115 are recorded today.
+     - `tests/skin-leaks.test.ts`: the static check, on rolldown's parser,
+       ratcheted per file. A second ratchet counts setting words in ids and
+       field names.
+     - `tests/skin-runtime.test.ts`: the runtime check under the null lexicon,
+       which drives:
+       - 60 bot turns;
+       - every Rim event through its sandbox;
+       - every help page;
+       - the epilogue;
+       - all ten kinds of model call, built against a mocked client.
    - **Which words are neutral** (2026-11-16): those a modern show about
      Three Kingdoms China, the Middle Byzantine Empire, the Seven Years' War
      and the First World War could all use, because the thing they name
      existed in each.
      - A word may not presume ships, since a skin may be landlocked.
+     - Hull classes, terrains and Rim events are setting in every form,
+       their ids included.
      - Setting includes every naval word, anything too modern (a factory, a
        chamber of commerce) and the unruled borderlines.
      - Neutral includes the treaty types, ceasefire and letters of marque,
        counter-intelligence, the people kinds, most paper, and a black market.
      - `operative` has a home in the lexicon's `people` family, beside
        officer and notable.
-   - **Hull classes, terrains and Rim events are setting in every form**,
-     ids included (2026-11-16):
-     - no ordinary-word exemption reaches their words;
-     - their ids (`torpedo_boat`, `earthnight`, `ion_storm`) are scan words
-       wherever they appear, in prose, in an id, in a field name or in output.
-   - An id shown by spacing its underscores (`kind.replace(/_/g, ' ')`) is
-     counted as a leak, since it writes the id where the lexicon has a word.
-     57 such sites were routed through `assetKindWord`, `orderWord`,
-     `treatyWord` and `unitWord`; 24 remain.
-   - Prose: 81 hits remain in 19 files, from 994 at the start. That counts
-     the setting ids and the spaced-id sites, which are new to the scan. What
-     remains:
-     - model-facing schema and prompt text, which is phase 4 and 6 work;
-     - the scenario's names, which is phase 5 work;
-     - the module-level tables in the help pages and world lines.
-   - The runtime null-lexicon scan (`tests/skin-runtime.test.ts`) drives, with
-     no model and no browser:
-     - 60 bot turns, every log line and briefing;
-     - every Rim event through its sandbox;
-     - every help page;
-     - the epilogue;
-     - all ten kinds of model call, against a mocked client that records the
-       system prompt, user message and JSON schema each would send.
-
-     The scenario's names and sheets are masked out first, being phase 5's.
-     Each source is held to its recorded words: 328 across 41 sources, 254 of
-     them in prompts and 38 in schemas. The engine's log lines are clean, and
-     the briefing carries only Rim event ids.
+   - **Two refinements to the plan:**
+     - The static check looks for setting words in any prose literal, rather
+       than requiring every sentence to be inside `say`. Requiring `say`
+       catches nothing the word scan does not.
+     - An id shown by spacing its underscores (`kind.replace(/_/g, ' ')`)
+       counts as a leak. A family's id takes the lexicon's word
+       (`assetKindWord`, `orderWord`, `treatyWord`, `unitWord`), and a
+       free-form slug goes through `slugWords`.
+   - **Prose: 38 hits remain in 9 files, from 994. All belong to later
+     phases:**
+     - phase 4: four model-facing schema descriptions (`ops.ts`) and a
+       schema message (`events.ts`); four effect and category ids named in
+       rejections (`reducer.ts`); the log weigher's patterns (`logview.ts`);
+     - phase 5: the scenario's names (a rank title, a fleet style, a leader
+       title) and the world lines keyed on founder (`worldtext.ts`);
+     - phase 6: prompt text built in code (`calls.ts`).
+   - **Runtime: 311 words across 36 sources.**
+     - 252 are in prompts (phase 6) and 38 in schemas (phase 4).
+     - The rest are Rim event ids in the briefing payload (phase 3).
+     - Every log line, briefing sentence, help page and epilogue line comes
+       out clean.
+   - **Ids and field names: 1,202,** renamed by phases 3 and 4.
 3. **Ordinals.**
    - First, as a no-op: a codemod so the suite names ids through a
      default-skin table (`F.meridian`, `S['ark-1']`, `U.battleship`). That is

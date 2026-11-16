@@ -389,7 +389,7 @@ import {
   type WorldState,
 } from './state.js';
 import { asSentence, count, doneAt, possessive } from './words.js';
-import { assetKindWord, assetUnit, countUnits, forceWord, meaning, noteTitle, orderWord, rimEventTitle, rimEventWord, say, treatyWord, unitWord } from '../skin/lexicon.js';
+import { assetKindWord, assetUnit, countUnits, forceWord, meaning, noteTitle, orderWord, rimEventTitle, rimEventWord, say, slugWords, treatyWord, unitWord } from '../skin/lexicon.js';
 
 /** A message with every bare faction id put as that power's name; a quoted id is left as written. */
 function namedPowers(state: WorldState, text: string): string {
@@ -1550,7 +1550,7 @@ function concedeDemand(
     }
     case 'basing_rights':
     case 'trade_accord':
-      term(demand.kind, {}, true, `${demand.kind.replace(/_/g, ' ')} conceded under ultimatum`);
+      term(demand.kind, {}, true, `${treatyWord(demand.kind)} conceded under ultimatum`);
       break;
     case 'break_treaty': {
       const t = state.treaties.find((x) => x.id === demand.treatyId);
@@ -5267,7 +5267,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'illegal_value',
-            say`A ${op.kind.replace(/_/g, ' ')} is raised, not found: issue a construction_infrastructure, industrial_conversion or retooling order carrying onComplete { kind: 'found_fixture', fixtureKind } at a {world} you hold whose ground supports it.`,
+            say`A ${assetKindWord(op.kind)} is raised, not found: issue a construction_infrastructure, industrial_conversion or retooling order carrying onComplete { kind: 'found_fixture', fixtureKind } at a {world} you hold whose ground supports it.`,
           );
           break;
         }
@@ -9469,7 +9469,7 @@ function applyOpsUnderRules(
               break;
             }
             charteredOn = richest.id;
-            notes.push(say`${op.kind.replace(/_/g, ' ')} is chartered on ${richest.name}, ${possessive(nameFor(state, holder))} richest {world}.`);
+            notes.push(say`${slugWords(op.kind)} is chartered on ${richest.name}, ${possessive(nameFor(state, holder))} richest {world}.`);
           }
         }
         // The arbitrator rules that a marriage is exclusive; THIS is what
@@ -9481,7 +9481,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'commitment_conflict',
-            `Already bound: ${clash.text} (turn ${clash.establishedTurn}). A faction may hold only one ${op.kind.replace(/_/g, ' ')} at a time; dissolve that one first.`,
+            `Already bound: ${clash.text} (turn ${clash.establishedTurn}). A faction may hold only one ${slugWords(op.kind)} at a time; dissolve that one first.`,
           );
           break;
         }
@@ -9613,7 +9613,7 @@ function applyOpsUnderRules(
           const pays = charterWorth(state, state.commitments[state.commitments.length - 1]!, holder);
           if (pays < yieldPerTurn) {
             notes.push(
-              say`A charter on ${world.name} pays at most a quarter of what the {world} pays, so ${op.kind.replace(/_/g, ' ')} is worth ${pays} a turn rather than ${yieldPerTurn} — and nothing if ${world.name} is lost.`,
+              say`A charter on ${world.name} pays at most a quarter of what the {world} pays, so ${slugWords(op.kind)} is worth ${pays} a turn rather than ${yieldPerTurn} — and nothing if ${world.name} is lost.`,
             );
           }
         }
@@ -10366,7 +10366,7 @@ function applyOpsUnderRules(
         logEvent(
           state,
           'arbiter',
-          `[${op.via}] "${op.action}" — ${summary} · ${verdict} · ${op.outcome.replace(/_/g, ' ')}`,
+          `[${op.via}] "${op.action}" — ${summary} · ${verdict} · ${slugWords(op.outcome)}`,
           actor ?? null,
           // The player's own institutions ruling on the player's own act. A
           // rival has no business reading it, and `serializeRecentLog` would
@@ -13163,8 +13163,8 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       s.garrison -= lost;
       text =
         lost > 0
-          ? `Unrest on ${s.name}: the rising costs ${who(holder)} ${lost} of its garrison.`
-          : `Unrest on ${s.name}, where ${who(holder)} has no garrison left to lose.`;
+          ? `${rimEventTitle('unrest')} on ${s.name}: the rising costs ${who(holder)} ${lost} of its garrison.`
+          : `${rimEventTitle('unrest')} on ${s.name}, where ${who(holder)} has no garrison left to lose.`;
       // **A world with nobody left to hold it slips.** The third way control
       // changes after an arrival and a cession, and like both it is the
       // reducer's alone: no model can ask for it. Not while the holder has a
