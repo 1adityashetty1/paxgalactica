@@ -1,14 +1,17 @@
 import { z } from 'zod';
 import { ASSET_ARCHETYPES } from '../domain/assets.js';
 import { BATTLE_PHASES } from '../domain/battle.js';
-import { COMMANDER_ARCHETYPES } from '../domain/command.js';
-import { NOTE_KINDS, TREATY_TYPES } from '../domain/diplomacy.js';
+import { AGENT_CLASSES, COMMANDER_ARCHETYPES } from '../domain/command.js';
+import { AGENT_MISSIONS, NOTE_KINDS, TREATY_TYPES } from '../domain/diplomacy.js';
 import { DURATION_CATEGORIES } from '../domain/duration.js';
 import { RIM_EVENT_KINDS as EVENT_KINDS } from '../domain/events.js';
 import { FLEET_KINDS } from '../domain/fleets.js';
 import { HULL_CLASSES } from '../domain/hulls.js';
-import { WORLD_TYPES, type WorldState } from '../domain/state.js';
+import { TRADE_ETHICS, WAR_ETHICS, WORLD_TYPES, type WorldState } from '../domain/state.js';
 import { ACCOUNT_TERMS, FORCE_TERMS, PLACE_TERMS, VERB_TERMS } from './lexicon.js';
+import { PAX_LEXICON } from './words.js';
+import { ACT_KINDS } from '../domain/act-kinds.js';
+import { STAT_NAMES } from '../domain/checks.js';
 
 /**
  * A skin: the words, names and art that sit over the core's mechanics.
@@ -98,6 +101,17 @@ export const LexiconSchema = z.object({
   places: family(PLACE_TERMS, TermSchema),
   forces: family(FORCE_TERMS, TermSchema),
   verbs: family(VERB_TERMS, VerbSchema),
+  meanings: z.object({
+    stats: family(STAT_NAMES, z.string().min(1)),
+    warEthics: family(WAR_ETHICS, z.string().min(1)),
+    tradeEthics: family(TRADE_ETHICS, z.string().min(1)),
+    treatyTypes: family(TREATY_TYPES, z.string().min(1)),
+    notes: family(NOTE_KINDS, z.string().min(1)),
+    agentClasses: family(AGENT_CLASSES, z.string().min(1)),
+    missions: family(AGENT_MISSIONS, z.string().min(1)),
+    acts: family(ACT_KINDS, z.string().min(1)),
+    bands: family(Object.keys(PAX_LEXICON.meanings.bands), z.string().min(1)),
+  }),
   accounts: family(ACCOUNT_TERMS, TermSchema),
 });
 export type Lexicon = z.infer<typeof LexiconSchema>;

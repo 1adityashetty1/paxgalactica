@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { liveMeanings } from '../skin/lexicon.js';
 
 /**
  * D&D-style faction statistics.
@@ -16,13 +17,7 @@ export const STAT_NAMES = ['might', 'guile', 'industry', 'influence', 'resolve']
 export type StatName = (typeof STAT_NAMES)[number];
 export const StatNameSchema = z.enum(STAT_NAMES);
 
-export const STAT_MEANINGS: Record<StatName, string> = {
-  might: 'fleets, guns, and the will to use them — battles, raids, invasions, blockades',
-  guile: 'spies, saboteurs, bribes, smuggling, forged writs, assassination',
-  industry: 'shipyards, factories, logistics — anything that must be BUILT or supplied',
-  influence: 'diplomacy, treaties, propaganda, courting client worlds, buying loyalty',
-  resolve: 'holding on — sieges endured, unrest suppressed, long programmes not abandoned',
-};
+export const STAT_MEANINGS: Readonly<Record<StatName, string>> = liveMeanings('stats');
 
 export const FactionStatsSchema = z.object({
   might: z.number().int().min(1).max(20),

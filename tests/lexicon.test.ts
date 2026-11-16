@@ -10,6 +10,11 @@ import { nullLexicon, paxWords } from '../src/skin/null.js';
 import { PAX_LEXICON } from '../src/skin/words.js';
 import { paxGalactica } from '../src/skin/paxgalactica.js';
 import { coreSlotsOf, LexiconSchema, SkinSchema, skinViolations } from '../src/skin/schema.js';
+import { ACT_WORDS } from '../src/domain/acts.js';
+import { bandOf, HEAT_BANDS } from '../src/domain/bands.js';
+import { STAT_MEANINGS } from '../src/domain/checks.js';
+import { AGENT_CLASS_MEANING, AGENT_MISSION_MEANING, NOTE_ESCORT_HULLS, NOTE_MEANING, TREATY_TYPE_MEANING } from '../src/domain/diplomacy.js';
+import { TRADE_ETHIC_MEANING, WAR_ETHIC_MEANING } from '../src/domain/state.js';
 import { createSeedState } from '../src/seed/scenario.js';
 
 describe('the lexicon', () => {
@@ -32,7 +37,8 @@ describe('the lexicon', () => {
   it('gives the null lexicon no word the default one has', () => {
     const pax = new Set(paxWords().map((w) => w.toLowerCase()));
     expect(pax.size).toBeGreaterThan(100);
-    for (const family of Object.values(nullLexicon())) {
+    for (const [name, family] of Object.entries(nullLexicon())) {
+      if (name === 'meanings') continue;
       for (const entry of Object.values(family as Record<string, { word?: string; base?: string }>)) {
         expect(pax.has((entry.word ?? entry.base)!.toLowerCase())).toBe(false);
       }
@@ -90,3 +96,22 @@ describe('say', () => {
     }
   });
 });
+
+describe('the meanings', () => {
+  it('are the skin\'s sentences, read where the domain reads them, with the core\'s numbers in', () => {
+    expect(NOTE_MEANING.escort).toContain(`${NOTE_ESCORT_HULLS} of the issuer's hulls`);
+    expect(Object.keys(STAT_MEANINGS)).toEqual(['might', 'guile', 'industry', 'influence', 'resolve']);
+    expect(bandOf(HEAT_BANDS, 0).band.means).toBe(PAX_LEXICON.meanings.bands['heat.quiet']);
+    withLexicon(nullLexicon(), () => {
+      for (const table of [STAT_MEANINGS, WAR_ETHIC_MEANING, TRADE_ETHIC_MEANING, TREATY_TYPE_MEANING, NOTE_MEANING, AGENT_CLASS_MEANING, AGENT_MISSION_MEANING, ACT_WORDS]) {
+        for (const text of Object.values(table)) expect(text).toMatch(/^Qx\w+\d+$/);
+      }
+      expect(bandOf(HEAT_BANDS, 99).band.means).toMatch(/^Qxbands\d+$/);
+    });
+  });
+
+  it('refuse a sentence with a number the core does not give', () => {
+    expect(() => withLexicon({ ...PAX_LEXICON, meanings: { ...PAX_LEXICON.meanings, stats: { ...PAX_LEXICON.meanings.stats, might: 'up to {n} guns' } } }, () => STAT_MEANINGS.might)).toThrow('{n}');
+  });
+});
+

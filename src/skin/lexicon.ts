@@ -1,11 +1,13 @@
+import type { ActKind } from '../domain/act-kinds.js';
 import type { BattlePhase } from '../domain/battle.js';
-import type { CommanderArchetype } from '../domain/command.js';
-import type { NoteKind, TreatyType } from '../domain/diplomacy.js';
+import type { StatName } from '../domain/checks.js';
+import type { AgentClass, CommanderArchetype } from '../domain/command.js';
+import type { AgentMission, NoteKind, TreatyType } from '../domain/diplomacy.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { RimEventKind } from '../domain/events.js';
 import type { FleetKind } from '../domain/fleets.js';
 import type { HullClass } from '../domain/hulls.js';
-import type { WorldType } from '../domain/state.js';
+import type { TradeEthic, WarEthic, WorldType } from '../domain/state.js';
 import { PAX_LEXICON } from './words.js';
 
 /**
@@ -78,6 +80,25 @@ export interface Verb {
 export const ACCOUNT_TERMS = ['credits', 'tons'] as const;
 export type AccountTerm = (typeof ACCOUNT_TERMS)[number];
 
+/**
+ * The sentences a skin writes about the core's ids: what a stat covers, what
+ * an ethic does, what a treaty binds. A skin owns the sentence and not only
+ * the nouns in it, because "fleets, guns, invasions" is not a sentence any
+ * lexicon word can turn into "hosts, siege engines, sieges". `{name}` marks a
+ * number the core fills in (`meaning`).
+ */
+export interface Meanings {
+  stats: Record<StatName, string>;
+  warEthics: Record<WarEthic, string>;
+  tradeEthics: Record<TradeEthic, string>;
+  treatyTypes: Record<TreatyType, string>;
+  notes: Record<NoteKind, string>;
+  agentClasses: Record<AgentClass, string>;
+  missions: Record<AgentMission, string>;
+  acts: Record<ActKind, string>;
+  bands: Record<string, string>;
+}
+
 /** A word for every role. The shape `LexiconSchema` checks, typed by the domain's own ids. */
 export interface Words {
   units: Record<HullClass, CountedWord>;
@@ -94,6 +115,7 @@ export interface Words {
   forces: Record<ForceTerm, Term>;
   verbs: Record<VerbTerm, Verb>;
   accounts: Record<AccountTerm, Term>;
+  meanings: Meanings;
 }
 
 let active: Words = PAX_LEXICON;
@@ -115,6 +137,42 @@ export function withLexicon<T>(words: Words, run: () => T): T {
 }
 
 const one = (n: number) => n === 1;
+
+/** Fill a skin sentence's `{name}` marks with the core's numbers. A mark with no number throws. */
+function fill(text: string, values: Readonly<Record<string, string | number>>): string {
+  return text.replace(/\{(\w+)\}/g, (_, key: string) => {
+    if (!(key in values)) throw new Error(`meaning: no value for {${key}} in "${text}"`);
+    return String(values[key]);
+  });
+}
+
+/** One of a skin's sentences about an id, with its numbers filled in. */
+export function meaning<T extends keyof Meanings>(
+  table: T,
+  key: keyof Meanings[T] & string,
+  values: Readonly<Record<string, string | number>> = {},
+): string {
+  const text = (active.meanings[table] as Record<string, string>)[key];
+  if (text === undefined) throw new Error(`meaning: no ${table}.${key}`);
+  return fill(text, values);
+}
+
+/**
+ * A table of a skin's sentences that reads the lexicon in force each time it is
+ * read, so a table the domain exports — `STAT_MEANINGS`, `ACT_WORDS` — keeps
+ * its name and its readers while the words live in the skin. Its keys are the
+ * default lexicon's, which every skin's schema holds equal.
+ */
+export function liveMeanings<T extends keyof Meanings>(
+  table: T,
+  values: Readonly<Record<string, string | number>> = {},
+): Readonly<Meanings[T]> {
+  const live = {} as Record<string, string>;
+  for (const key of Object.keys(PAX_LEXICON.meanings[table])) {
+    Object.defineProperty(live, key, { enumerable: true, get: () => meaning(table, key as keyof Meanings[T] & string, values) });
+  }
+  return Object.freeze(live) as unknown as Readonly<Meanings[T]>;
+}
 
 /** A hull class's word, singular or plural for `n`. */
 export function unitWord(hull: HullClass, n = 1): string {

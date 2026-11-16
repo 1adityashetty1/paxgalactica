@@ -18,6 +18,15 @@ export function nullLexicon(): Words {
   const out: Record<string, Record<string, object>> = {};
   for (const [family, entries] of Object.entries(PAX_LEXICON)) {
     const tag = `Qx${family}`;
+    if (family === 'meanings') {
+      out[family] = Object.fromEntries(
+        Object.entries(entries as Record<string, Record<string, string>>).map(([table, rows]) => [
+          table,
+          Object.fromEntries(Object.keys(rows).map((key, i) => [key, `Qx${table}${i}`])),
+        ]),
+      );
+      continue;
+    }
     out[family] = Object.fromEntries(
       Object.entries(entries as Record<string, Record<string, unknown>>).map(([key, entry], i) => {
         const id = `qx${family.toLowerCase()}${i}`;

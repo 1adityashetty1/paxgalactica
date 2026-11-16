@@ -15,6 +15,7 @@ import { COMMITMENT_BREAKING_COST } from './arbitration.js';
 import { LOAN_DEFAULT_DISPOSITION_COST } from './loan.js';
 import { HEAT_PACT_BROKEN } from './heat.js';
 import type { ActKind, BreachKind } from './act-kinds.js';
+import { liveMeanings } from '../skin/lexicon.js';
 
 /** What one injured party thinks of a power that broke its word to it. */
 export const BROKEN_WORD_COST = 25;
@@ -244,38 +245,7 @@ export interface LineHit {
 }
 
 /** What each act is, in words a refusal and a persona can use. */
-export const ACT_WORDS: Record<ActKind, string> = {
-  attack_under_pact: 'attack a power it is at peace with',
-  attack_across_truce: 'attack across a truce',
-  attack_on_inlaws: 'attack its in-laws',
-  treaty_repudiated: 'repudiate a treaty',
-  marriage_repudiated: 'repudiate a marriage',
-  treaty_conceded: 'give up a treaty under an ultimatum',
-  match_betrayed: 'betray a match',
-  favour_repudiated: 'refuse a favour it owes',
-  loan_defaulted: 'keep what it was lent',
-  // Charged only where two or more were bound: a power's own statement of
-  // policy is not on this list, and the relevance check is shown these words.
-  commitment_walked: 'walk away from an arrangement sworn with another power',
-  pact_attack_ordered: 'send a fleet against a power it is at peace with',
-  blockade_ordered: 'close a lane by blockade',
-  raid_ordered: 'raid shipping',
-  invasion_launched: 'send troops to take a world',
-  treaty_signed: 'sign a treaty',
-  peace_signed: 'make peace',
-  alliance_signed: 'join an alliance',
-  marriage_signed: 'sign a marriage',
-  basing_granted: 'let a foreign fleet base in its space',
-  protection_accepted: 'accept protection',
-  tribute_paid: 'pay tribute',
-  territory_ceded: 'cede a world',
-  defence_pledged: 'pledge hulls to stand in defence',
-  debt_forgiven: 'forgive a debt',
-  person_trafficked: 'sell somebody to a power not their own',
-  gift_given: 'give something for nothing',
-  paid_for_peace: 'take payment to keep the peace',
-  given_for_nothing: 'give something for nothing',
-};
+export const ACT_WORDS: Readonly<Record<ActKind, string>> = liveMeanings('acts');
 
 /**
  * The lines `acts` cross, for the powers in `actors`. A faction's tags are on

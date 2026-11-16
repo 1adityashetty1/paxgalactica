@@ -80,7 +80,7 @@ import { EstateSchema, NotableSchema, estateBonus } from './estates.js';
 // seats.ts reads this module only inside function bodies, so the cycle is
 // harmless at load time — the shape trade.ts already has.
 import { stipendCostFor, withheldFor } from './seats.js';
-import { say } from '../skin/lexicon.js';
+import { liveMeanings, say } from '../skin/lexicon.js';
 
 /**
  * An order is either a fleet movement — whose duration the reducer computes
@@ -151,13 +151,7 @@ export const WAR_ETHICS = [
 export const WarEthicSchema = z.enum(WAR_ETHICS);
 export type WarEthic = z.infer<typeof WarEthicSchema>;
 
-export const WAR_ETHIC_MEANING: Record<WarEthic, string> = {
-  expansionist: 'takes territory because it is there; every world it holds makes the rest pay better',
-  defensive: 'fights only when struck; its worlds are dug in, and storming one costs far more than taking it should',
-  opportunist: 'attacks the weak and the distracted, avoids fair fights, switches sides without embarrassment',
-  crusading: 'fights for legitimacy and grievance, and does not break off — it will win fights it should have fled and lose fleets it should have saved',
-  profiteer: 'war is a market it funds rather than joins; it earns from every war it stays out of, and loses that trade the moment it is in one',
-};
+export const WAR_ETHIC_MEANING: Readonly<Record<WarEthic, string>> = liveMeanings('warEthics');
 
 /** Where a power stands on commerce. Also sets its baseline income. */
 export const TRADE_ETHICS = [
@@ -170,13 +164,7 @@ export const TRADE_ETHICS = [
 export const TradeEthicSchema = z.enum(TRADE_ETHICS);
 export type TradeEthic = z.infer<typeof TradeEthicSchema>;
 
-export const TRADE_ETHIC_MEANING: Record<TradeEthic, string> = {
-  free_trade: 'open lanes enrich everyone; earns more the more of the galaxy is open, including lanes it has no stake in',
-  monopolist: 'trade is good when controlled; secures exclusive rights and punishes competitors',
-  extortionist: 'commerce is something that passes through your space and owes you a toll for the privilege',
-  autarkic: 'dependence is weakness; its own worlds trade with each other, an internal market no blockade elsewhere can touch, and it keeps little of the galactic lanes',
-  smuggler: 'the profitable cargo is the illegal one; runs blockades others cannot, and raids the shipping others depend on',
-};
+export const TRADE_ETHIC_MEANING: Readonly<Record<TradeEthic, string>> = liveMeanings('tradeEthics');
 
 /** Prosperity multiplier applied to system income. */
 /**
