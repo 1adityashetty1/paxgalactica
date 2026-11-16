@@ -4572,10 +4572,46 @@ begin like a marked id.
 - each power's fleet names as `fleetName` gives them, tested equal for every
   power, kind and number up to 25.
 
-Families with no word table today (order categories, treaty types, schools)
-take their ids, as the screen shows them now. The places and units of account
-are the one part written in the skin. Nothing reads the skin yet; phase 2
-routes the game's text through it.
+The lexicon is `PAX_LEXICON` in `src/skin/words.ts`.
+
+### The game writes through the lexicon (phase 2, in progress)
+
+`src/skin/lexicon.ts` holds the lexicon in force, read from a scope
+(`withLexicon`) the way `withNameStock` scopes the name stock.
+
+- **Its default words live in `words.ts`, a leaf.** The domain reads the
+  lexicon from deep inside the reducer, and the skin's schema reads the
+  domain's id tables at load, so any runtime import between them would be a
+  cycle.
+- **Prose is written with `say`.** It is a tagged template whose text names a
+  role by token (`{world}`, `{Fleets}`, `{credits}`, `{battleships}`,
+  `{rim}`, `{SHIP}`) and fills each from the lexicon.
+- **A word with no token comes from a helper:** `unitWord`, `orderWord`,
+  `treatyWord`, `rimEventWord`.
+- **A sentence about an id comes from `meaning()`.** A skin owns the sentence,
+  not only the nouns in it: what a stat covers, what an ethic or a treaty
+  does. A number in it is a `{mark}` the core fills.
+- **The domain's tables keep their names.** `STAT_MEANINGS`, `ACT_WORDS`,
+  `COMMANDER_ARCHETYPES` and the rest are `liveMeanings` views or getters, so
+  they read the lexicon in force.
+- **A `say` evaluated at module load is a leak.** It fills its tokens once,
+  from the default.
+
+`tests/skin-leaks.test.ts` is the static check. It parses every literal,
+template and JSX text in the core, `src/ui` and the client with rolldown's
+parser, resolved through Vite, and looks for the default skin's setting words.
+Those are the lexicon's words, less the ones a low-fantasy skin would keep
+(`ORDINARY_WORDS`), plus `UNROLED_WORDS`.
+
+Each file is held to the count recorded in `tests/skin-leaks.baseline.json`.
+A second ratchet, `tests/skin-ids.baseline.json`, counts ids and field names
+that carry one (`torpedo_boat`, `systemId`); phases 3 and 4 rename those.
+Re-record with `SKIN_LEAKS_RECORD=1`.
+
+`src/skin/null.ts` builds the null lexicon, every word a sentinel.
+`tests/lexicon.test.ts` runs the routed readers under it. Under Pax Galactica
+every token reads as the word it replaced, so the four harness boards are
+unchanged.
 
 ## Treaties and agents
 

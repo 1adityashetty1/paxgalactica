@@ -662,6 +662,28 @@ they were played.
      - the static check passes;
      - the null-skin scan (*"Leak prevention"* 3) passes over every driven
        path.
+   - **In progress (2026-11-16).** Built:
+     - `src/skin/lexicon.ts`: the lexicon in a scope (`withLexicon`), helpers,
+       and `say`, a tagged template whose `{world}`-style tokens it fills.
+     - `src/skin/words.ts`: the default words, a leaf, holding the moved
+       tables: hull labels, Rim titles, note titles, terrain names, the
+       archetypes' texts and seventeen sentence tables (`meanings`).
+     - `src/skin/null.ts`: the null lexicon, which checks as a skin.
+     - `tests/skin-leaks.test.ts`: the static check, built on rolldown's
+       parser and ratcheted per file.
+   - Two refinements to the plan:
+     - The static check looks for the default skin's setting words in any
+       prose literal, rather than requiring every sentence to be inside `say`.
+       Requiring `say` catches nothing the word scan does not.
+     - Ids and field names (`torpedo_boat`, `unknown_system`, `systemId`) are
+       counted on a second ratchet. Phases 3 and 4 rename them, and phase 2
+       only stops new ones arriving. 1,115 are recorded today.
+   - Prose: 67 setting words remain in 13 files, from 994 at the start. What
+     remains:
+     - model-facing schema and prompt text, which is phase 4 and 6 work;
+     - the scenario's names, which is phase 5 work;
+     - the module-level tables in the help pages and world lines.
+   - Not built yet: the runtime null-skin scan.
 3. **Ordinals.**
    - First, as a no-op: a codemod so the suite names ids through a
      default-skin table (`F.meridian`, `S['ark-1']`, `U.battleship`). That is

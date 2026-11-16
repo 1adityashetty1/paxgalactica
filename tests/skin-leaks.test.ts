@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { countByFile, hits, literals, type Hit } from './helpers/leaks.js';
+import { countByFile, hits, idHits, idNames, literals, segments, type Hit } from './helpers/leaks.js';
 import { ORDINARY_WORDS, settingWords } from '../src/skin/null.js';
 import { SAY_TOKENS } from '../src/skin/lexicon.js';
 
@@ -18,34 +18,54 @@ import { SAY_TOKENS } from '../src/skin/lexicon.js';
  * cannot quietly loosen:
  *
  *   SKIN_LEAKS_RECORD=1 npx vitest run tests/skin-leaks.test.ts
+ *
+ * Ids and field names are counted on a second ratchet: `torpedo_boat`,
+ * `unknown_system` and `systemId` carry setting words too, and a model reads
+ * every one. Phase 3 renames the ids and phase 4 the protocol's fields, so
+ * phase 2 only stops new ones arriving.
  */
 
 const BASELINE = join(import.meta.dirname, 'skin-leaks.baseline.json');
+const ID_BASELINE = join(import.meta.dirname, 'skin-ids.baseline.json');
+
+/** Hold `now` to the counts recorded at `path`: no file may gain a hit, and a file that lost some must be recorded. */
+function ratchet(path: string, found: readonly Hit[], gained: string): void {
+  const now = countByFile(found);
+  if (process.env.SKIN_LEAKS_RECORD) {
+    writeFileSync(path, `${JSON.stringify(now, null, 2)}\n`);
+    return;
+  }
+  const was: Record<string, number> = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+  const line = (h: Hit) => `  ${h.file}:${h.line} ${h.word}`;
+  const worse = Object.keys(now).filter((f) => now[f]! > (was[f] ?? 0));
+  const better = Object.keys(was).filter((f) => (now[f] ?? 0) < was[f]!);
+  expect(worse.map((f) => `${f}: ${was[f] ?? 0} → ${now[f]}\n${found.filter((h) => h.file === f).map(line).join('\n')}`), gained).toEqual([]);
+  expect(better.map((f) => `${f}: ${was[f]} → ${now[f] ?? 0}`), 'a file lost setting words; record the new baseline with SKIN_LEAKS_RECORD=1').toEqual([]);
+}
 
 describe('the source', () => {
   it('writes no more setting words than it did when last recorded', async () => {
     const found = hits(await literals(), settingWords(), SAY_TOKENS, ORDINARY_WORDS);
-    const now = countByFile(found);
-    if (process.env.SKIN_LEAKS_RECORD) {
-      writeFileSync(BASELINE, `${JSON.stringify(now, null, 2)}\n`);
-      return;
-    }
-    const was: Record<string, number> = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
-    const describe = (h: Hit) => `  ${h.file}:${h.line} ${h.word}`;
-    const worse = Object.keys(now).filter((f) => now[f]! > (was[f] ?? 0));
-    const better = Object.keys(was).filter((f) => (now[f] ?? 0) < was[f]!);
-    expect(
-      worse.map((f) => `${f}: ${was[f] ?? 0} → ${now[f]}\n${found.filter((h) => h.file === f).map(describe).join('\n')}`),
-      'a file writes a setting word the lexicon should give it; route it through `say` or a lexicon helper',
-    ).toEqual([]);
-    expect(
-      better.map((f) => `${f}: ${was[f]} → ${now[f] ?? 0}`),
-      'a file lost setting words; record the new baseline with SKIN_LEAKS_RECORD=1',
-    ).toEqual([]);
+    ratchet(BASELINE, found, 'a file writes a setting word the lexicon should give it; route it through `say` or a lexicon helper');
+  }, 60_000);
+
+  // Phases 3 and 4 rename these; until then each file is held to its count, so
+  // no new id or field name takes a setting word (`torpedo_boat`, `systemId`).
+  it('names no more ids or fields with a setting word than it did when last recorded', async () => {
+    const ordinary = new Set(ORDINARY_WORDS.map((w) => w.toLowerCase()));
+    const found = idHits(await idNames(), settingWords().filter((w) => !ordinary.has(w.toLowerCase())));
+    ratchet(ID_BASELINE, found, 'a new id or field name carries a setting word; name it for its role instead');
   }, 60_000);
 });
 
 describe('the scan', () => {
+  it('splits an id or a field name into its words', () => {
+    expect(segments('atSystemId')).toEqual(['at', 'system', 'id']);
+    expect(segments('torpedo_boat')).toEqual(['torpedo', 'boat']);
+    const found = idHits([{ file: 'x.ts', line: 1, name: 'toSystemId' }, { file: 'x.ts', line: 2, name: 'torpedo_strike' }], settingWords());
+    expect(found.map((h) => h.word)).toEqual(['system', 'torpedo']);
+  });
+
   const lit = (text: string, say = false) => ({ file: 'x.ts', line: 1, text, say });
 
   it('finds a setting word as a whole word, the longest phrase first', () => {

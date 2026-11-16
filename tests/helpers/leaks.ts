@@ -198,3 +198,78 @@ export function countByFile(found: readonly Hit[]): Record<string, number> {
   for (const h of found) counts[h.file] = (counts[h.file] ?? 0) + 1;
   return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
+
+/* ------------------------------------------------------------------ */
+/* Ids and field names: read by phases 3 and 4, counted from now       */
+/* ------------------------------------------------------------------ */
+
+/** One id or field name the source writes, and where. */
+export interface IdName {
+  file: string;
+  line: number;
+  name: string;
+}
+
+/**
+ * Every one-token string and every object key or property name in the scanned
+ * directories: `'torpedo_boat'`, `'unknown_system'`, `systemId`, `atSystemId`.
+ *
+ * `literals` leaves these out because renaming them is not phase 2's work:
+ * phase 3 gives role ids their marked form (`u_strike`) and powers and systems
+ * their ordinals, and phase 4 gives the protocol neutral field names
+ * (`placeId`). Left out entirely they would be invisible, and a skin word in
+ * an id is still a skin word the model reads, so they are counted on a ratchet
+ * of their own.
+ */
+export async function idNames(): Promise<IdName[]> {
+  const parseAst = await parser();
+  const out: IdName[] = [];
+  for (const dir of SCANNED) {
+    for (const path of filesUnder(join(ROOT, dir))) {
+      const file = relative(ROOT, path);
+      if (UNSCANNED.some((d) => file.startsWith(`${d}/`))) continue;
+      const src = readFileSync(path, 'utf8');
+      const visit = (node: unknown, inImport: boolean): void => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) {
+          for (const child of node) visit(child, inImport);
+          return;
+        }
+        const n = node as Node & { key?: Node & { name?: string; value?: unknown }; computed?: boolean; value?: unknown };
+        const importing = inImport || n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration' || (n.type === 'ExportNamedDeclaration' && !!n.source);
+        if (!importing && n.type === 'Literal' && typeof n.value === 'string' && n.value.length > 0 && ID_LIKE.test(n.value)) {
+          out.push({ file, line: lineAt(src, n.start), name: n.value });
+        }
+        if ((n.type === 'Property' || n.type === 'PropertyDefinition' || n.type === 'TSPropertySignature') && n.key && !n.computed) {
+          const name = n.key.type === 'Identifier' ? n.key.name : typeof n.key.value === 'string' ? n.key.value : '';
+          if (name) out.push({ file, line: lineAt(src, n.key.start), name });
+        }
+        for (const key of Object.keys(n)) {
+          if (key === 'type' || key === 'start' || key === 'end') continue;
+          visit(n[key], importing);
+        }
+      };
+      visit(parseAst(src, { lang: path.endsWith('.tsx') ? 'tsx' : 'ts' }), false);
+    }
+  }
+  return out;
+}
+
+/** An id or field name's words: `atSystemId` is "at system id", `torpedo_boat` is "torpedo boat". */
+export function segments(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+}
+
+/** Every id or field name carrying one of `words` among its segments, once per word it carries. */
+export function idHits(found: readonly IdName[], words: readonly string[]): Hit[] {
+  const single = new Set(words.filter((w) => !/\s/.test(w)).map((w) => w.toLowerCase()));
+  const out: Hit[] = [];
+  for (const id of found) {
+    for (const s of new Set(segments(id.name))) if (single.has(s)) out.push({ file: id.file, line: id.line, word: s });
+  }
+  return out;
+}
