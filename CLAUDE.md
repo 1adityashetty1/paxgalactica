@@ -39,6 +39,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm play:web` | check auth (subscription only), build both halves, serve, open the browser |
 | `pnpm serve` | server only, no browser — useful with `pnpm dev:web` |
 | `pnpm dev:web` | Vite dev server with HMR, proxying `/api` to 4173 |
+| `pnpm skins` | the skin studio — write a skin over Pax Galactica's words, checked as the game checks one; saves a draft to `skins/<id>.json` |
 | `pnpm test` | the suite, with no network |
 | `pnpm replay <name>` | rebuild a saved campaign from its journal, no model calls |
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
@@ -4643,6 +4644,39 @@ recorded in `tests/skin-runtime.baseline.json`.
 Under the null lexicon the dice differ, because the operative salt reads the
 log (decision 8, phase 3). Under Pax Galactica every token reads as the word
 it replaced, so the four harness boards are unchanged.
+
+### The skin studio
+
+`pnpm skins` opens `web/skins.html`, a dev-only page for writing a skin. Its
+base is `paxGalactica()`, read live: `buildSurface` (`src/skin/studio/`) walks
+the default skin and makes every word in it an entry keyed by its path into a
+`Skin` (`powers.vigil.redLines.1`, `lexicon.units.battleship.plural`), so a
+role added to the lexicon is editable the moment it exists. Art and
+coordinates are left out.
+
+**A draft stores only what it changes** (`SkinDraftSchema`): overrides by
+path, each remembering the base it replaced so a moved base marks it stale,
+and **renames** — proper nouns rewritten whole-word, longest first, in every
+entry not written by hand. `composeSkin` lays a draft over the base to make
+the whole `Skin`, and the studio holds it to `SkinSchema` and
+`skinViolations` on every edit, pinning each finding to its entry where it
+can. Its own checks add only what a finished skin cannot show: stale
+overrides, renamed names left in hand-written text, hyphenated families, and
+two powers or places a player could not tell apart. **Preview** runs the
+game's own producers under `withLexicon(skin.lexicon)`.
+
+**Organised by mechanical role, never by the setting's nouns**
+(`src/skin/studio/roles.ts`): units as line, screen, strike, lift, trade,
+sigint and dispatch; ground by the stat it gives; places as node, route,
+region, hub, presence and works; forces and accounts by what each does. A skin
+for an army on roads must be writable without a slot shown as "torpedo", and
+the studio's own labels and fields carry no setting word — `skin-leaks` holds
+`web/src/skins` at zero. An id the table does not know is grouped under
+"other", so a renamed family stays editable before the table catches up.
+
+Drafts are read and written by a Vite plugin (`scripts/skin-studio-plugin.ts`,
+`apply: 'serve'`), so neither the page nor its file access is in a build. Its
+"find hardcoded mentions" lists where a renamed name is still written in code.
 
 ## Treaties and agents
 

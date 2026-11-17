@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from './src/api/contract.js';
+import { skinStudio } from './scripts/skin-studio-plugin.js';
 
 /**
  * Browser client build.
@@ -12,7 +14,9 @@ import { DEFAULT_PORT } from './src/api/contract.js';
  */
 export default defineConfig({
   root: 'web',
-  plugins: [react()],
+  // The skin studio (`pnpm skins`, web/skins.html) reads and writes skin drafts
+  // in skins/ — dev server only; a build never contains it.
+  plugins: [react(), skinStudio(fileURLToPath(new URL('.', import.meta.url)))],
   build: {
     // The server serves this directory when it exists.
     outDir: '../dist/web',
