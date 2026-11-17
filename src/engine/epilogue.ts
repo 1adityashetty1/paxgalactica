@@ -261,20 +261,20 @@ export function campaignOutcome(
  * plain, accurate, and made only of numbers already on the board.
  */
 /** Plural agreement, because "1 worlds" in the last line the player reads is a shame. */
-const worlds = (n: number): string => `${n} ${placeWord('world', n)}`;
+const worlds = (n: number): string => `${n} ${placeWord('node', n)}`;
 
 export function fallbackEpilogue(outcome: CampaignOutcome): { closing: string; slides: { factionId: string; text: string }[] } {
   const slides = outcome.factions.map((f) => {
     const ground =
       f.systems === 0
-        ? say`held nothing at the last, its banner struck from every {world} it once ruled`
+        ? say`held nothing at the last, its banner struck from every {node} it once ruled`
         : f.systemsDelta > 0
           ? `ended holding ${worlds(f.systems)}, ${f.systemsDelta} more than it began with — ${f.gained.join(', ')} among them`
           : f.systemsDelta < 0
             ? `ended holding ${worlds(f.systems)}, having lost ${f.lost.join(', ')}`
             : `ended holding the same ${worlds(f.systems)} it began with`;
     const purse =
-      f.net > 0 ? say`Its books closed in {credit}, at ${f.net} a turn.` : `Its books closed in deficit.`;
+      f.net > 0 ? say`Its books closed in {money_unit}, at ${f.net} a turn.` : `Its books closed in deficit.`;
     const war =
       f.wars.length > 0 ? ` It ended at war with ${f.wars.join(' and ')}.` : ' It ended at peace.';
     return { factionId: f.factionId, text: `The ${f.name} ${ground}. ${purse}${war}` };
@@ -290,10 +290,10 @@ export function fallbackEpilogue(outcome: CampaignOutcome): { closing: string; s
       : `${me.name} finished ${me.arc}, with ${worlds(me.systems)} against the ${possessive(first.name)} ${first.systems}`;
 
   const closing =
-    say`After ${outcome.turn} turns {rim} settled into the shape you left it. ` +
+    say`After ${outcome.turn} turns {map} settled into the shape you left it. ` +
     `${standing}. ` +
     (outcome.unaligned === 0
-      ? say`Every {world} answered to somebody.`
+      ? say`Every {node} answered to somebody.`
       : `${worlds(outcome.unaligned)} still answered to nobody.`);
 
   return { closing, slides };
@@ -456,12 +456,12 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
     `The campaign ran ${outcome.turn} of ${outcome.maxTurns} turns.`,
     `The player commanded \`${outcome.playerFactionId}\`.`,
     outcome.leaders.length > 1
-      ? say`${outcome.unaligned} {worlds} ended unaligned. **Nobody ended foremost**: ${outcome.leaders.length} powers finished level on the largest holding (\`${outcome.leaders.join('`, `')}\`). Do not name any of them the largest — say they finished level, or do not raise it.`
-      : say`${outcome.unaligned} {worlds} ended unaligned. The largest holding is \`${outcome.foremost}\`.`,
+      ? say`${outcome.unaligned} {nodes} ended unaligned. **Nobody ended foremost**: ${outcome.leaders.length} powers finished level on the largest holding (\`${outcome.leaders.join('`, `')}\`). Do not name any of them the largest — say they finished level, or do not raise it.`
+      : say`${outcome.unaligned} {nodes} ended unaligned. The largest holding is \`${outcome.foremost}\`.`,
     '',
     outcome.upheavals === 0
-      ? say`**No {world} changed hands in the whole campaign.** Whatever else happened, the map is where it started — do not write a conquest.`
-      : say`${outcome.upheavals} changes of control across the campaign. Where a power took a {world} and lost it again, both are listed below and BOTH ARE TRUE: the net position and the fight over it are different facts, and a war that ended where it began is still a war that was fought.`,
+      ? say`**No {node} changed hands in the whole campaign.** Whatever else happened, the map is where it started — do not write a conquest.`
+      : say`${outcome.upheavals} changes of control across the campaign. Where a power took a {node} and lost it again, both are listed below and BOTH ARE TRUE: the net position and the fight over it are different facts, and a war that ended where it began is still a war that was fought.`,
     '',
     '_Standings below are given as comparisons, not counts. The figures are',
     'already on screen beside your prose — write what they meant._',
@@ -490,7 +490,7 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
     lines.push(
       `## ${f.name} (\`${f.factionId}\`)${f.factionId === outcome.playerFactionId ? ' — THE PLAYER' : ''}`,
       `- arc: **${f.arc}** (settled; do not overturn)`,
-      `- ended holding ${f.systems === 1 ? say`one {world}` : say`${f.systems} {worlds}`}, ${
+      `- ended holding ${f.systems === 1 ? say`one {node}` : say`${f.systems} {nodes}`}, ${
         f.systemsDelta > 0
           ? `${f.systemsDelta} more than it began with`
           : f.systemsDelta < 0
@@ -509,33 +509,33 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
         ? `- started with, and no longer holds: ${f.lost.join(', ')}`
         : '- kept everything it started with',
       f.took.length > 0
-        ? say`- **{worlds} it took, in the order it took them**: ${f.took.join(', ')} — a name twice means it was taken back`
+        ? say`- **{nodes} it took, in the order it took them**: ${f.took.join(', ')} — a name twice means it was taken back`
         : '',
       f.ceded.length > 0
-        ? say`- **{worlds} it lost, in the order it lost them**: ${f.ceded.join(', ')}`
+        ? say`- **{nodes} it lost, in the order it lost them**: ${f.ceded.join(', ')}`
         : '',
       f.contested.length > 0
         ? `- **fought over more than once**: ${f.contested.join(', ')}. This is the ground that mattered; reach for it before anything else.`
         : '',
       f.took.length === 0 && f.ceded.length === 0
-        ? say`- no {world} ever changed hands with this power, in either direction`
+        ? say`- no {node} ever changed hands with this power, in either direction`
         : '',
       f.battlesFought.length > 0
         ? `- **battles fought**: ${f.battlesFought
             .map((b) => {
               const times = b.times === 1 ? 'once' : b.times === 2 ? 'twice' : `${b.times} times`;
-              const whose = b.holder === null ? 'nobody\'s ground' : b.holder === f.name ? say`its own {world}` : say`${b.holder}'s {world}`;
+              const whose = b.holder === null ? 'nobody\'s ground' : b.holder === f.name ? say`its own {node}` : say`${b.holder}'s {node}`;
               // Not the attacker, over somebody else's world: its ships were
               // sitting in that orbit and the holder came to clear them.
-              const role = b.attacked ? 'attacked' : b.holder !== null && b.holder !== f.name ? say`was swept from the {orbit} of` : 'defended';
+              const role = b.attacked ? 'attacked' : b.holder !== null && b.holder !== f.name ? say`was swept from the {presence} of` : 'defended';
               return `${role} ${b.world} (${whose}) ${times}`;
             })
             .join('; ')}, losing ${f.shipsLost} ${f.shipsLost === 1 ? 'hull' : 'hulls'} in all — true whether or not a border moved; do not write that it was never contested, and do not turn an attack into a defence`
         : '- fought no battle in the whole campaign',
-      say`- {fleet}: ${standing(f.fleet, fleets, [say`the largest {navy} in {rim}`, say`a middling {navy}`, say`the thinnest {navy} of any power still standing`])}`,
-      `- treasury: ${standing(f.credits, purses, [say`the heaviest purse in {rim}`, 'comfortable enough', 'the emptiest treasury of any power still standing'])}`,
+      say`- {group}: ${standing(f.fleet, fleets, [say`the largest {force} in {map}`, say`a middling {force}`, say`the thinnest {force} of any power still standing`])}`,
+      `- treasury: ${standing(f.credits, purses, [say`the heaviest purse in {map}`, 'comfortable enough', 'the emptiest treasury of any power still standing'])}`,
       f.net > 0
-        ? say`- income: in {credit} — ${standing(f.net, incomes, [say`the richest flow in {rim}`, 'steady', 'thin, and thinner than anyone else'])}`
+        ? say`- income: in {money_unit} — ${standing(f.net, incomes, [say`the richest flow in {map}`, 'steady', 'thin, and thinner than anyone else'])}`
         : '- income: running at a loss, and paying for itself out of savings',
       `- at home: ${dissent}`,
       overruled.length > 0
@@ -553,8 +553,8 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
       // The campaign's own history, which is what an endpoint difference
       // cannot supply — a world taken and taken back appears in neither
       // `gained` nor `lost`, and three battles read as "nothing happened".
-      f.took.length > 0 ? say`- {worlds} taken, in order: ${f.took.join(', ')}` : '',
-      f.ceded.length > 0 ? say`- {worlds} lost, in order: ${f.ceded.join(', ')}` : '',
+      f.took.length > 0 ? say`- {nodes} taken, in order: ${f.took.join(', ')}` : '',
+      f.ceded.length > 0 ? say`- {nodes} lost, in order: ${f.ceded.join(', ')}` : '',
       f.contested.length > 0
         ? `- fought over more than once: ${f.contested.join(', ')}`
         : '',

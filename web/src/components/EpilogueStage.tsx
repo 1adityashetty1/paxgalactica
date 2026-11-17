@@ -33,9 +33,9 @@ export function EpilogueStage({
   return (
     <div className="epilogue">
       <header className="epilogue-head">
-        <h2>{say`{Rim}, `}{epilogue.turn} turns on</h2>
+        <h2>{say`{Map}, `}{epilogue.turn} turns on</h2>
         <p className="hint">
-          {epilogue.unaligned}{say` {worlds} still answer to nobody.`}
+          {epilogue.unaligned}{say` {nodes} still answer to nobody.`}
           {epilogue.fallback && ' (The narration could not be written; this is the plain record.)'}
         </p>
       </header>
@@ -53,7 +53,7 @@ export function EpilogueStage({
           <p className="epilogue-text">{slideFor(f.factionId)}</p>
           <div className="epilogue-facts">
             <span>
-              {f.systems}{say` {worlds}`}
+              {f.systems}{say` {nodes}`}
               {f.systemsDelta !== 0 && (
                 <span className={f.systemsDelta > 0 ? 'up' : 'down'}>
                   {' '}
@@ -62,7 +62,7 @@ export function EpilogueStage({
                 </span>
               )}
             </span>
-            <span>{f.fleet}{say` {hulls}`}</span>
+            <span>{f.fleet}{say` {units}`}</span>
             <span className={f.net >= 0 ? 'up' : 'down'}>
               {f.net >= 0 ? '+' : ''}
               {f.net}/turn
@@ -98,7 +98,7 @@ export function EpilogueStage({
         {onLeave && (
           <div className="epilogue-exit">
             <button className="endtalk" onClick={onLeave}>
-              {say`Leave {rim}`}
+              {say`Leave {map}`}
             </button>
             <span className="hint">
               Start another campaign, resume a saved one, or come back to this ending.

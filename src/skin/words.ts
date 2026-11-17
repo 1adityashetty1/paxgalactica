@@ -20,7 +20,8 @@ const counted = (id: string, w: string, plural = `${w}s`): CountedWord => ({ id,
 const spaced = (id: string): Word => word(id, id.replace(/_/g, ' '));
 const asset = (id: string, unit: string, from: string, wanted: string): AssetWord => ({ ...spaced(id), unit, from, wanted });
 const school = (id: string, phase: string, effect: string, known: string): SchoolWord => ({ ...word(id, id), phase, effect, known });
-const term = (w: string, plural = `${w}s`, synonyms: string[] = []): Term => ({ word: w, plural, synonyms });
+const term = (w: string, plural = `${w}s`, synonyms: string[] = [], second?: Term['alt']): Term => ({ word: w, plural, synonyms, ...(second ? { alt: second } : {}) });
+const alt = (w: string, plural = `${w}s`): NonNullable<Term['alt']> => ({ word: w, plural });
 const verb = (base: string): Verb => ({ base, s: `${base}s`, past: `${base}ed`, ing: `${base}ing`, synonyms: [] });
 
 export const PAX_LEXICON: Words = {
@@ -251,34 +252,28 @@ export const PAX_LEXICON: Words = {
     courier: word('courier', 'Courier'),
   },
   places: {
-    world: term('world'),
-    system: term('system'),
-    sector: term('sector'),
-    lane: term('lane'),
-    hyperlane: term('hyperlane'),
-    jump: term('jump'),
+    node: term('world', 'worlds', [], alt('system')),
+    region: term('sector'),
+    route: term('lane', 'lanes', [], alt('hyperlane')),
+    step: term('jump'),
     hub: term('hub'),
-    orbit: term('orbit'),
-    garrison: term('garrison'),
-    yards: term('yards', 'yards', ['slipways']),
-    shipyard: term('shipyard'),
-    berth: term('berth'),
-    rim: term('the Rim', 'the Rim'),
-    space: term('space', 'space'),
-    galaxy: term('galaxy', 'galaxies'),
+    presence: term('orbit'),
+    defence: term('garrison'),
+    works: term('yards', 'yards', ['slipways'], alt('shipyard')),
+    capacity: term('berth'),
+    map: term('the Rim', 'the Rim', [], alt('galaxy', 'galaxies')),
+    territory: term('space', 'space'),
   },
   forces: {
-    hull: term('hull'),
-    ship: term('ship'),
-    warship: term('warship'),
-    fleet: term('fleet'),
-    squadron: term('squadron'),
+    unit: term('hull', 'hulls', [], alt('ship')),
+    fighter: term('warship'),
+    group: term('fleet', 'fleets', [], alt('squadron')),
     crew: term('crew', 'crews'),
-    navy: term('navy', 'navies'),
-    cargo: term('cargo', 'cargo'),
-    salvo: term('salvo'),
-    torpedo: term('torpedo', 'torpedoes'),
-    voyage: term('voyage'),
+    force: term('navy', 'navies'),
+    goods: term('cargo', 'cargo'),
+    volley: term('salvo'),
+    munition: term('torpedo', 'torpedoes'),
+    march: term('voyage'),
   },
   people: {
     operative: term('operative'),
@@ -286,12 +281,12 @@ export const PAX_LEXICON: Words = {
     notable: term('notable'),
   },
   verbs: {
-    sail: verb('sail'),
-    land: verb('land'),
+    move: verb('sail'),
+    disembark: verb('land'),
   },
   accounts: {
-    credits: term('credit'),
-    tons: term('ton'),
+    money: term('credit'),
+    size: term('ton'),
   },
   meanings: {
     /** What each stat covers: the arbiter's rubric and the help page. */

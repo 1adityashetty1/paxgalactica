@@ -204,7 +204,7 @@ export function courtView(state: WorldState, me: string): CourtView | null {
 /** The estate a seat belongs to, in words, for the System tab. */
 export function seatLabel(state: WorldState, n: Notable): string {
   const e = estateById(state, n.estateId);
-  return e ? `${e.estate.name}, ${e.faction.name}` : say`speaks for the {world} itself`;
+  return e ? `${e.estate.name}, ${e.faction.name}` : say`speaks for the {node} itself`;
 }
 
 /** What a notable is doing to their world for its holder, in a phrase; `null` when nothing. */
@@ -216,7 +216,7 @@ export function seatDoing(state: WorldState, n: Notable): string | null {
   const foreign = n.estateId !== null && holder !== null && holder !== undefined && estateOwner(n.estateId) !== holder;
   if (foreign && f < 0) return 'foreign: keeps back half its share and sours it, until reseated';
   if (f <= -40) return 'resentful: keeps back half its share and sours it';
-  if (f >= 40) return say`favoured: wins the {world} over a little each turn`;
+  if (f >= 40) return say`favoured: wins the {node} over a little each turn`;
   return null;
 }
 

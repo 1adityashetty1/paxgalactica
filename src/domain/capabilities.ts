@@ -49,8 +49,8 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   const bs = HULL_SPEC.battleship;
   out.push(
     held.length > 0
-      ? say`{Yards}: ${berths} {tons} of {hulls} a turn (${Math.floor(berths / bs.tonnage)} {battleships} at ${bs.tonnage * CREDITS_PER_TON} each), ${room} of them free this turn${queued > 0 ? say`, ${queued} {tons} queued` : ''}. A larger order is paid now and queued at that rate. Your treasury pays for ${afford} {tons} now.`
-      : say`{Yards}: none. You hold no {world}, so you cannot build {hulls}.`,
+      ? say`{Works}: ${berths} {size_units} of {units} a turn (${Math.floor(berths / bs.tonnage)} {line_units} at ${bs.tonnage * CREDITS_PER_TON} each), ${room} of them free this turn${queued > 0 ? say`, ${queued} {size_units} queued` : ''}. A larger order is paid now and queued at that rate. Your treasury pays for ${afford} {size_units} now.`
+      : say`{Works}: none. You hold no {node}, so you cannot build {units}.`,
   );
 
   // Fixture slots.
@@ -69,8 +69,8 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   });
   out.push(
     sites.length > 0
-      ? say`Fixture slots free on your {worlds}: ${sites.slice(0, 5).join('; ')}. A fixture costs ${FIXTURE_COST}, and the next adds ${nextUpkeep} a turn to upkeep. Nothing can be built on a {world} you do not hold.`
-      : say`Fixture slots: none free on any {world} you hold.`,
+      ? say`Fixture slots free on your {nodes}: ${sites.slice(0, 5).join('; ')}. A fixture costs ${FIXTURE_COST}, and the next adds ${nextUpkeep} a turn to upkeep. Nothing can be built on a {node} you do not hold.`
+      : say`Fixture slots: none free on any {node} you hold.`,
   );
 
   // Operatives.
@@ -101,11 +101,11 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   const where = (c: (typeof active)[number]) => describePlace(state, whereaboutsOf(state, { kind: 'officer', id: c.id }));
   out.push(
     [
-      say`Officers in post: ${active.length > 0 ? active.map((c) => `${c.name} (${c.archetype}) ${where(c)}`).join('; ') : say`none — your {fleets} fight without one`}. An officer {sails} only with a {fleet} leaving the {world} they stand on.`,
+      say`Officers in post: ${active.length > 0 ? active.map((c) => `${c.name} (${c.archetype}) ${where(c)}`).join('; ') : say`none — your {groups} fight without one`}. An officer {moves} only with a {group} leaving the {node} they stand on.`,
       active.length >= MAX_ACTIVE_COMMANDERS
         ? `The roster is full at ${MAX_ACTIVE_COMMANDERS}.`
         : waiting.length > 0
-          ? `On your Lists to appoint: ${waiting.map((c) => `${c.name} (${c.archetype}, ${c.commissioned ? 'served, free' : say`${COMMANDER_COST} {credits}`})`).join('; ')}.`
+          ? `On your Lists to appoint: ${waiting.map((c) => `${c.name} (${c.archetype}, ${c.commissioned ? 'served, free' : say`${COMMANDER_COST} {money_units}`})`).join('; ')}.`
           : '',
     ]
       .filter(Boolean)
@@ -120,8 +120,8 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
     .filter((b) => b.line >= 0.5 || b.lift > 0);
   out.push(
     bases.length > 0
-      ? say`Your {fleets} stand at: ${bases.map((b) => say`${b.s.name} (${b.line.toFixed(1)} {battleships}' weight${b.lift > 0 ? `, lift for ${b.lift} troops` : ', no lift'})`).join('; ')}. A {world} is taken only by lift that lands; {warships} alone take nothing.`
-      : say`You have no {fleet} standing anywhere.`,
+      ? say`Your {groups} stand at: ${bases.map((b) => say`${b.s.name} (${b.line.toFixed(1)} {line_units}' weight${b.lift > 0 ? `, lift for ${b.lift} troops` : ', no lift'})`).join('; ')}. A {node} is taken only by lift that lands; {fighters} alone take nothing.`
+      : say`You have no {group} standing anywhere.`,
   );
   const open = new Map<string, string>();
   for (const s of state.systems) {
@@ -132,16 +132,16 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
     const standing = s.regard?.[me];
     open.set(
       s.id,
-      `${s.name} (garrison ${s.garrison}${standing !== undefined ? `, its standing with you ${standing}` : ''}; ${orbit ? say`your {ships} are in its {orbit}` : say`a {jump} from ${from!.name}`})`,
+      `${s.name} (garrison ${s.garrison}${standing !== undefined ? `, its standing with you ${standing}` : ''}; ${orbit ? say`your {units_alt} are in its {presence}` : say`a {step} from ${from!.name}`})`,
     );
   }
   if (open.size > 0) {
-    out.push(say`{Worlds} that answer to nobody within reach — an envoy can court them, a {landing} can take them: ${[...open.values()].join('; ')}.`);
+    out.push(say`{Nodes} that answer to nobody within reach — an envoy can court them, a {disembarking} can take them: ${[...open.values()].join('; ')}.`);
   }
   // The envoy's reach, said as the reducer enforces it (`envoyRefusal`): the
   // counsellor urged one at a rival's world, which no order can send.
   out.push(
-    say`An envoy goes only to a {world} you hold or to one that answers to nobody${open.size > 0 ? ' listed above' : ', and none is within your reach'}. A {world} another power holds cannot be courted; turning it against its holder is an operative's work (incitement).`,
+    say`An envoy goes only to a {node} you hold or to one that answers to nobody${open.size > 0 ? ' listed above' : ', and none is within your reach'}. A {node} another power holds cannot be courted; turning it against its holder is an operative's work (incitement).`,
   );
   return out;
 }

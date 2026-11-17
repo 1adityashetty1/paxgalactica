@@ -202,7 +202,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
             reset();
           }}
         >
-          <option value="">{say`Whole {galaxy}`}</option>
+          <option value="">{say`Whole {map_alt}`}</option>
           {sectorsOf(state).map((s) => (
             <option key={s} value={s}>
               {s}
@@ -219,7 +219,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
           reset
         </button>
         {layout.omitted.length > 0 && (
-          <span className="omitted">{layout.omitted.length}{say` {systems} outside this {sector}`}</span>
+          <span className="omitted">{layout.omitted.length}{say` {nodes_alt} outside this {region}`}</span>
         )}
       </div>
 
@@ -255,7 +255,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
                 {carried > 0 && (
                   <title>
                     {cut ? 'Interdicted. ' : ''}
-                    {Math.round(carried)}{say` {credits} of trade a turn ride this {lane}.`}
+                    {Math.round(carried)}{say` {money_units} of trade a turn ride this {route}.`}
                   </title>
                 )}
               </line>

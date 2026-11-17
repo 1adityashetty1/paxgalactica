@@ -81,7 +81,7 @@ export function BriefingPanel({
               {briefing.ledger.net}/turn
             </span>
             <span className="sub">
-              +{briefing.ledger.territory} territory · +{briefing.ledger.routes}{say` {lanes} · −`}
+              +{briefing.ledger.territory} territory · +{briefing.ledger.routes}{say` {routes} · −`}
               {briefing.ledger.upkeep} upkeep
               {briefing.ledger.agentUpkeep > 0 && ` · −${briefing.ledger.agentUpkeep} agents`}
               {/* Its own term, because it rises with the count: the next
@@ -141,7 +141,7 @@ export function BriefingPanel({
               turn as on its first. */}
           {briefing.events.length > 0 && (
             <div className="brief-group">
-              <h4>{say`{Rim}`}</h4>
+              <h4>{say`{Map}`}</h4>
               {briefing.events.map((e) => (
                 <RimEventCard key={e.id} event={e} compact />
               ))}
@@ -152,7 +152,7 @@ export function BriefingPanel({
               reach leaning toward somebody, and anything that joined or rose. */}
           {(briefing.worlds ?? []).length > 0 && (
             <div className="brief-group">
-              <h4>{say`{Worlds}`}</h4>
+              <h4>{say`{Nodes}`}</h4>
               <ul>
                 {briefing.worlds.map((w, i) => (
                   <li
@@ -352,7 +352,7 @@ export function BriefingPanel({
             </div>
           )}
 
-          {briefing.quiet && <p className="empty">{say`Nothing under way. {Rim} is quiet.`}</p>}
+          {briefing.quiet && <p className="empty">{say`Nothing under way. {Map} is quiet.`}</p>}
         </>
       )}
     </section>

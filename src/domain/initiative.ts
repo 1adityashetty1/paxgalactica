@@ -2495,7 +2495,7 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
           `sends ${describeStack(normaliseStack((op.force ?? {}) as ShipStack))} from ${where(op.originId)} against ${where(op.targetId)}`,
         );
       } else if (op.type === 'blockade') {
-        parts.push(say`closes the {lanes} at ${where(op.targetId)}`);
+        parts.push(say`closes the {routes} at ${where(op.targetId)}`);
       } else if (op.type === 'commerce_raiding') {
         // A raid run dark is not announced, least of all in its own account.
         if (!op.dark) parts.push(`sets raiders on the traffic through ${where(op.targetId)}`);
@@ -2508,8 +2508,8 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
       }
     }
   }
-  if (massed > 0) parts.unshift(say`{sails} ${count(massed, forceWord('hull'), forceWord('hull', 2))} to concentrate`);
-  if (bought > 0) parts.unshift(`lays down ${count(bought, forceWord('hull'), forceWord('hull', 2))}`);
+  if (massed > 0) parts.unshift(say`{moves} ${count(massed, forceWord('unit'), forceWord('unit', 2))} to concentrate`);
+  if (bought > 0) parts.unshift(`lays down ${count(bought, forceWord('unit'), forceWord('unit', 2))}`);
 
   return parts.length === 0 ? `${name} holds its position.` : `${name} ${parts.join(', ')}.`;
 }
@@ -2591,7 +2591,7 @@ export function intentKeys(ops: readonly Record<string, unknown>[]): string[] {
   const keys = new Set<string>();
   for (const raw of ops) {
     if (raw.op === 'build_ships') {
-      keys.add(say`build_{ships}@${String(raw.systemId ?? 'yards')}`);
+      keys.add(say`build_{units_alt}@${String(raw.systemId ?? 'yards')}`);
       continue;
     }
     if (raw.op === 'deploy_agent') {
@@ -2798,7 +2798,7 @@ export function brokeredAccords(state: WorldState): Accord[] {
             text:
               payer === null
                 ? `${name(a)} and ${name(b)}, ${quiet} turns without a battle between them, agree a ceasefire.`
-                : `${name(payer)}, unable to carry its wars, sues ${name(payee!)} for peace${indemnity > 0 ? say` and pays ${indemnity} {credits} for it` : ''}.`,
+                : `${name(payer)}, unable to carry its wars, sues ${name(payee!)} for peace${indemnity > 0 ? say` and pays ${indemnity} {money_units} for it` : ''}.`,
           },
         ],
       });

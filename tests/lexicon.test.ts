@@ -75,13 +75,13 @@ describe('what reads it', () => {
 describe('say', () => {
   it('fills its tokens from the lexicon in force, capitalised where the token is', () => {
     const n = 3;
-    expect(say`{Worlds} you hold pay ${n} {credits} across {rim}; {torpedo_boats} strike first`).toBe(
+    expect(say`{Nodes} you hold pay ${n} {money_units} across {map}; {strike_units} strike first`).toBe(
       'Worlds you hold pay 3 credits across the Rim; torpedo boats strike first',
     );
-    expect(say`{Rim}`).toBe('The Rim');
-    expect(say`{Warships} {sailed} and {landing} went well`).toBe('Warships sailed and landing went well');
+    expect(say`{Map}`).toBe('The Rim');
+    expect(say`{Fighters} {moved} and {disembarking} went well`).toBe('Warships sailed and landing went well');
     withLexicon(nullLexicon(), () => {
-      expect(say`{Worlds} you hold pay ${n} {credits} across {rim}`).toMatch(/^Qxplaces\d+s you hold pay 3 Qxaccounts\d+s across Qxplaces\d+$/);
+      expect(say`{Nodes} you hold pay ${n} {money_units} across {map}`).toMatch(/^Qxplaces\d+s you hold pay 3 Qxaccounts\d+s across Qxplaces\d+$/);
     });
   });
 
@@ -90,10 +90,20 @@ describe('say', () => {
     expect(() => say`{planet}`).toThrow('{planet}');
   });
 
-  it('has a token for every place, force, account and hull class', () => {
-    for (const t of ['world', 'worlds', 'lanes', 'orbit', 'yards', 'rim', 'space', 'hulls', 'warships', 'fleets', 'navies', 'credits', 'tons', 'battleships', 'courier', 'sails', 'landing']) {
+  it('names every token by role, and gives a slot\'s second word its own token', () => {
+    for (const t of ['node', 'nodes', 'node_alt', 'nodes_alt', 'routes', 'presence', 'works', 'map', 'territory', 'units', 'fighters', 'groups', 'force', 'money_units', 'size_units', 'line_units', 'dispatch_unit', 'moves', 'disembarking']) {
       expect(SAY_TOKENS).toContain(t);
     }
+    // No token is a setting's word: the slots are roles, so a landlocked skin has no torpedo to fill.
+    for (const t of ['world', 'system', 'hyperlane', 'orbit', 'galaxy', 'hull', 'ship', 'fleet', 'navy', 'torpedo', 'sail', 'credits', 'battleship']) {
+      expect(SAY_TOKENS).not.toContain(t);
+    }
+  });
+
+  it('reads a slot\'s second word where the skin gives one, and its main word where it does not', () => {
+    expect(say`{node} and {node_alt}, {units} and {units_alt}`).toBe('world and system, hulls and ships');
+    const plain = { ...PAX_LEXICON, places: { ...PAX_LEXICON.places, node: { word: 'province', plural: 'provinces', synonyms: [] } } };
+    expect(withLexicon(plain, () => say`{Nodes} and {nodes_alt}`)).toBe('Provinces and provinces');
   });
 });
 

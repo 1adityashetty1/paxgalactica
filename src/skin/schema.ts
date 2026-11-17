@@ -67,6 +67,8 @@ const TermSchema = z.object({
   word: WordSchema,
   plural: WordSchema,
   synonyms: z.array(WordSchema).default([]),
+  /** A second word for the same role, which a skin may leave out (`Term.alt` in `lexicon.ts`). */
+  alt: z.object({ word: WordSchema, plural: WordSchema }).optional(),
 });
 
 /** A record keyed by every member of a closed family, and by nothing else. Zod 4 holds an enum key exhaustive. */
@@ -327,7 +329,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
   for (const [label, entries] of [['places', skin.lexicon.places], ['forces', skin.lexicon.forces], ['people', skin.lexicon.people], ['accounts', skin.lexicon.accounts]] as const) {
     const seen = new Map<string, string>();
     for (const [key, t] of Object.entries(entries)) {
-      for (const w of [t.word, t.plural, ...t.synonyms].map((x) => x.toLowerCase())) {
+      for (const w of [t.word, t.plural, ...t.synonyms, ...(t.alt ? [t.alt.word, t.alt.plural] : [])].map((x) => x.toLowerCase())) {
         const other = seen.get(w);
         if (other && other !== key) out.push(`${label}: ${other} and ${key} share the word "${w}"`);
         seen.set(w, key);
@@ -376,7 +378,7 @@ export function skinViolations(skin: Skin, core: CoreSlots): string[] {
     }
   }
   for (const t of [...Object.values(skin.lexicon.places), ...Object.values(skin.lexicon.forces), ...Object.values(skin.lexicon.people), ...Object.values(skin.lexicon.accounts)]) {
-    words.push(t.word, t.plural, ...t.synonyms);
+    words.push(t.word, t.plural, ...t.synonyms, ...(t.alt ? [t.alt.word, t.alt.plural] : []));
   }
   for (const v of Object.values(skin.lexicon.verbs)) words.push(v.base, v.s, v.past, v.ing, ...v.synonyms);
   for (const p of Object.values(skin.powers)) {

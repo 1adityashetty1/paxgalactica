@@ -62,23 +62,54 @@ export interface AssetWord extends Word {
   wanted: string;
 }
 
-/** A word with no id: a place, a force or a unit of account, which no op names. */
+/**
+ * A word with no id: a place, a force or a unit of account, which no op names.
+ *
+ * Each is a **role slot**, named for what the thing does in the game and never
+ * for what one setting calls it: a `node`, a `route`, a `group`, a `volley`.
+ * A skin fills the word.
+ *
+ * `alt` is a second word for the same role, which a skin may leave out. Pax
+ * Galactica uses two words for some roles: a node is a world in a story and a
+ * system in a rejection, a route is a lane and a hyperlane. The second word is
+ * kept so its text reads exactly as it did. A skin without one reads the main
+ * word in both places.
+ */
 export interface Term {
   word: string;
   plural: string;
   synonyms: string[];
+  alt?: { word: string; plural: string };
 }
 
-/** The words for where things are, which every prompt and panel uses and no op names. */
-export const PLACE_TERMS = ['world', 'system', 'sector', 'lane', 'hyperlane', 'jump', 'hub', 'orbit', 'garrison', 'yards', 'shipyard', 'berth', 'rim', 'space', 'galaxy'] as const;
+/**
+ * The roles a place plays on the board.
+ * - `node`: a place on the map.
+ * - `region`: a group of nodes.
+ * - `route`, `step`: an edge between two nodes, and one move along it.
+ * - `hub`: a node worth more than the rest.
+ * - `presence`: being over a node without holding it.
+ * - `defence`: the troops dug in on a node.
+ * - `works`, `capacity`: where units are made, and one slot of it.
+ * - `map`, `territory`: the whole board, and a power's own part of it.
+ */
+export const PLACE_TERMS = ['node', 'region', 'route', 'step', 'hub', 'presence', 'defence', 'works', 'capacity', 'map', 'territory'] as const;
 export type PlaceTerm = (typeof PLACE_TERMS)[number];
 
-/** The words for armed force in general, whatever its class: a hull, a fleet, a crew, a navy. */
-export const FORCE_TERMS = ['hull', 'ship', 'warship', 'fleet', 'squadron', 'crew', 'navy', 'cargo', 'salvo', 'torpedo', 'voyage'] as const;
+/**
+ * The roles of armed force in general, whatever its class.
+ * - `unit`: any one unit; `fighter`: a fighting one.
+ * - `group`: a formation of them; `force`: all a power has.
+ * - `crew`: the people a unit carries.
+ * - `goods`: what trade carries.
+ * - `volley`, `munition`: the strike phase's fire, and what it fires.
+ * - `march`: a group's journey.
+ */
+export const FORCE_TERMS = ['unit', 'fighter', 'group', 'crew', 'force', 'goods', 'volley', 'munition', 'march'] as const;
 export type ForceTerm = (typeof FORCE_TERMS)[number];
 
-/** The verbs a fleet does: it sails, and it lands. */
-export const VERB_TERMS = ['sail', 'land'] as const;
+/** What a group does: it moves along a route, and its lift puts troops down on a node. */
+export const VERB_TERMS = ['move', 'disembark'] as const;
 export type VerbTerm = (typeof VERB_TERMS)[number];
 
 /** A verb in the four forms English sentences need: "sail", "sails", "sailed", "sailing". */
@@ -99,8 +130,8 @@ export interface Verb {
 export const PEOPLE_TERMS = ['operative', 'officer', 'notable'] as const;
 export type PeopleTerm = (typeof PEOPLE_TERMS)[number];
 
-/** The units every price and every fleet is counted in. */
-export const ACCOUNT_TERMS = ['credits', 'tons'] as const;
+/** The units of account: `money` every price is paid in, and `size`, what a unit's bulk is measured in. */
+export const ACCOUNT_TERMS = ['money', 'size'] as const;
 export type AccountTerm = (typeof ACCOUNT_TERMS)[number];
 
 /**
@@ -241,16 +272,20 @@ export function countUnits(hull: HullClass | (string & {}), n: number): string {
   return `${n} ${unitWord(hull, n)}`;
 }
 
-/** A place's word, singular or plural for `n`. */
-export function placeWord(place: PlaceTerm, n = 1): string {
-  const w = active.places[place];
-  return one(n) ? w.word : w.plural;
+/** A term's word for `n`, or its second word when `alt` is asked for and the skin gave one. */
+function termWord(w: Term, n: number, alt: boolean): string {
+  const form = alt && w.alt ? w.alt : w;
+  return one(n) ? form.word : form.plural;
 }
 
-/** A word for force in general, singular or plural for `n`. */
-export function forceWord(force: ForceTerm, n = 1): string {
-  const w = active.forces[force];
-  return one(n) ? w.word : w.plural;
+/** A place's word, singular or plural for `n`; `alt` for the slot's second word ("system" for a node). */
+export function placeWord(place: PlaceTerm, n = 1, alt = false): string {
+  return termWord(active.places[place], n, alt);
+}
+
+/** A word for force in general, singular or plural for `n`; `alt` for the slot's second word ("ship" for a unit). */
+export function forceWord(force: ForceTerm, n = 1, alt = false): string {
+  return termWord(active.forces[force], n, alt);
 }
 
 /** A roster's word for one of its people, singular or plural for `n`: "operative", "officers". */
@@ -265,7 +300,7 @@ export function accountWord(account: AccountTerm, n = 2): string {
   return one(n) ? w.word : w.plural;
 }
 
-/** "40 credits", "1 ton". */
+/** "40 credits", "1 ton": an amount of money or of size. */
 export function amount(account: AccountTerm, n: number): string {
   return `${n} ${accountWord(account, n)}`;
 }
@@ -349,66 +384,85 @@ export function assetWords(kind: string): AssetWord {
 /* ------------------------------------------------------------------ */
 
 type TokenSource =
-  | { family: 'places' | 'forces' | 'people' | 'accounts'; key: string; plural: boolean }
+  | { family: 'places' | 'forces' | 'people' | 'accounts'; key: string; plural: boolean; alt: boolean }
   | { family: 'units'; key: HullClass; plural: boolean }
   | { family: 'verbs'; key: VerbTerm; form: Exclude<keyof Verb, 'synonyms'> };
 
+/**
+ * Every token, by role. A slot's tokens are its name and its plural, and its
+ * second word's are the same with `_alt`: `{node}`, `{nodes}`, `{node_alt}`,
+ * `{nodes_alt}`. A mass noun has no plural token. A unit class is named by its
+ * role in a fight (`{line_unit}`), and a verb by what it does (`{move}`,
+ * `{moved}`, `{disembarking}`).
+ */
+const TERM_TOKENS: readonly [family: 'places' | 'forces' | 'people' | 'accounts', key: string, one: string, many: string | null][] = [
+  ['places', 'node', 'node', 'nodes'],
+  ['places', 'region', 'region', 'regions'],
+  ['places', 'route', 'route', 'routes'],
+  ['places', 'step', 'step', 'steps'],
+  ['places', 'hub', 'hub', 'hubs'],
+  ['places', 'presence', 'presence', 'presences'],
+  ['places', 'defence', 'defence', 'defences'],
+  ['places', 'works', 'works', null],
+  ['places', 'capacity', 'capacity', 'capacities'],
+  ['places', 'map', 'map', null],
+  ['places', 'territory', 'territory', null],
+  ['forces', 'unit', 'unit', 'units'],
+  ['forces', 'fighter', 'fighter', 'fighters'],
+  ['forces', 'group', 'group', 'groups'],
+  ['forces', 'crew', 'crew', 'crews'],
+  ['forces', 'force', 'force', 'forces'],
+  ['forces', 'goods', 'goods', null],
+  ['forces', 'volley', 'volley', 'volleys'],
+  ['forces', 'munition', 'munition', 'munitions'],
+  ['forces', 'march', 'march', 'marches'],
+  ['people', 'operative', 'operative', 'operatives'],
+  ['people', 'officer', 'officer', 'officers'],
+  ['people', 'notable', 'notable', 'notables'],
+  ['accounts', 'money', 'money_unit', 'money_units'],
+  ['accounts', 'size', 'size_unit', 'size_units'],
+];
+
+/** A unit class's token, by the role it plays in a fight. */
+const UNIT_TOKENS: readonly [hull: HullClass, role: string][] = [
+  ['battleship', 'line'],
+  ['escort', 'screen'],
+  ['torpedo_boat', 'strike'],
+  ['lifter', 'lift'],
+  ['freighter', 'trade'],
+  ['listener', 'sigint'],
+  ['courier', 'dispatch'],
+];
+
 function tokenTable(): Map<string, TokenSource> {
   const table = new Map<string, TokenSource>();
-  const add = (family: 'places' | 'forces' | 'people' | 'accounts', key: string, one: string, many: string | null) => {
-    table.set(one, { family, key, plural: false });
-    if (many) table.set(many, { family, key, plural: true });
-  };
-  add('places', 'world', 'world', 'worlds');
-  add('places', 'system', 'system', 'systems');
-  add('places', 'sector', 'sector', 'sectors');
-  add('places', 'lane', 'lane', 'lanes');
-  add('places', 'hyperlane', 'hyperlane', 'hyperlanes');
-  add('places', 'jump', 'jump', 'jumps');
-  add('places', 'hub', 'hub', 'hubs');
-  add('places', 'orbit', 'orbit', 'orbits');
-  add('places', 'garrison', 'garrison', 'garrisons');
-  add('places', 'yards', 'yards', null);
-  add('places', 'shipyard', 'shipyard', 'shipyards');
-  add('places', 'berth', 'berth', 'berths');
-  add('places', 'rim', 'rim', null);
-  add('places', 'space', 'space', null);
-  add('places', 'galaxy', 'galaxy', 'galaxies');
-  add('forces', 'hull', 'hull', 'hulls');
-  add('forces', 'ship', 'ship', 'ships');
-  add('forces', 'warship', 'warship', 'warships');
-  add('forces', 'fleet', 'fleet', 'fleets');
-  add('forces', 'squadron', 'squadron', 'squadrons');
-  add('forces', 'crew', 'crew', 'crews');
-  add('forces', 'navy', 'navy', 'navies');
-  add('forces', 'cargo', 'cargo', null);
-  add('forces', 'salvo', 'salvo', 'salvos');
-  add('forces', 'torpedo', 'torpedo', 'torpedoes');
-  add('forces', 'voyage', 'voyage', 'voyages');
-  for (const verb of ['sail', 'land'] as const) {
-    table.set(verb, { family: 'verbs', key: verb, form: 'base' });
-    table.set(`${verb}s`, { family: 'verbs', key: verb, form: 's' });
-    table.set(`${verb}ed`, { family: 'verbs', key: verb, form: 'past' });
-    table.set(`${verb}ing`, { family: 'verbs', key: verb, form: 'ing' });
+  for (const [family, key, one, many] of TERM_TOKENS) {
+    table.set(one, { family, key, plural: false, alt: false });
+    table.set(`${one}_alt`, { family, key, plural: false, alt: true });
+    if (many) {
+      table.set(many, { family, key, plural: true, alt: false });
+      table.set(`${many}_alt`, { family, key, plural: true, alt: true });
+    }
   }
-  add('people', 'operative', 'operative', 'operatives');
-  add('people', 'officer', 'officer', 'officers');
-  add('people', 'notable', 'notable', 'notables');
-  add('accounts', 'credits', 'credit', 'credits');
-  add('accounts', 'tons', 'ton', 'tons');
-  for (const hull of ['battleship', 'escort', 'torpedo_boat', 'lifter', 'freighter', 'listener', 'courier'] as const) {
-    table.set(hull, { family: 'units', key: hull, plural: false });
-    table.set(`${hull}s`, { family: 'units', key: hull, plural: true });
+  for (const [verb, forms] of [['move', ['move', 'moves', 'moved', 'moving']], ['disembark', ['disembark', 'disembarks', 'disembarked', 'disembarking']]] as const) {
+    table.set(forms[0], { family: 'verbs', key: verb, form: 'base' });
+    table.set(forms[1], { family: 'verbs', key: verb, form: 's' });
+    table.set(forms[2], { family: 'verbs', key: verb, form: 'past' });
+    table.set(forms[3], { family: 'verbs', key: verb, form: 'ing' });
+  }
+  for (const [hull, role] of UNIT_TOKENS) {
+    table.set(`${role}_unit`, { family: 'units', key: hull, plural: false });
+    table.set(`${role}_units`, { family: 'units', key: hull, plural: true });
   }
   return table;
 }
 
 const TOKENS = tokenTable();
 
-/** The tokens `say` knows, by name: `world`, `worlds`, `credits`, `battleships` … */
+/** The tokens `say` knows, by name: `node`, `nodes`, `node_alt`, `money_units`, `line_units` … */
 export const SAY_TOKENS: readonly string[] = [...TOKENS.keys()];
 
-/** A token's word in the lexicon in force. `{World}` is the same token, capitalised. */
+/** A token's word in the lexicon in force. `{Node}` is the same token, capitalised, and `{NODE}` shouted. */
 function tokenWord(name: string): string {
   const shouting = name.length > 1 && name === name.toUpperCase();
   const lower = shouting ? name.toLowerCase() : name[0]!.toLowerCase() + name.slice(1);
@@ -417,28 +471,30 @@ function tokenWord(name: string): string {
   const capital = (word: string) =>
     shouting ? word.toUpperCase() : name[0] === lower[0] ? word : word[0]!.toUpperCase() + word.slice(1);
   if (source.family === 'verbs') return capital(active.verbs[source.key][source.form]);
+  if (source.family === 'units') {
+    const entry = active.units[source.key];
+    return capital(source.plural ? entry.plural : entry.word);
+  }
   const entry =
-    source.family === 'units'
-      ? active.units[source.key]
-      : source.family === 'places'
-        ? active.places[source.key as PlaceTerm]
-        : source.family === 'forces'
-          ? active.forces[source.key as ForceTerm]
-          : source.family === 'people'
-            ? active.people[source.key as PeopleTerm]
-            : active.accounts[source.key as AccountTerm];
-  return capital(source.plural ? entry.plural : entry.word);
+    source.family === 'places'
+      ? active.places[source.key as PlaceTerm]
+      : source.family === 'forces'
+        ? active.forces[source.key as ForceTerm]
+        : source.family === 'people'
+          ? active.people[source.key as PeopleTerm]
+          : active.accounts[source.key as AccountTerm];
+  return capital(termWord(entry, source.plural ? 2 : 1, source.alt));
 }
 
-/** A token in a `say` template: a name in braces, `{world}`, `{Fleets}`, `{torpedo_boats}`, and `{SHIP}` for a heading in capitals. */
+/** A token in a `say` template: a role in braces, `{node}`, `{Groups}`, `{strike_units}`, and `{UNIT_ALT}` for a heading in capitals. */
 export const SAY_TOKEN = /\{([A-Za-z][A-Za-z_]*)\}/g;
 
 /**
- * Prose written with the lexicon's words in it: say`Your {fleet} at ${name}`.
+ * Prose written with the lexicon's words in it: say`Your {group} at ${name}`.
  *
- * The template's own text names a role by token — `{world}`, `{worlds}`,
- * `{credits}`, `{battleships}`, `{rim}` for "the Rim", capitalised for the
- * start of a sentence (`{Worlds}`) — and `say` fills each from the lexicon in
+ * The template's own text names a role by token — `{node}`, `{nodes}`,
+ * `{money_units}`, `{line_units}`, `{map}` for "the Rim", capitalised for the
+ * start of a sentence (`{Nodes}`) — and `say` fills each from the lexicon in
  * force, so the sentence a skin reads is in the skin's words and the source
  * holds none of Pax Galactica's. What is interpolated (`${name}`) is left as it
  * is: a name comes from the world, a count from arithmetic, and a word from a

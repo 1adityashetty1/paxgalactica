@@ -462,11 +462,11 @@ export function boundPayloadsToOutcome(
       touched = true;
       const hulls = unitWord(String(o.hull ?? 'battleship'), 2);
       if (failed) {
-        notes.push(say`The {yards} lay down nothing: the attempt to build ${o.count} ${hulls} failed, and nothing is spent on it.`);
+        notes.push(say`The {works} lay down nothing: the attempt to build ${o.count} ${hulls} failed, and nothing is spent on it.`);
         continue;
       }
       const half = Math.max(1, Math.floor(o.count / 2));
-      if (half < o.count) notes.push(say`A partial result: the {yards} lay down ${half} ${hulls} rather than ${o.count}.`);
+      if (half < o.count) notes.push(say`A partial result: the {works} lay down ${half} ${hulls} rather than ${o.count}.`);
       bounded.push({ ...o, count: half });
     }
     if (touched) ops = bounded;
@@ -737,15 +737,15 @@ export function applyOrderEffect(
       const gained = system.strategicValue - before;
       if (gained <= 0) {
         return {
-          note: say`${doneAt(label, system.name)}, but the {world} is already developed as far as it can be (strategic value ${before}).`,
+          note: say`${doneAt(label, system.name)}, but the {node} is already developed as far as it can be (strategic value ${before}).`,
           delivered: false,
         };
       }
       const whose = stillOurs
         ? ''
         : holder
-          ? say` The works now serve ${holder}, who holds the {world}.`
-          : say` The {world} answers to nobody now, and the works serve whoever comes for it.`;
+          ? say` The works now serve ${holder}, who holds the {node}.`
+          : say` The {node} answers to nobody now, and the works serve whoever comes for it.`;
       return {
         note: `${doneAt(label, system.name)}: strategic value ${before} -> ${system.strategicValue}.${whose}`,
         delivered: true,
@@ -757,7 +757,7 @@ export function applyOrderEffect(
       system.garrisonMax = before + effect.magnitude;
       const whose = stillOurs
         ? ''
-        : ` The works stand, and they defend ${holder ?? say`whoever takes the {world} next`}.`;
+        : ` The works stand, and they defend ${holder ?? say`whoever takes the {node} next`}.`;
       return {
         note: `${doneAt(label, system.name)}: garrison capacity ${before} -> ${system.garrisonMax}.${whose}`,
         delivered: true,
@@ -767,7 +767,7 @@ export function applyOrderEffect(
     case 'raise_garrison': {
       if (!stillOurs) {
         return {
-          note: say`${doneAt(label, system.name)}, but the {world} has changed hands and the levy dispersed.`,
+          note: say`${doneAt(label, system.name)}, but the {node} has changed hands and the levy dispersed.`,
           delivered: false,
         };
       }
@@ -789,7 +789,7 @@ export function applyOrderEffect(
     case 'commission_ships': {
       if (!stillOurs) {
         return {
-          note: say`${doneAt(label, system.name)}, but the {yards} were lost with the {world} and the {hulls} with them.`,
+          note: say`${doneAt(label, system.name)}, but the {works} were lost with the {node} and the {units} with them.`,
           delivered: false,
         };
       }
@@ -838,13 +838,13 @@ export function applyOrderEffect(
       }
       if (holder === null) {
         return {
-          note: say`${doneAt(label, system.name)}, but the {world} has fallen out of anyone's hands and the ${assetKindWord(shape.kind)} stands empty.`,
+          note: say`${doneAt(label, system.name)}, but the {node} has fallen out of anyone's hands and the ${assetKindWord(shape.kind)} stands empty.`,
           delivered: false,
         };
       }
       const whose = stillOurs
         ? ''
-        : say` It serves the power that holds the {world} now.`;
+        : say` It serves the power that holds the {node} now.`;
       return {
         note: `${doneAt(label, system.name)}: ${describeOrderEffect(effect)} stands.${whose}`,
         delivered: true,

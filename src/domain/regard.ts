@@ -313,7 +313,7 @@ export function joinsWhom(system: StarSystem, factionIds: readonly string[]): st
 export function envoyRefusal(state: WorldState, system: StarSystem, factionId: string): string | null {
   const holder = system.controllerFactionId;
   if (holder !== null && holder !== factionId) {
-    return say`${system.name} answers to another power; an envoy goes to a {world} of your own, or to one that answers to nobody.`;
+    return say`${system.name} answers to another power; an envoy goes to a {node} of your own, or to one that answers to nobody.`;
   }
   if (holder === factionId) return null;
   const reach =
@@ -322,5 +322,5 @@ export function envoyRefusal(state: WorldState, system: StarSystem, factionId: s
     neighboursOf(state, system.id).some(
       (n) => state.systems.find((x) => x.id === n)?.controllerFactionId === factionId,
     );
-  return reach ? null : say`Nothing of yours is near ${system.name}; an envoy needs a {world} of yours next to it, or {ships} over it.`;
+  return reach ? null : say`Nothing of yours is near ${system.name}; an envoy needs a {node} of yours next to it, or {units_alt} over it.`;
 }

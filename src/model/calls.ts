@@ -272,9 +272,9 @@ export async function appraiseAgreement(
       'not do.',
       '',
       'This is about the SUBSTANCE of the obligation, not about conditionality.',
-      say`Promising to send {ships} if an ally is attacked is an ordinary pact and`,
-      say`breaches nothing. Promising to close a {lane}, pay tribute, or hand over a`,
-      say`{world} is a breach for a power whose lines forbid those things, whatever`,
+      say`Promising to send {units_alt} if an ally is attacked is an ordinary pact and`,
+      say`breaches nothing. Promising to close a {route}, pay tribute, or hand over a`,
+      say`{node} is a breach for a power whose lines forbid those things, whatever`,
       'the trigger.',
       '',
       'An agreement is never rolled, so it has no price: leave `stat` and',
@@ -398,12 +398,12 @@ export async function verifyBreachRelevance(
     'Say `relevant: true` when the act does what the line forbids, or fails to',
     'do what it demands, even if the wording differs — judge the act, not the',
     'phrasing. A blockade dressed up as withdrawing insurance still closes a',
-    say`{lane}. And the other way: a {fleet} sent to fight or "block" another {fleet} is`,
-    say`a battle, not a closed {lane}.`,
+    say`{route}. And the other way: a {group} sent to fight or "block" another {group} is`,
+    say`a battle, not a closed {route}.`,
     '',
     'Say `relevant: false` when the line is simply about something else. A line',
     'about preying on shipping has nothing to say about an assassination; a line',
-    say`about refusing tribute has nothing to say about building a {shipyard}. Being`,
+    say`about refusing tribute has nothing to say about building a {works_alt}. Being`,
     'generally out of character is not enough — the line has to be about THIS.',
     '',
     'You are not deciding whether the act is wise, legal or in character. Only',
@@ -574,7 +574,7 @@ export async function narrateEpilogue(
     label: 'epilogue',
     system: loadPrompt('epilogue'),
     user: [
-      say`# Dossier — the {galaxy} at the last bell`,
+      say`# Dossier — the {map_alt} at the last bell`,
       '',
       dossier,
       '',
@@ -763,7 +763,7 @@ export async function resolveAction(
         appraisal: {
           ...priced.appraisal,
           admissible: false,
-          reason: say`The barracks are already full at ${where}: a levy there raises nobody. Fortify the {world} to raise its ceiling first.`,
+          reason: say`The barracks are already full at ${where}: a levy there raises nobody. Fortify the {node} to raise its ceiling first.`,
           ground: { kind: 'already_so', ref: full[0]!.id },
         },
       };
@@ -969,7 +969,7 @@ export async function resolveAction(
   });
   if (nowhere.length > 0 && nowhere.length === builds.length) {
     const names = nowhere.map((id) => state.systems.find((x) => x.id === id)?.name ?? id).join(' and ');
-    const why = say`Nothing of yours stands at ${names} to build on: works need a {world} you hold, or a {fleet} of yours over it.`;
+    const why = say`Nothing of yours stands at ${names} to build on: works need a {node} you hold, or a {group} of yours over it.`;
     return {
       output: { narrative: why, ops: [], inadmissible: why },
       check: null,
@@ -1045,7 +1045,7 @@ export async function resolveAction(
   }
   if ((covert.length > 0 || groundwork.length > 0) && !onBooks) {
     const why =
-      say`You have nobody to send. Recruit an operative first — that is an action of its own, at a {world} you hold — and send them with your next.`;
+      say`You have nobody to send. Recruit an operative first — that is an action of its own, at a {node} you hold — and send them with your next.`;
     return {
       output: { narrative: why, ops: [], inadmissible: why },
       check: null,
@@ -1244,10 +1244,10 @@ export async function resolveAction(
             `The arbiter ruled this ${priced.appraisal.covert.length === 1 ? 'a' : `${priced.appraisal.covert.length}`} covert operation${priced.appraisal.covert.length === 1 ? '' : 's'}: ${priced.appraisal.covert
               .map((c) => `**${c.mission}** at \`${c.systemId}\``)
               .join(', ')}.`,
-            say`You may emit one \`deploy_agent\` for EACH of them, at that {system} with that`,
+            say`You may emit one \`deploy_agent\` for EACH of them, at that {node_alt} with that`,
             'mission, to give it a cover and an effect that fits — and no send the',
-            say`arbiter did not rule. Do NOT invent its consequences: no {hull} losses, no`,
-            say`stolen {credits}, no collapse in relations. The operative is charged for,`,
+            say`arbiter did not rule. Do NOT invent its consequences: no {unit} losses, no`,
+            say`stolen {money_units}, no collapse in relations. The operative is charged for,`,
             'capped, and resolved on the tick like every other one. Anything you leave',
             'out, the engine sends itself, rider and all.',
             '',
@@ -1658,7 +1658,7 @@ export function sendingIsTheAct(state: WorldState, action: string, ground: { kin
   const me = state.playerFactionId;
   const ships = state.systems.filter((x) => hullsAt(x, me) > 0);
   if (ships.length === 0) return null;
-  return say`the act sends {ships} there, and ${getFaction(state, me)?.name ?? me} has {ships} at ${ships.map((x) => x.name).slice(0, 3).join(', ')} to send. Going there is the act; rule it as a move.`;
+  return say`the act sends {units_alt} there, and ${getFaction(state, me)?.name ?? me} has {units_alt} at ${ships.map((x) => x.name).slice(0, 3).join(', ')} to send. Going there is the act; rule it as a move.`;
 }
 
 /**
@@ -1767,7 +1767,7 @@ export async function askAdvisor(
         : []),
       '## What your staff has flagged (computed from the board; true)',
       '',
-      ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : [say`- Nothing massing against you, and no rival in any {orbit} you hold.`]),
+      ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : [say`- Nothing massing against you, and no rival in any {presence} you hold.`]),
       '',
       'Weigh these first: they are the facts most likely to decide the next turns. Anything else you raise must be in the state block below.',
       '',
@@ -1779,7 +1779,7 @@ export async function askAdvisor(
               ? [
                   ...turnSoFar.declared.map((d) => `- ${d}`),
                   '',
-                  say`These are done or settled for this turn, and what {landed} is already on the board below. Do not urge any of them again.`,
+                  say`These are done or settled for this turn, and what {disembarked} is already on the board below. Do not urge any of them again.`,
                 ]
               : ['- Nothing declared yet this turn.']),
             '',
@@ -1791,7 +1791,7 @@ export async function askAdvisor(
       '',
       ...capabilitiesOf(state, viewerId).map((c) => `- ${c}`),
       '',
-      say`Recommend nothing these do not allow: no works where none of yours stands, no {landing} without lift, no operative without one free or a slot to recruit into.`,
+      say`Recommend nothing these do not allow: no works where none of yours stands, no {disembarking} without lift, no operative without one free or a slot to recruit into.`,
       '',
       '## Your paper (computed; complete — what is not listed does not exist)',
       '',
@@ -1837,7 +1837,7 @@ export async function askAdvisor(
         ctx.addIssue({
           code: 'custom',
           path: ['counsel'],
-          message: say`You urged an envoy no order can send: ${refused.join(' ')} Recommend something your power can do there, or an envoy to a {world} listed as within reach.`,
+          message: say`You urged an envoy no order can send: ${refused.join(' ')} Recommend something your power can do there, or an envoy to a {node} listed as within reach.`,
         });
     }),
   });
@@ -1954,7 +1954,7 @@ export async function diplomacyReply(
     '',
     serializeCharacter(faction),
     '',
-    say`{Fleet} ${fleetStrengthOf(state, faction.id)} {hulls} / ${fleetTonsOf(state, faction.id)} {tons} · treasury ${faction.credits} {credits}.`,
+    say`{Group} ${fleetStrengthOf(state, faction.id)} {units} / ${fleetTonsOf(state, faction.id)} {size_units} · treasury ${faction.credits} {money_units}.`,
     `Your disposition toward ${player?.name ?? state.playerFactionId}: ${dispositionBetween(
       state,
       factionId,
@@ -1991,7 +1991,7 @@ export async function diplomacyReply(
     (() => {
       const { budget, because } = concessionBudget(state, factionId, state.playerFactionId);
       const { given } = withinBudget(state, onTable, factionId, state.playerFactionId);
-      return say`About ${budget} {credits}' worth in this conversation; ${given} of it is already on the table, so ${Math.max(0, budget - given)} is left.${
+      return say`About ${budget} {money_units}' worth in this conversation; ${given} of it is already on the table, so ${Math.max(0, budget - given)} is left.${
         because.length > 0 ? ` Set by ${because.join(', ')}.` : ''
       }`;
     })(),
@@ -2104,10 +2104,10 @@ export function serializeConcessionRecord(state: WorldState, conceded: readonly 
   const lines = conceded.map((c) => {
     const who = getFaction(state, c.by)?.name ?? c.by;
     const parts: string[] = [];
-    if (c.systems.length > 0) parts.push(say`{worlds} ${c.systems.map((id) => `\`${id}\``).join(', ')}`);
-    if (c.credits > 0) parts.push(say`${c.credits} {credits}`);
+    if (c.systems.length > 0) parts.push(say`{nodes} ${c.systems.map((id) => `\`${id}\``).join(', ')}`);
+    if (c.credits > 0) parts.push(say`${c.credits} {money_units}`);
     if (c.perTurn > 0) parts.push(`${c.perTurn} a turn`);
-    if (c.hulls > 0) parts.push(say`${c.hulls} {hulls}`);
+    if (c.hulls > 0) parts.push(say`${c.hulls} {units}`);
     for (const id of c.assets) {
       const a = (state.assets ?? []).find((x) => x.id === id);
       parts.push(a ? `\`${id}\` (${a.quantity} ${a.unit} — ${a.text}, held by ${a.heldBy})` : `\`${id}\``);
@@ -2119,7 +2119,7 @@ export function serializeConcessionRecord(state: WorldState, conceded: readonly 
   return [
     '## What each side recorded conceding',
     '',
-    say`Written down by each power as it spoke, and struck when it was withdrawn. List every term the two actually agreed in \`accepted\`, by the key at the start of its line. The engine builds the payments, things, favours, {worlds} and toll lifts from these lines; a thing named by id here already exists.`,
+    say`Written down by each power as it spoke, and struck when it was withdrawn. List every term the two actually agreed in \`accepted\`, by the key at the start of its line. The engine builds the payments, things, favours, {nodes} and toll lifts from these lines; a thing named by id here already exists.`,
     '',
     ...lines,
   ].join('\n');

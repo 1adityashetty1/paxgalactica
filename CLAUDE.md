@@ -4584,9 +4584,21 @@ The lexicon is `PAX_LEXICON` in `src/skin/words.ts`.
   lexicon from deep inside the reducer, and the skin's schema reads the
   domain's id tables at load, so any runtime import between them would be a
   cycle.
+- **The slots are roles, never a setting's nouns.** Places are node, region,
+  route, step, hub, presence, defence, works, capacity, map and territory.
+  Forces are unit, fighter, group, crew, force, goods, volley, munition and
+  march. The verbs are move and disembark, and the units of account money and
+  size. A landlocked skin has no torpedo or hyperlane to fill.
+- **A slot may have a second word (`alt`).** Pax Galactica uses two words for
+  some roles: a node is a world and a system, a route a lane and a hyperlane,
+  a unit a hull and a ship. A skin that gives no `alt` reads its main word in
+  both places.
 - **Prose is written with `say`.** It is a tagged template whose text names a
-  role by token (`{world}`, `{Fleets}`, `{credits}`, `{battleships}`,
-  `{rim}`, `{SHIP}`) and fills each from the lexicon.
+  role by token and fills each from the lexicon:
+  - a slot: `{node}`, `{nodes}`, `{node_alt}`, `{Groups}`, `{UNIT_ALT}`;
+  - a unit by its role in a fight: `{line_units}`, `{strike_unit}`;
+  - a verb: `{moved}`, `{disembarking}`;
+  - money and size: `{money_units}`, `{size_units}`.
 - **A word with no token comes from a helper:** `unitWord`, `orderWord`,
   `treatyWord`, `rimEventWord`.
 - **A sentence about an id comes from `meaning()`.** A skin owns the sentence,

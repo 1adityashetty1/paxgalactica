@@ -133,8 +133,8 @@ type Tab =
 
 const TABS: { id: Tab; label: string | (() => string) }[] = [
   { id: 'factions', label: 'Factions' },
-  { id: 'system', label: () => say`{System}` },
-  { id: 'fleets', label: () => say`{Fleets}` },
+  { id: 'system', label: () => say`{Node_alt}` },
+  { id: 'fleets', label: () => say`{Groups}` },
   // Beside Fleets, not beside Factions. An officer is a fact about a FLEET —
   // who takes it into its next battle — and putting the line under a faction's
   // doctrine read as a claim about the power itself, which is what the ethics
@@ -324,12 +324,12 @@ function Factions({
               )}
             </header>
             <div className="meta">
-              {say`{fleet} `}{fleetStrengthOf(state, f.id)} · {f.credits}cr ·{' '}
+              {say`{group} `}{fleetStrengthOf(state, f.id)} · {f.credits}cr ·{' '}
               <span
                 className={span.over > 0 ? 'bad' : undefined}
-                title={say`{Worlds} held against the span of control: ${span.span} can be governed, set by influence and never below the homeland. Each {world} past it costs a point of dissent every turn.`}
+                title={say`{Nodes} held against the span of control: ${span.span} can be governed, set by influence and never below the homeland. Each {node} past it costs a point of dissent every turn.`}
               >
-                {span.held}/{span.span}{say` {worlds}`}
+                {span.held}/{span.span}{say` {nodes}`}
               </span>
               {isPlayer && (
                 <>
@@ -383,7 +383,7 @@ function Factions({
             {(f.heat ?? 0) > 0 && (
               <div
                 className={(f.heat ?? 0) >= HEAT_NOTORIOUS ? 'dissent' : 'muted'}
-                title={say`How notorious its covert work, unlicensed raiding and broken word have made it. It fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} {rim} answers — crackdowns, a price on its head, turned contacts, a neighbour massing on its border.`}
+                title={say`How notorious its covert work, unlicensed raiding and broken word have made it. It fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} {map} answers — crackdowns, a price on its head, turned contacts, a neighbour massing on its border.`}
               >
                 heat {f.heat}
                 {(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' · notorious' : watchLine(HEAT_BANDS, f.heat ?? 0) ? ` · ${watchLine(HEAT_BANDS, f.heat ?? 0)}` : ''}
@@ -409,7 +409,7 @@ function Factions({
             {rallyBonus(state, f.id) > 0 && (
               <div
                 className="rally"
-                title={say`Home {worlds} held by others: ${state.systems
+                title={say`Home {nodes} held by others: ${state.systems
                   .filter((s) => s.homeFactionId === f.id && s.controllerFactionId !== f.id)
                   .map((s) => s.name)
                   .join(', ')}. Resolve decides how hard a people rallies; it lasts while the homeland does not.`}
@@ -435,7 +435,7 @@ function Factions({
                   tax me". The one that matters most to the reader is the toll
                   charged to THEM, so it is called out separately. */}
               {f.tollTargets.includes(state.playerFactionId) && f.id !== state.playerFactionId && (
-                <span className="chip bad" title={say`You pay this power to cross its {space}. Lifting it is something to negotiate for.`}>
+                <span className="chip bad" title={say`You pay this power to cross its {territory}. Lifting it is something to negotiate for.`}>
                   tolls you
                 </span>
               )}
@@ -477,7 +477,7 @@ function SystemTab({
   holding: number;
 }) {
   const sys = selectedId ? getSystem(state, selectedId) : null;
-  if (!sys) return <p className="empty">{say`Click a {system} on the map.`}</p>;
+  if (!sys) return <p className="empty">{say`Click a {node_alt} on the map.`}</p>;
 
   const controller = sys.controllerFactionId ? getFaction(state, sys.controllerFactionId) : null;
   const color = controller ? ansi256ToHex(controller.displayColor) : NEUTRAL;
@@ -559,13 +559,13 @@ function SystemTab({
         </dd>
         <dt>Strategic value</dt>
         <dd>{sys.strategicValue}/10</dd>
-        <dt title={say`{Worlds} of a kind count together: two buy a point of that stat, four buy two, six buy three. Concentration pays — a single {world} of a kind buys nothing.`}>
+        <dt title={say`{Nodes} of a kind count together: two buy a point of that stat, four buy two, six buy three. Concentration pays — a single {node} of a kind buys nothing.`}>
           Ground counts toward
         </dt>
         <dd>{WORLD_TYPE_STAT[sys.worldType]}</dd>
         {sys.homeFactionId !== null && sys.homeFactionId !== sys.controllerFactionId && (
           <>
-            <dt title={say`A share of what this {world} pays its holder, charged every turn. Institutions built for another state do not administer themselves.`}>
+            <dt title={say`A share of what this {node} pays its holder, charged every turn. Institutions built for another state do not administer themselves.`}>
               Occupied
             </dt>
             <dd className="bad">
@@ -582,7 +582,7 @@ function SystemTab({
       <WorldPeople state={state} sys={sys} holding={holding} onDraft={onDraft} />
       <WorldSeats state={state} sys={sys} onDraft={onDraft} onOffer={onOffer} activeChannel={activeChannel} />
 
-      <h4>{say`{Ships} present`}</h4>
+      <h4>{say`{Units_alt} present`}</h4>
       {shipRows.length === 0 ? (
         <p className="empty">None.</p>
       ) : (
@@ -621,7 +621,7 @@ function SystemTab({
 
       <h4>Income per turn</h4>
       {incomeRows.length === 0 ? (
-        <p className="empty">{say`Pays nobody. An unaligned {world} owes no one until a treaty says so.`}</p>
+        <p className="empty">{say`Pays nobody. An unaligned {node} owes no one until a treaty says so.`}</p>
       ) : (
         <ul className="ship-list">
           {incomeRows.map(([id, v]) => (
@@ -761,7 +761,7 @@ function SystemTab({
         </ul>
       )}
 
-      <h4>{say`{Hyperlanes}`}</h4>
+      <h4>{say`{Routes_alt}`}</h4>
       <ul className="lanes-list">
         {sys.hyperlaneEdges.map((id) => (
           <li key={id}>
@@ -891,10 +891,10 @@ function Command({
                 )}
               </>
             ) : (
-              <p className="empty">{say`No officer. The {fleet} fights without one until somebody is appointed off the Lists.`}</p>
+              <p className="empty">{say`No officer. The {group} fights without one until somebody is appointed off the Lists.`}</p>
             )}
             {roster.length > 1 && (
-              <ul className={say`{ship}-list command-roster`}>
+              <ul className={say`{unit_alt}-list command-roster`}>
                 {roster.slice(1).map((c) => (
                   <li key={c.id} className="agent-row">
                     <span style={{ color: colour, display: 'flex' }}>
@@ -1001,27 +1001,27 @@ function SailButton({
       {commands ? (
         <button
           className="chip"
-          title={say`Writes the start of a move of the {fleet} they command; add where it goes.`}
+          title={say`Writes the start of a move of the {group} they command; add where it goes.`}
           onClick={() =>
             onDraft(
-              `Move ${fleetName(officer.factionId, commands)}, under ${callName},${(commands.stack.lifter ?? 0) > 0 ? say` without {landing},` : ''} to `,
+              `Move ${fleetName(officer.factionId, commands)}, under ${callName},${(commands.stack.lifter ?? 0) > 0 ? say` without {disembarking},` : ''} to `,
             )
           }
         >
-          {say`move their {fleet}`}
+          {say`move their {group}`}
         </button>
       ) : (
         <button
           className="chip"
-          title={say`Writes the start of a {fleet} movement with this officer aboard; add where it goes.`}
-          onClick={() => onDraft(say`Send {ships} from ${where}, with ${callName} aboard, without {landing}, to `)}
+          title={say`Writes the start of a {group} movement with this officer aboard; add where it goes.`}
+          onClick={() => onDraft(say`Send {units_alt} from ${where}, with ${callName} aboard, without {disembarking}, to `)}
         >
-          {say`{sail} with a {fleet}`}
+          {say`{move} with a {group}`}
         </button>
       )}
       <button
         className="chip"
-        title={say`Writes an order for them to travel alone, a turn a {jump}, to a {world} you hold or have {ships} at.`}
+        title={say`Writes an order for them to travel alone, a turn a {step}, to a {node} you hold or have {units_alt} at.`}
         onClick={() => onDraft(`Send ${callName} alone to `)}
       >
         travel alone
@@ -1169,7 +1169,7 @@ function FixtureBuilder({
 }) {
   const { ground, room, cost, turns, upkeepAdded, ordinal, credits, kinds } = options;
   if (room === 0) {
-    return <p className="empty">{say`No room for another: a {world} carries two fixtures.`}</p>;
+    return <p className="empty">{say`No room for another: a {node} carries two fixtures.`}</p>;
   }
   const nth = ordinal === 1 ? '1st' : ordinal === 2 ? '2nd' : ordinal === 3 ? '3rd' : `${ordinal}th`;
   return (
@@ -1177,11 +1177,11 @@ function FixtureBuilder({
       <h4>Can be built here</h4>
       <p className="meta fixture-terms">
         This ground makes {ground}, so anything built here must raise it. Room for {room}, no two
-        alike. {cost}{say` {credits} and at least `}{turns} turns of construction; as your {nth} fixture it
+        alike. {cost}{say` {money_units} and at least `}{turns} turns of construction; as your {nth} fixture it
         would add {upkeepAdded} a turn to upkeep.
         {credits < cost && <span className="bad"> You have {credits}.</span>}
       </p>
-      <ul className={say`{ship}-list fixture-options`}>
+      <ul className={say`{unit_alt}-list fixture-options`}>
         {kinds.map((k) => (
           <li key={k.kind} className={k.refusal ? 'agent-row refused' : 'agent-row'}>
             {/* The row is faint when it cannot go up, as a building under way
@@ -1226,7 +1226,7 @@ function IntelBar({ level }: { level: number }) {
   const reached = INTEL_STEPS.filter(([at]) => level >= at);
   const next = INTEL_STEPS.find(([at]) => level < at);
   const title = [
-    say`How well you know them: built by watchers and {listeners} on their ground, trade and war; fading a tenth of itself a turn, faster while they run counter-intelligence. One watcher or {listener} holds it near 50; it takes two to go higher.`,
+    say`How well you know them: built by watchers and {sigint_units} on their ground, trade and war; fading a tenth of itself a turn, faster while they run counter-intelligence. One watcher or {sigint_unit} holds it near 50; it takes two to go higher.`,
     ...reached.map(([at, what]) => `${at}: ${what}.`),
     next ? `Next, at ${next[0]}: ${next[1]}.` : 'Nothing further to learn.',
   ].join('\n');
@@ -1279,7 +1279,7 @@ function WorldPeople({
   const be = (n: number) => n.toFixed(1);
   return (
     <>
-      <h4 title={say`A {world}'s standing with each power drifts back a tenth of the way a turn toward where it rests: ${HOME_REGARD} toward its own power, ${OCCUPIED_HOME_REGARD} toward one holding somebody else's home, nothing otherwise. Meeting what it wants raises it; raiding it, fighting over it and taking it by force lower it.`}>
+      <h4 title={say`A {node}'s standing with each power drifts back a tenth of the way a turn toward where it rests: ${HOME_REGARD} toward its own power, ${OCCUPIED_HOME_REGARD} toward one holding somebody else's home, nothing otherwise. Meeting what it wants raises it; raiding it, fighting over it and taking it by force lower it.`}>
         Its people
       </h4>
       <p className="meta">
@@ -1295,12 +1295,12 @@ function WorldPeople({
         </p>
       ) : hold.shortfall <= 0 ? (
         <p className="meta">
-          Held down by {holderName}: it wants {be(hold.need)}{say` {battleship}-equivalents of {warships} over it and has`}{' '}
+          Held down by {holderName}: it wants {be(hold.need)}{say` {line_unit}-equivalents of {fighters} over it and has`}{' '}
           {be(hold.have)}. Content at {CONTENT_REGARD}; now {hold.regard}.
         </p>
       ) : (
         <p className="bad">
-          Restless under {holderName}: it wants {be(hold.need)}{say` {battleship}-equivalents over it and has `}{be(hold.have)}.
+          Restless under {holderName}: it wants {be(hold.need)}{say` {line_unit}-equivalents over it and has `}{be(hold.have)}.
           Its garrison is deserting; with none left it answers to nobody. Content at {CONTENT_REGARD}; now {hold.regard}.
         </p>
       )}
@@ -1338,7 +1338,7 @@ function WorldPeople({
           </button>
           <span className="meta">
             {' '}
-            a political manoeuvre, {2 * EFFECT_COST.court}{say` {credits}: `}{2 * ENVOY_PER_POINT} standing, plus your influence
+            a political manoeuvre, {2 * EFFECT_COST.court}{say` {money_units}: `}{2 * ENVOY_PER_POINT} standing, plus your influence
           </span>
         </p>
       )}
@@ -1424,7 +1424,7 @@ function Assets({
     // reads as a broken one. Say what would fill it.
     return (
       <p className="muted">
-        {say`You are holding nothing but {credits}, {ships} and the fixtures on your {worlds} (those are on the {System} tab). Prisoners taken in battle, operatives your people catch, salvage, and anything bargained for across a table are held here.`}
+        {say`You are holding nothing but {money_units}, {units_alt} and the fixtures on your {nodes} (those are on the {Node_alt} tab). Prisoners taken in battle, operatives your people catch, salvage, and anything bargained for across a table are held here.`}
       </p>
     );
   }
@@ -1453,7 +1453,7 @@ function Assets({
               !a.portable && a.atSystemId
                 ? `fixed at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId}`
                 : a.atSystemId
-                  ? say`at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId} — lost with the {world}`
+                  ? say`at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId} — lost with the {node}`
                   : null,
               a.uses !== null ? (a.uses === 1 ? 'one play left' : `${a.uses} plays left`) : null,
               !a.divisible && a.quantity > 1 ? 'does not divide' : null,
@@ -1546,7 +1546,7 @@ function Assets({
                     onClick={() =>
                       onOffer(
                         best.f.id,
-                        say`${a.text.replace(/[.\s]+$/, '')} — I will let ${a.quantity === 1 ? 'it' : 'them'} go to you for ${best.band.max} {credits}.`,
+                        say`${a.text.replace(/[.\s]+$/, '')} — I will let ${a.quantity === 1 ? 'it' : 'them'} go to you for ${best.band.max} {money_units}.`,
                       )
                     }
                   >
@@ -1608,7 +1608,7 @@ function Standing({
                 {/* A charter pays from its world, and nothing once it is lost
                     (§7): the world is what a rival takes to end it. */}
                 {c.atSystemId !== undefined && (
-                  <span className="chip" title={say`Pays at most a quarter of what this {world} pays you, and nothing if it is lost.`}>
+                  <span className="chip" title={say`Pays at most a quarter of what this {node} pays you, and nothing if it is lost.`}>
                     on {getSystem(state, c.atSystemId)?.name ?? c.atSystemId}
                   </span>
                 )}
@@ -1789,7 +1789,7 @@ function Standing({
                   </li>
                 )}
                 {Object.entries(t.terms.shipsPledged).map(([id, n]) => (
-                  <li key={id}>{say`{ships} pledged: `}{getFaction(state, id)?.name ?? id} — {n}</li>
+                  <li key={id}>{say`{units_alt} pledged: `}{getFaction(state, id)?.name ?? id} — {n}</li>
                 ))}
                 {flow !== 0 && (
                   <li className={flow > 0 ? 'good' : 'bad'}>
@@ -2021,9 +2021,9 @@ function Standing({
                     <span className="eta">{b.pool} in escrow</span>
                   </div>
                   <p className="muted">
-                    posted by {b.postedBy === null ? say`{rim}'s merchants (${b.note})` : name(b.postedBy)}
-                    {b.paidOut > 0 ? ` · ${b.paidOut} paid out` : ''}{say` · prizes raided pay {credit} for {credit}, {hulls} destroyed`}{' '}
-                    {BOUNTY_PER_TON}{say` a {ton}`}
+                    posted by {b.postedBy === null ? say`{map}'s merchants (${b.note})` : name(b.postedBy)}
+                    {b.paidOut > 0 ? ` · ${b.paidOut} paid out` : ''}{say` · prizes raided pay {money_unit} for {money_unit}, {units} destroyed`}{' '}
+                    {BOUNTY_PER_TON}{say` a {size_unit}`}
                     {b.postedBy === me ? ' · yours: withdraw it to take back what is left' : ''}
                     {b.targetFactionId === me ? ` · ${rimEventWord('bounty_posted')}` : ''}
                   </p>
@@ -2182,7 +2182,7 @@ function WorldSeats({
   const firstListed = suggested ? listedFor(state, suggested.id)[0] : undefined;
   return (
     <>
-      <h4 title={say`Every {world} has a governor, and a {hub} a chancellor beside them. A seat on a power's {world} is filled from its Lists; a notable belongs to one of its estates, and does to the {world} what that estate's favour says.`}>
+      <h4 title={say`Every {node} has a governor, and a {hub} a chancellor beside them. A seat on a power's {node} is filled from its Lists; a notable belongs to one of its estates, and does to the {node} what that estate's favour says.`}>
         Seats
       </h4>
       <ul className="war-list">
@@ -2205,7 +2205,7 @@ function WorldSeats({
             );
           }
           const spouse = notableById(state, n.spouseId);
-          const spouseSide = spouse ? (powerOf(spouse) ? getFaction(state, powerOf(spouse)!)?.name : say`an independent {world}`) : null;
+          const spouseSide = spouse ? (powerOf(spouse) ? getFaction(state, powerOf(spouse)!)?.name : say`an independent {node}`) : null;
           const doing = seatDoing(state, n);
           const free = n.estateId === null && n.spouseId === null;
           return (
@@ -2315,7 +2315,7 @@ function CourtTab({
           <p className="meta">
             favour {e.favour}, drifting toward {e.baseline} · {e.seats} seat{e.seats === 1 ? '' : 's'} against a fair
             share of {e.fairShare.toFixed(1)} · {e.grants} grant{e.grants === 1 ? '' : 's'}
-            {e.hated > 0 && <span className="bad"> · {e.hated}{say` on {worlds} that resent you`}</span>}
+            {e.hated > 0 && <span className="bad"> · {e.hated}{say` on {nodes} that resent you`}</span>}
           </p>
           <div className="chips">
             {e.canGrant && (
@@ -2363,7 +2363,7 @@ function CourtTab({
       <h4>Marriages</h4>
       {view.marriages.length === 0 ? (
         <p className="empty">
-          {say`None. A notable of yours can marry a rival's, agreed in a channel, or an independent {world}'s that regards you at`}{' '}
+          {say`None. A notable of yours can marry a rival's, agreed in a channel, or an independent {node}'s that regards you at`}{' '}
           {MARRIAGE_CONSENT_REGARD}.
         </p>
       ) : (
@@ -2532,7 +2532,7 @@ function ListsTab({
       </p>
       <h4>Empty seats</h4>
       {view.vacancies.length === 0 ? (
-        <p className="empty">{say`Every seat on your {worlds} is filled.`}</p>
+        <p className="empty">{say`Every seat on your {nodes} is filled.`}</p>
       ) : (
         <ul className="war-list">
           {view.vacancies.map((v) => (
@@ -2721,7 +2721,7 @@ function AgentsTab({
         })()}
       </div>
       <p className="muted">
-        {say`How many you can run is set by your guile. Recruiting takes one off your Lists and is an action, and so is sending one; they travel three {jumps} a turn. :help espionage has the missions.`}
+        {say`How many you can run is set by your guile. Recruiting takes one off your Lists and is an action, and so is sending one; they travel three {steps} a turn. :help espionage has the missions.`}
       </p>
 
       {section('At work', r.atWork)}
@@ -2754,7 +2754,7 @@ function AgentsTab({
       <h4>Theirs, discovered</h4>
       {r.theirs.length === 0 ? (
         <p className="empty">
-          {say`None you know of. A rival's people show once caught, or on your own {worlds} once you know that power well.`}
+          {say`None you know of. A rival's people show once caught, or on your own {nodes} once you know that power well.`}
         </p>
       ) : (
         r.theirs.map(({ ownerId, agents }) => (
@@ -2891,7 +2891,7 @@ function RelationChip({ relation }: { relation: Relation }) {
   if (!word) return null;
   const truce = relation.kind !== 'truce' && relation.truceUntil !== undefined ? `, and a truce holds until turn ${relation.truceUntil}` : '';
   return (
-    <span className={`chip relation ${relation.kind}`} title={`${relation.why}${truce}${relation.basing ? say`; their {fleets} may enter each other\'s {space}` : ''}.`}>
+    <span className={`chip relation ${relation.kind}`} title={`${relation.why}${truce}${relation.basing ? say`; their {groups} may enter each other\'s {territory}` : ''}.`}>
       {word}
     </span>
   );

@@ -544,7 +544,7 @@ export function openRouterProvider(
         const why = parsed.error?.message ?? raw.slice(0, 200);
         if (res.status === 402) {
           throw new ModelCallError(
-            say`Model call failed: OpenRouter says the account is out of {credit} (402). Add {credit} at openrouter.ai, or lower the tier models in Settings. ${why}`.trim(),
+            say`Model call failed: OpenRouter says the account is out of {money_unit} (402). Add {money_unit} at openrouter.ai, or lower the tier models in Settings. ${why}`.trim(),
             1,
           );
         }

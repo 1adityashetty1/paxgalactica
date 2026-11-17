@@ -211,7 +211,7 @@ async function reviseRejected(
     '## What you emitted, none of which was applied',
     '',
     'An action lands whole or not at all. The reducer refused some of these ops,',
-    say`so NONE of the batch was applied and the {world} is exactly as the state above`,
+    say`so NONE of the batch was applied and the {node} is exactly as the state above`,
     'describes it. Nothing has happened twice and nothing needs preserving.',
     '',
     '```json',
@@ -300,7 +300,7 @@ export function noPrizeBeforeTheRaid(ops: unknown[]): { ops: unknown[]; notes: s
   if (kept.length === ops.length) return { ops, notes: [] };
   return {
     ops: kept,
-    notes: [say`No plunder was taken yet: a raid pays out of the {lanes} each turn it runs, starting next turn.`],
+    notes: [say`No plunder was taken yet: a raid pays out of the {routes} each turn it runs, starting next turn.`],
   };
 }
 
@@ -451,7 +451,7 @@ async function stageWithCorrection(
   const firstNotes = corrected
     ? first.notes.map((n) =>
         n.startsWith('Nothing in this batch was applied')
-          ? say`${n.replace(/\.$/, '')} — corrected and re-staged, and the second attempt {landed}.`
+          ? say`${n.replace(/\.$/, '')} — corrected and re-staged, and the second attempt {disembarked}.`
           : n,
       )
     : first.notes;
@@ -559,7 +559,7 @@ export function applyBonus(
     const back = Math.floor(Math.max(0, spent) / 4);
     if (back <= 0) return [];
     stage([{ op: 'adjust_credits', factionId: me, delta: back }], 'a cost avoided');
-    return [say`A cost avoided: ${back} {credits} come back.`];
+    return [say`A cost avoided: ${back} {money_units} come back.`];
   }
   if (bonus === 'tempo') {
     const fresh = campaign.state.pendingOrders.find(
@@ -757,7 +757,7 @@ function lineReason(state: WorldState, hit: LineHit): string {
   // was sailing there or already over the world: the first version told a
   // fleet already standing guard to "take station without landing".
   return hit.act.kind === 'invasion_launched'
-    ? say`${said} A {fleet} that keeps its {lifters} aboard stands guard and takes nothing; a {world} that answers to nobody is won with an envoy.`
+    ? say`${said} A {group} that keeps its {lift_units} aboard stands guard and takes nothing; a {node} that answers to nobody is won with an envoy.`
     : said;
 }
 
@@ -1017,11 +1017,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   const organising = organisingIsFree(routed.ops);
   if (organising.dropped) {
     routed.ops = organising.ops;
-    routed.notes.push(say`Organising your own {fleets} costs nothing: the charge written beside it is left out.`);
+    routed.notes.push(say`Organising your own {groups} costs nothing: the charge written beside it is left out.`);
   }
   if (onlyOrganising(routed.ops)) {
     campaign.refundActionPoint();
-    routed.notes.push(say`No action spent: organising your own {fleets} is free, as it is from the {Fleets} tab.`);
+    routed.notes.push(say`No action spent: organising your own {groups} is free, as it is from the {Groups} tab.`);
   }
   const inKind = noPaymentBesideAGift(routed.ops, campaign.state.debts);
   if (inKind.dropped) {
@@ -1098,7 +1098,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       narrative: why,
       inadmissible: why,
       staged: 0,
-      notes: [sailing ? say`No action spent: the {fleet} had no right to that {orbit}.` : 'No action spent: the work had nowhere to stand.'],
+      notes: [sailing ? say`No action spent: the {group} had no right to that {presence}.` : 'No action spent: the work had nowhere to stand.'],
       rejections: staged.rejections,
       costUsd: resolution.costUsd + staged.costUsd,
       check: null,
@@ -1569,7 +1569,7 @@ export function groundInConcessions(
       }
       const pledged = (terms.shipsPledged ?? {}) as Record<string, number>;
       if ((pledged[otherId] ?? 0) > offeredHulls) {
-        dropped.push(say`${pledged[otherId]} {hulls} pledged by ${otherId}, which it never offered.`);
+        dropped.push(say`${pledged[otherId]} {units} pledged by ${otherId}, which it never offered.`);
         return false;
       }
       // A thing written into the paper is held to exactly the standard a world
@@ -1638,7 +1638,7 @@ export function groundInConcessions(
       op.factionId === otherId &&
       !saidAnything
     ) {
-      dropped.push(say`{credits} out of ${otherId}'s treasury, which it never agreed to pay.`);
+      dropped.push(say`{money_units} out of ${otherId}'s treasury, which it never agreed to pay.`);
       return false;
     }
     // A favour owed binds the power that owes it, and giving way to a demand

@@ -79,9 +79,9 @@ describe('the scan', () => {
   });
 
   it('reads a say template\'s tokens as the lexicon\'s, and a token anywhere else as a leak', () => {
-    expect(hits([lit('your {fleet} over {worlds}', true)], settingWords(), SAY_TOKENS)).toEqual([]);
-    expect(hits([lit('your {fleet} over a world')], settingWords(), SAY_TOKENS).map((h) => h.word)).toEqual([
-      '{fleet} outside say',
+    expect(hits([lit('your {group} over {nodes}', true)], settingWords(), SAY_TOKENS)).toEqual([]);
+    expect(hits([lit('your {group} over a world')], settingWords(), SAY_TOKENS).map((h) => h.word)).toEqual([
+      '{group} outside say',
       'world',
     ]);
   });

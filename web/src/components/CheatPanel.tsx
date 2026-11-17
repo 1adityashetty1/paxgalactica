@@ -99,7 +99,7 @@ export function CheatPanel({
       </header>
 
       <div className="cheat-row">
-        <span className="cheat-label">{say`{Credits}`}</span>
+        <span className="cheat-label">{say`{Money_units}`}</span>
         {factionSelect(creditsFor, setCreditsFor)}
         {CHEAT_CREDITS.map((n) => (
           <button key={n} disabled={busy} onClick={go({ kind: 'credits', factionId: creditsFor, amount: n })}>
@@ -142,7 +142,7 @@ export function CheatPanel({
       </div>
 
       <div className="cheat-row">
-        <span className="cheat-label">{say`{Ships}`}</span>
+        <span className="cheat-label">{say`{Units_alt}`}</span>
         {factionSelect(shipsFor, pickShipsFor)}
         <span className="muted">at</span>
         {worldSelect(shipsAt, setShipsAt, standsAt(shipsFor))}

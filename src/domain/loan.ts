@@ -266,7 +266,7 @@ export function drawMatching(
 export function describeOutstanding(loan: Loan): string {
   const out = loan.outstanding;
   if (out === null) return 'nothing';
-  if (out.kind === 'credits') return say`${out.amount} {credits}`;
+  if (out.kind === 'credits') return say`${out.amount} {money_units}`;
   if (out.kind === 'asset') return 'the article';
-  return say`${hullsIn(out.stack)} {hulls}`;
+  return say`${hullsIn(out.stack)} {units}`;
 }
