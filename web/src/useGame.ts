@@ -5,7 +5,8 @@ import { spliceLog } from '../../src/ui/logview.js';
 import { api, ApiError, feedStore, onConnection, onServerEvent } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
 import type { BriefingEventView } from '../../src/api/contract.js';
-import { RIM_EVENT_TITLE, type RimEventKind } from '../../src/domain/events.js';
+import { type RimEventKind } from '../../src/domain/events.js';
+import { rimEventTitle } from '../../src/skin/lexicon.js';
 
 export interface Message {
   id: number;
@@ -236,7 +237,7 @@ export function useGame() {
           say(`The campaign runs ${v.maxTurns} turns. Make them count.`, 'brief');
         }
         if (v.sandboxEvent) {
-          say(`Sandbox: only ${RIM_EVENT_TITLE[v.sandboxEvent].toLowerCase()} fires, every turn. End a turn to see it.`, 'brief');
+          say(`Sandbox: only ${rimEventTitle(v.sandboxEvent).toLowerCase()} fires, every turn. End a turn to see it.`, 'brief');
         }
       }),
     [guard, say, showFeedOf],

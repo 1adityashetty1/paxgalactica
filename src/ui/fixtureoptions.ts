@@ -15,6 +15,7 @@ import {
   statFixturesAt,
   type WorldState,
 } from '../domain/state.js';
+import { assetKindWord } from '../skin/lexicon.js';
 
 /**
  * What the player could build on one of their worlds, for the System tab.
@@ -57,7 +58,7 @@ export type FixtureOptions = {
 };
 
 export function fixtureName(kind: string): string {
-  return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return assetKindWord(kind).replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Null unless the player holds the world: a fixture is raised only on ground you hold. */
@@ -112,7 +113,7 @@ export function fixtureOptions(state: WorldState, systemId: string): FixtureOpti
 
 /** The sentence a player can send to found one — what the help text's example says. */
 export function foundingLine(kind: string, worldName: string): string {
-  const name = kind.replace(/_/g, ' ');
+  const name = assetKindWord(kind);
   // By sound, not letter: "an arsenal", "a university". No kind starts with a
   // vowel that is not one of those two cases.
   return `Build ${/^[aeio]/.test(name) ? 'an' : 'a'} ${name} at ${worldName}.`;

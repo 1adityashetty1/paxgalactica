@@ -6,6 +6,7 @@ import { routeEarnings, routeLegs, severedBy, tradeRoutes } from '../../../src/d
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { CommanderMark } from './BattleIcons.js';
 import { holdAt, regardFor, regardRecorded } from '../../../src/domain/regard.js';
+import { say } from '../../../src/skin/lexicon.js';
 
 /**
  * The galaxy, as SVG.
@@ -201,7 +202,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
             reset();
           }}
         >
-          <option value="">Whole galaxy</option>
+          <option value="">{say`Whole {galaxy}`}</option>
           {sectorsOf(state).map((s) => (
             <option key={s} value={s}>
               {s}
@@ -218,7 +219,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
           reset
         </button>
         {layout.omitted.length > 0 && (
-          <span className="omitted">{layout.omitted.length} systems outside this sector</span>
+          <span className="omitted">{layout.omitted.length}{say` {systems} outside this {sector}`}</span>
         )}
       </div>
 
@@ -254,7 +255,7 @@ export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
                 {carried > 0 && (
                   <title>
                     {cut ? 'Interdicted. ' : ''}
-                    {Math.round(carried)} credits of trade a turn ride this lane.
+                    {Math.round(carried)}{say` {credits} of trade a turn ride this {lane}.`}
                   </title>
                 )}
               </line>

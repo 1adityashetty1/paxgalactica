@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_ASSET_STAT, isNote } from '../src/domain/diplomacy.js';
+import { PAX_LEXICON } from '../src/skin/words.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
@@ -72,7 +73,7 @@ describe('assets', () => {
         // validates a minted asset — an inconsistent one would silently
         // disable the lookup rather than fail.
         expect(a.kind).toMatch(/^[a-z][a-z0-9_]*$/);
-        expect(a.unit.length).toBeGreaterThan(0);
+        expect(PAX_LEXICON.assetKinds[a.kind]?.unit.length).toBeGreaterThan(0);
         // An instrument that can be played zero times is a contradiction, and
         // an instrument that also divides is two ways of counting one thing.
         if (a.uses !== null) {
@@ -81,8 +82,8 @@ describe('assets', () => {
         }
         // A fixture IS its world, so it cannot come in tradeable lots.
         if (a.fixture) expect(a.divisible).toBe(false);
-        expect(a.from.length).toBeGreaterThan(0);
-        expect(a.wanted.length).toBeGreaterThan(0);
+        expect(PAX_LEXICON.assetKinds[a.kind]!.from.length).toBeGreaterThan(0);
+        expect(PAX_LEXICON.assetKinds[a.kind]!.wanted.length).toBeGreaterThan(0);
       }
     });
 
@@ -108,7 +109,7 @@ describe('assets', () => {
       const table = serializeArchetypes();
       for (const a of ASSET_ARCHETYPES) {
         expect(table).toContain(`\`${a.kind}\``);
-        expect(table).toContain(a.from);
+        expect(table).toContain(PAX_LEXICON.assetKinds[a.kind]!.from);
       }
       expect(table).toContain('worth is a BAND');
       expect(table).toContain('played once, then spent');

@@ -13,6 +13,7 @@ import {
 } from './state.js';
 import type { BattleReport } from './battle.js';
 import { MARRIAGE_REGARD } from './estates.js';
+import { liveMeanings, say } from '../skin/lexicon.js';
 
 /**
  * A world's regard for each power — its **standing** with them — and the two
@@ -99,13 +100,7 @@ export const WANT_OF_STAT: Record<StatName, Want> = {
   resolve: 'protection',
 };
 /** What meeting each want takes, in one clause. */
-export const WANT_MEANS: Record<Want, string> = {
-  arms: 'a fortification programme you pay for there',
-  trade: 'your freighters over it, and its lanes open',
-  development: 'a development programme you pay for there',
-  peace: 'you at war with nobody',
-  protection: 'your warships over it, and no raid on it',
-};
+export const WANT_MEANS: Readonly<Record<Want, string>> = liveMeanings('wants');
 
 export function wantOf(system: StarSystem): Want {
   return WANT_OF_STAT[WORLD_TYPE_STAT[system.worldType]];
@@ -318,7 +313,7 @@ export function joinsWhom(system: StarSystem, factionIds: readonly string[]): st
 export function envoyRefusal(state: WorldState, system: StarSystem, factionId: string): string | null {
   const holder = system.controllerFactionId;
   if (holder !== null && holder !== factionId) {
-    return `${system.name} answers to another power; an envoy goes to a world of your own, or to one that answers to nobody.`;
+    return say`${system.name} answers to another power; an envoy goes to a {world} of your own, or to one that answers to nobody.`;
   }
   if (holder === factionId) return null;
   const reach =
@@ -327,5 +322,5 @@ export function envoyRefusal(state: WorldState, system: StarSystem, factionId: s
     neighboursOf(state, system.id).some(
       (n) => state.systems.find((x) => x.id === n)?.controllerFactionId === factionId,
     );
-  return reach ? null : `Nothing of yours is near ${system.name}; an envoy needs a world of yours next to it, or ships over it.`;
+  return reach ? null : say`Nothing of yours is near ${system.name}; an envoy needs a {world} of yours next to it, or {ships} over it.`;
 }

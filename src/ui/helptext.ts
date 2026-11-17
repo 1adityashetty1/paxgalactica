@@ -1,6 +1,7 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { DARK_RAID_YIELD } from '../domain/trade.js';
-import { RIM_BOONS, RIM_EVENT_RATE, RIM_EVENT_TITLE, RIM_HAZARDS, RIM_NOTORIETY } from '../domain/events.js';
+import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS, RIM_NOTORIETY, type RimEventKind } from '../domain/events.js';
+import { assetKindWord, liveMeanings, rimEventTitle, say, treatyWord, unitWord } from '../skin/lexicon.js';
 import {
   COMMANDER_ARCHETYPES,
   COMMANDER_COST,
@@ -108,15 +109,7 @@ import { foundingLine } from './fixtureoptions.js';
  * a row fits the feed's width with the rest of the help — longer, and the
  * table wraps into a ragged column.
  */
-const JOB: Record<HullClass, string> = {
-  battleship: 'the line, and what wins the exchange',
-  escort: 'the screen: lost first, turns torpedoes aside',
-  torpedo_boat: 'fires once, first, at the heaviest hulls',
-  lifter: `carries ${LIFTER_CARRY} troops — the only way to take a world`,
-  freighter: 'more of the trade over unclaimed ground',
-  listener: `sees work where it stands; hears raids ${EMISSION_RANGE} jumps out`,
-  courier: 'an officer travelling alone; never built',
-};
+const JOB: Readonly<Record<HullClass, string>> = liveMeanings('unitJobs', { carry: LIFTER_CARRY, range: EMISSION_RANGE });
 
 /** A class too light to count in the exchange: it is there to be protected. */
 const UNARMED = 0.1;
@@ -126,22 +119,23 @@ function names(list: string[]): string {
 }
 
 export function shipClassLines(): string[] {
-  const plural = (h: HullClass) => `${HULL_SPEC[h].label}s`;
+  const plural = (h: HullClass) => unitWord(h, 2);
   const unarmed = NAVY_CLASSES.filter((h) => HULL_SPEC[h].orbitalWeight < UNARMED).map(plural);
   const byLoss = [...NAVY_CLASSES].sort((a, b) => HULL_SPEC[a].lossOrder - HULL_SPEC[b].lossOrder);
   const first = byLoss[0]!;
   const last = byLoss.at(-1)!;
   return [
-    `SHIP CLASSES — ${CREDITS_PER_TON} credits a ton to build, ${UPKEEP_PER_TON} a ton every turn after`,
+    say`{SHIP} CLASSES — ${CREDITS_PER_TON} {credits} a {ton} to build, ${UPKEEP_PER_TON} a {ton} every turn after`,
     ...NAVY_CLASSES.map((h) => {
-      const { label, tonnage } = HULL_SPEC[h];
+      const { tonnage } = HULL_SPEC[h];
+      const label = unitWord(h);
       const cost = `${tonnage * CREDITS_PER_TON}cr`;
       return `  ${label.padEnd(13)} ${tonnage}t ${cost.padStart(5)}  ${JOB[h]}`;
     }),
     `  ${capitalise(names(unarmed))} cannot fight. Losses fall on ${plural(first)}`,
     `  first and ${plural(last)} last, so a screen is what brings a convoy home.`,
-    `  Your yards lay down ${YARD_TONS_BASE} tons a turn, ${YARD_TONS_PER_POINT} more a point of industry;`,
-    `  a bigger order is paid now and queued, and lost if the world is lost.`,
+    say`  Your {yards} lay down ${YARD_TONS_BASE} {tons} a turn, ${YARD_TONS_PER_POINT} more a point of industry;`,
+    say`  a bigger order is paid now and queued, and lost if the {world} is lost.`,
   ];
 }
 
@@ -164,18 +158,18 @@ export function fixtureLines(state: WorldState | null): string[] {
   const nth = (n: number) => fixtureUpkeepForCount(n) - fixtureUpkeepForCount(n - 1);
   const example = state ? exampleFixture(state) : null;
   return [
-    'FIXTURES — what a world can be built into',
-    '  A fixture is a building that raises your stats while you hold its world:',
-    `  a factory, a military base, a stock exchange. Each world carries ${count(MAX_FIXTURES_PER_WORLD)},`,
+    say`FIXTURES — what a {world} can be built into`,
+    say`  A fixture is a building that raises your stats while you hold its {world}:`,
+    say`  a ${assetKindWord('factory')}, a ${assetKindWord('military_base')}, a ${assetKindWord('stock_exchange')}. Each {world} carries ${count(MAX_FIXTURES_PER_WORLD)},`,
     '  no two of the same kind, and its ground decides which: each must raise',
     '  the stat the ground does.',
     ...ground,
     `  It gives +${MAX_ASSET_STAT} to one stat, or +${MAX_ASSET_STAT / 2} to each of two. All of yours together`,
-    `  add at most +${MAX_FIXTURE_BONUS} to any one stat. It costs ${FIXTURE_COST} credits and at least ${turns} turns`,
-    '  of construction on a world you hold, and the bill rises with how many you',
+    say`  add at most +${MAX_FIXTURE_BONUS} to any one stat. It costs ${FIXTURE_COST} {credits} and at least ${turns} turns`,
+    say`  of construction on a {world} you hold, and the bill rises with how many you`,
     `  run: your first costs ${nth(1)} a turn, your second ${nth(2)}, your third ${nth(3)}. Every`,
-    '  power opens with one. Whoever holds the world when it finishes owns it,',
-    '  and taking a world takes what is built on it.',
+    say`  power opens with one. Whoever holds the {world} when it finishes owns it,`,
+    say`  and taking a {world} takes what is built on it.`,
     '  A saboteur can wreck one, a point of what it yields at a time, and it',
     `  still costs its upkeep; a repair programme puts it back, ${EFFECT_COST.repair_fixture} a point.`,
     ...(example ? [`  Try: ${example}`] : []),
@@ -188,8 +182,8 @@ export function fixtureLines(state: WorldState | null): string[] {
  */
 export function spanLines(): string[] {
   return [
-    '  You can govern only so many worlds: your homeland, or more with good',
-    `  influence (${SPAN_BASE} plus its modifier). Each world past that costs`,
+    say`  You can govern only so many {worlds}: your homeland, or more with good`,
+    say`  influence (${SPAN_BASE} plus its modifier). Each {world} past that costs`,
     `  ${SPAN_DISSENT_PER_WORLD} dissent every turn — conquest is braked by administration.`,
   ];
 }
@@ -201,15 +195,15 @@ export function spanLines(): string[] {
  */
 export function worldLines(): string[] {
   return [
-    'WORLDS WITH A VIEW OF THEIR OWN',
-    '  Every world has a standing with every power. One that answers to nobody',
+    say`{WORLDS} WITH A VIEW OF THEIR OWN`,
+    say`  Every {world} has a standing with every power. One that answers to nobody`,
     `  joins the power it regards at ${JOIN_REGARD} or better, ${JOIN_LEAD} clear of the next:`,
-    '  send it an envoy, and give it what it wants. A world you hold stays while',
-    `  it is content with you (${CONTENT_REGARD} or better) or held down by your warships`,
+    say`  send it an envoy, and give it what it wants. A {world} you hold stays while`,
+    say`  it is content with you (${CONTENT_REGARD} or better) or held down by your {warships}`,
     '  over it — fewer of them the higher your resolve. Neither, and its garrison',
     '  deserts until it rises and answers to nobody. An operative sent to incite',
-    '  a world another power holds turns it against them, hardest at home.',
-    '  What a world wants, by the stat its ground makes:',
+    say`  a {world} another power holds turns it against them, hardest at home.`,
+    say`  What a {world} wants, by the stat its ground makes:`,
     ...STAT_NAMES.map((stat) => {
       const want = WANT_OF_STAT[stat];
       return `    ${stat.padEnd(10)}${want.padEnd(12)}${WANT_MEANS[want]}`;
@@ -227,7 +221,7 @@ export function peaceLines(): string[] {
     `  victim and ${TRUCE_BREAKING_REPUTATION_COST} with every other power.`,
     '  Every power holds one promissory note, a favour signed in advance. Give',
     '  yours away and the holder may call it in, with no need to ask: a trade',
-    `  accord, a defence pact, basing rights or a line of credit, for ${NOTE_TERM_TURNS} turns.`,
+    say`  accord, a defence pact, basing rights or a line of {credit}, for ${NOTE_TERM_TURNS} turns.`,
   ];
 }
 
@@ -285,12 +279,12 @@ function darkShare(): string {
 export function raiderLines(): string[] {
   return [
     "THE RAIDER'S LEDGER",
-    '  Post a bounty on a power and your credits wait in escrow: prizes raided',
-    `  from it pay out credit for credit, its hulls destroyed ${BOUNTY_PER_TON} a ton.`,
+    say`  Post a bounty on a power and your {credits} wait in escrow: prizes raided`,
+    say`  from it pay out {credit} for {credit}, its {hulls} destroyed ${BOUNTY_PER_TON} a {ton}.`,
     '  A raid can run dark — say so when you order it: "raid it quietly, no',
     '  colours". Nobody is told whose it is and it costs no standing or heat',
     `  while it stays dark, but it takes ${darkShare()} the prizes. Each power it robs`,
-    '  may trace it, helped by listeners nearby; traced, it runs open, they',
+    say`  may trace it, helped by {listeners} nearby; traced, it runs open, they`,
     '  resent it double, and they hold proof to publish or blackmail you with.',
     '  Raiders you cannot name show up on your Trade tab as what they took.',
     '  A raider can be paid to leave you alone (protection) or to go after',
@@ -303,7 +297,7 @@ export function heatLines(): string[] {
   return [
     'HEAT',
     '  Covert work, unlicensed raids and broken pacts make a power notorious.',
-    `  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} the Rim answers: crackdowns, a price`,
+    say`  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} {rim} answers: crackdowns, a price`,
     '  on your head, contacts turned, a neighbour massing on your border.',
   ];
 }
@@ -317,10 +311,10 @@ export function officerLines(): string[] {
     '  is of one school, and helps only in a battle they are at:',
     ...COMMANDER_ARCHETYPES.map((a) => `  · ${a.effect} — ${a.phase}`),
     '  Appoint them off your Lists, where one of each school always waits;',
-    '  nobody is put in post any other way, so a fleet whose officers have all',
-    '  fallen fights without one. Name one in an order and they sail with that',
-    `  fleet. They grow better after ${seasoned} engagements and again after ${veteran}, and fall`,
-    '  or are taken when the fleet around them does. One ransomed home goes',
+    say`  nobody is put in post any other way, so a {fleet} whose officers have all`,
+    say`  fallen fights without one. Name one in an order and they {sail} with that`,
+    say`  {fleet}. They grow better after ${seasoned} engagements and again after ${veteran}, and fall`,
+    say`  or are taken when the {fleet} around them does. One ransomed home goes`,
     '  back on the Lists and returns to post for nothing. The senior one in',
     '  post also improves something at home.',
   ];
@@ -330,7 +324,7 @@ export function officerLines(): string[] {
 export function rimLines(): string[] {
   const oneIn = Math.round(1 / RIM_EVENT_RATE);
   return [
-    'THE RIM MOVES ON ITS OWN',
+    say`{RIM} MOVES ON ITS OWN`,
     `  About one turn in ${count(oneIn)}, something happens nobody ordered: one of`,
     `  ${count(RIM_HAZARDS.length)} hazards, which lean on whoever is ahead, or one of ${count(RIM_BOONS.length)} boons, which`,
     '  lean on whoever is behind. Never two in a turn. A card in the feed says',
@@ -360,28 +354,16 @@ export function wrap(text: string, indent = '  ', width = 76): string[] {
  * What each mission does, in a phrase. Keyed on every mission, so a new one
  * fails the typecheck here rather than being missing from the help.
  */
-const MISSION_JOB: Record<AgentMission, string> = {
-  surveillance: 'watches a world: hidden work there shows',
-  embezzlement: 'skims credits off the world it sits on',
-  larceny: 'steals one thing there, or copies paper',
-  subversion: 'wears down a stat, or turns a notable',
-  sabotage: 'wrecks hulls and fixtures',
-  defection: 'talks crews into your service',
-  discord: 'sets the holder against a third power',
-  incitement: 'turns a world against whoever holds it',
-  assassination: 'one strike, at a power, officer or notable',
-  seduction: 'courts a notable: kin, and an affair to prove',
-  kidnapping: 'seizes a named notable or officer there',
-};
+const MISSION_JOB: Readonly<Record<AgentMission, string>> = liveMeanings('missionJobs');
 
 /** Operatives, from the mission table that prices and risks them. */
 export function operativeLines(): string[] {
   return [
     'OPERATIVES',
     `  Recruiting one is an action: one of those waiting on your Lists signs`,
-    '  on at a world you hold. Sending them on a mission is another. A',
+    say`  on at a {world} you hold. Sending them on a mission is another. A`,
     '  recalled operative, or one ransomed home, goes back on the Lists.',
-    `  They travel ${AGENT_JUMPS_PER_TURN} jumps a turn and cost ${AGENT_UPKEEP} a turn`,
+    say`  They travel ${AGENT_JUMPS_PER_TURN} {jumps} a turn and cost ${AGENT_UPKEEP} a turn`,
     `  to keep. How many you can run is ${MAX_AGENTS_BASE} plus your guile modifier. Each`,
     '  mission is paid when they are sent; a failure can get them caught,',
     '  and a caught operative is a prisoner the other side can ransom.',
@@ -416,8 +398,8 @@ export function operativeLines(): string[] {
     '  SENT, NOT ROLLED',
     '  A covert order is not rolled when you give it. The operative sets out,',
     '  and their own chance — guile, class, method, groundwork — is rolled',
-    '  when they act. Open work in the same order, like the fleet covering a',
-    '  landing, is rolled on its own; the sending goes ahead either way.',
+    say`  when they act. Open work in the same order, like the {fleet} covering a`,
+    say`  {landing}, is rolled on its own; the sending goes ahead either way.`,
     '  One already on a mission takes a new one if you name them. Whatever no',
     '  mission can do yet is set aside, and on its own costs you no action.',
     '',
@@ -434,14 +416,14 @@ export function intelLines(): string[] {
   return [
     'INTEL',
     '  Everything you cannot see is a rumour until somebody of yours is',
-    '  standing in it: a watcher, or a listener over the world. What you see',
+    say`  standing in it: a watcher, or a {listener} over the {world}. What you see`,
     `  you remember for ${INTEL_MEMORY_TURNS} turns after the sight is lost.`,
     '  The longer you watch a power, the better you know it:',
     `    ${String(INTEL_TYPED).padStart(3)}  its rumours say what kind of work it is`,
     `    ${String(INTEL_DELIVERS).padStart(3)}  …and what the work will deliver`,
-    `    ${String(INTEL_OPERATIVES).padStart(3)}  its operatives on your worlds show`,
+    say`    ${String(INTEL_OPERATIVES).padStart(3)}  its operatives on your {worlds} show`,
     `    ${String(INTEL_DIG).padStart(3)}  your watchers dig deeper, and trace its dark raids`,
-    '  A watcher, or a listener over their world, teaches fastest; a listener',
+    say`  A watcher, or a {listener} over their {world}, teaches fastest; a {listener}`,
     '  nearby half as fast; a trade accord or a battle a little. A',
     '  counter-intelligence programme on your own ground wears their picture',
     '  of you down and catches their people there more often.',
@@ -454,18 +436,7 @@ export function intelLines(): string[] {
  * What each treaty type does, in a phrase. Keyed on every type, so a new one
  * fails the typecheck here rather than being missing from the help.
  */
-const TREATY_JOB: Record<TreatyType, string> = {
-  non_aggression: 'neither attacks the other; breaking it is public',
-  ceasefire: 'hostilities stop for a set number of turns',
-  mutual_defense: 'an attack on one, by anyone, brings the other in',
-  coalition: 'the same, but only against the powers it names',
-  trade_accord: 'lanes stay open between you; goods can flow',
-  basing_rights: 'one\'s fleets may sit in the other\'s systems',
-  tribute: 'one pays the other every turn to be left alone',
-  contract: 'paid work: a hire, a charter, a letter of marque',
-  cession: 'worlds change hands, once; a price may ride along',
-  marriage: 'a notable of each side wed: a peace, and kin',
-};
+const TREATY_JOB: Readonly<Record<TreatyType, string>> = liveMeanings('treatyJobs');
 
 /** Talking, and what it takes to make anything said real. */
 export function channelLines(): string[] {
@@ -483,7 +454,7 @@ export function treatyLines(): string[] {
   return [
     'TREATIES — agreed in a channel, never declared',
     ...(Object.keys(TREATY_JOB) as TreatyType[]).map(
-      (t) => `    ${t.replace(/_/g, ' ').replace('defense', 'defence').padEnd(16)}${TREATY_JOB[t]}`,
+      (t) => `    ${treatyWord(t).replace('defense', 'defence').padEnd(16)}${TREATY_JOB[t]}`,
     ),
     '  One conversation can produce several. Breaking one is your choice, and',
     '  it costs you with the other party and with everyone watching.',
@@ -497,8 +468,8 @@ export function allyLines(): string[] {
     'ALLIES',
     '  A mutual defence pact answers an attack by anyone; a coalition answers',
     '  only the powers it names, and they resent it. Either way, an attack on',
-    '  one puts the other at war with the attacker, and the warships it',
-    `  pledged come from worlds within ${count(PLEDGE_REACH)} jumps, once a turn. An ally already`,
+    say`  one puts the other at war with the attacker, and the {warships} it`,
+    say`  pledged come from {worlds} within ${count(PLEDGE_REACH)} {jumps}, once a turn. An ally already`,
     '  at peace with the attacker is not called.',
     `  A power whose enemies together outweigh it ${count(EXHAUSTION_RATIO)} to one, or whose wars`,
     `  are eating its last ${count(EXHAUSTION_RUNWAY_TURNS)} turns of savings, sues one of them for peace and`,
@@ -509,7 +480,7 @@ export function allyLines(): string[] {
 /** The Rim's events by title, from the lists that draw them. */
 export function eventListLines(): string[] {
   const titles = (kinds: readonly string[]) =>
-    kinds.map((k) => RIM_EVENT_TITLE[k as keyof typeof RIM_EVENT_TITLE]).join(', ');
+    kinds.map((k) => rimEventTitle(k as RimEventKind)).join(', ');
   return [
     ...wrap(`Hazards: ${titles(RIM_HAZARDS)}.`),
     ...wrap(`Boons: ${titles(RIM_BOONS)}.`),
@@ -523,22 +494,22 @@ export function eventListLines(): string[] {
 export function assetLines(): string[] {
   const things = ASSET_ARCHETYPES.filter((a) => !a.fixture).length;
   return [
-    'ASSETS — things that are neither credits nor ships',
+    say`ASSETS — things that are neither {credits} nor {ships}`,
     '  Prisoners, a dossier, a relic, a hold of ore, a chart: worth different',
     '  amounts to different powers, which is what makes them worth trading.',
     `  The game knows ${things} kinds and will hear of more. Every one is won by`,
-    '  attempting something, never by claiming it, and sits on a world —',
-    '  take the world and you take what is on it. Move a thing between your',
-    '  own worlds through your own space whenever you like; the Assets tab',
+    say`  attempting something, never by claiming it, and sits on a {world} —`,
+    say`  take the {world} and you take what is on it. Move a thing between your`,
+    say`  own {worlds} through your own {space} whenever you like; the Assets tab`,
     '  lists yours.',
     '  · people — prisoners, a captured officer or operative: worth most to',
     '    the power that lost them. Hand them home, sell them on, question',
-    '    them for a dossier, execute them, or move them between your worlds;',
+    say`    them for a dossier, execute them, or move them between your {worlds};`,
     '    each is remembered, and an execution by everyone.',
     '  · paper — a dossier, a seal, a charter. A promissory note is a favour',
     `    signed in advance, worth ${NOTE_VALUE} to anyone but the power that wrote it.`,
     '  · debts and loans — money owed and paid down by instalment, up to',
-    `    ${MAX_DEBT_PRINCIPAL}; or a squadron, credits or a thing lent and expected back.`,
+    say`    ${MAX_DEBT_PRINCIPAL}; or a {squadron}, {credits} or a thing lent and expected back.`,
     '    Agreed in a channel; missing a payment costs standing every turn.',
   ];
 }
@@ -565,29 +536,29 @@ export function courtHelpLines(state?: WorldState | null): string[] {
     '',
     'SEATS AND NOTABLES',
     ...wrap(
-      `Every world has a governor, and a hub a chancellor beside them, each of one of its holder's estates. Favoured, a notable wins its world over; at ${RESENTFUL} it keeps back half the world's income and sours it; at ${BITTER}, on a world not content, it lets the world go.`,
+      say`Every {world} has a governor, and a {hub} a chancellor beside them, each of one of its holder's estates. Favoured, a notable wins its {world} over; at ${RESENTFUL} it keeps back half the {world}'s income and sours it; at ${BITTER}, on a {world} not content, it lets the {world} go.`,
     ),
     ...wrap(
       `Your Lists are the notables waiting for a seat, and every seat you fill comes from them; each estate always has someone listed. Nobody on the Lists can be reached by an operative.`,
     ),
     ...wrap(
-      `Taking a world takes whoever sits it prisoner, and its seats stand empty, doing nothing, until you appoint. A killing empties a seat too. "Appoint Corvan Hale as Governor of Kalzir" is an action; taking a filled seat sends its notable back to the Lists and costs the world ${RESEAT_REGARD} regard.`,
+      say`Taking a {world} takes whoever sits it prisoner, and its seats stand empty, doing nothing, until you appoint. A killing empties a seat too. "Appoint Corvan Hale as Governor of Kalzir" is an action; taking a filled seat sends its notable back to the Lists and costs the {world} ${RESEAT_REGARD} regard.`,
     ),
     ...wrap(
-      `An estate counts its people in office. Whenever one of its notables leaves a seat on your world — replaced, taken in a conquest, sent home by a cession, killed or carried off — its favour falls ${SEAT_VACATED_FAVOUR} at once, whoever caused it.`,
+      say`An estate counts its people in office. Whenever one of its notables leaves a seat on your {world} — replaced, taken in a conquest, sent home by a cession, killed or carried off — its favour falls ${SEAT_VACATED_FAVOUR} at once, whoever caused it.`,
     ),
     '',
     'MARRIAGE',
     ...wrap(
-      `A marriage pairs a seated notable with one off the other side's Lists, who goes to live at that court as a ward. With another power it is a treaty, agreed in a channel: a peace, and the seated spouse's world warms to the in-laws by ${MARRIAGE_REGARD}.`,
+      say`A marriage pairs a seated notable with one off the other side's Lists, who goes to live at that court as a ward. With another power it is a treaty, agreed in a channel: a peace, and the seated spouse's {world} warms to the in-laws by ${MARRIAGE_REGARD}.`,
     ),
     ...wrap(
-      `The ward is surety. If their own power breaks the match or attacks, the court keeps them prisoner; if the court breaks it, they are lost. With a world that answers to nobody it is an action: yours goes to live there, and the world says yes at a standing of ${MARRIAGE_CONSENT_REGARD}.`,
+      say`The ward is surety. If their own power breaks the match or attacks, the court keeps them prisoner; if the court breaks it, they are lost. With a {world} that answers to nobody it is an action: yours goes to live there, and the {world} says yes at a standing of ${MARRIAGE_CONSENT_REGARD}.`,
     ),
     '',
     'WHO GOES WHERE',
     ...wrap(
-      'Officers command fleets, notables sit seats, operatives work unseen, and nobody moves from one to another. A seduction courts a notable; a subversion can turn one; the knife can kill one. :help espionage has the missions.',
+      say`Officers command {fleets}, notables sit seats, operatives work unseen, and nobody moves from one to another. A seduction courts a notable; a subversion can turn one; the knife can kill one. :help espionage has the missions.`,
     ),
   ];
 }

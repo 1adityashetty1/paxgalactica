@@ -4,6 +4,7 @@ import { HEAT_NOTORIOUS } from './heat.js';
 import { INTEL_DELIVERS, INTEL_DIG, INTEL_OPERATIVES, INTEL_TYPED } from './intel-levels.js';
 import { CONTENT_REGARD, JOIN_REGARD } from './regard.js';
 import { DOCTRINE_CHANGE_DISSENT_CEILING, WAR_DISPOSITION_THRESHOLD } from './state.js';
+import { meaning } from '../skin/lexicon.js';
 
 /**
  * The meters whose value crosses a line where something starts or stops
@@ -24,8 +25,19 @@ export interface Band {
   /** The lowest value in the band, inclusive. The first band starts at the meter's floor. */
   from: number;
   name: string;
-  /** What being in this band does, in a clause. */
-  means: string;
+  /** What being in this band does, in a clause: the lexicon's, read when it is asked for. */
+  readonly means: string;
+}
+
+/** A band whose meaning is the lexicon's, keyed `<meter>.<band>`, so a skin says what it means. */
+function band(meter: string, from: number, name: string): Band {
+  return {
+    from,
+    name,
+    get means() {
+      return meaning('bands', `${meter}.${name}`);
+    },
+  };
 }
 
 export interface Meter {
@@ -57,11 +69,11 @@ export const REGARD_BANDS: Meter = {
   watch: 'down',
   near: 20,
   bands: [
-    { from: -100, name: 'war', means: 'at war, unless a treaty or a truce holds the two apart' },
-    { from: WAR_DISPOSITION_THRESHOLD + 1, name: 'hostile', means: 'ill-willed enough to join a coalition against the power it regards so' },
-    { from: -39, name: 'cool', means: 'its doctrine may attack the power it regards so, even outside a war' },
-    { from: 1, name: 'warm', means: 'its doctrine will not attack the power it regards so outside a war' },
-    { from: 20, name: 'friendly', means: 'it trades goods with, and may bind a coalition beside, the power it regards so' },
+    band('regard', -100, 'war'),
+    band('regard', WAR_DISPOSITION_THRESHOLD + 1, 'hostile'),
+    band('regard', -39, 'cool'),
+    band('regard', 1, 'warm'),
+    band('regard', 20, 'friendly'),
   ],
 };
 
@@ -70,9 +82,9 @@ export const DISSENT_BANDS: Meter = {
   watch: 'up',
   near: 15,
   bands: [
-    { from: 0, name: 'steady', means: 'the institutions follow' },
-    { from: MUTINY_DISSENT, name: 'mutinous', means: 'crews may walk' },
-    { from: DOCTRINE_CHANGE_DISSENT_CEILING, name: 'ungovernable', means: 'doctrine can no longer be changed' },
+    band('dissent', 0, 'steady'),
+    band('dissent', MUTINY_DISSENT, 'mutinous'),
+    band('dissent', DOCTRINE_CHANGE_DISSENT_CEILING, 'ungovernable'),
   ],
 };
 
@@ -81,8 +93,8 @@ export const HEAT_BANDS: Meter = {
   watch: 'up',
   near: 15,
   bands: [
-    { from: 0, name: 'quiet', means: 'the Rim lets it be' },
-    { from: HEAT_NOTORIOUS, name: 'notorious', means: 'the Rim answers: crackdowns, bounties, turned contacts' },
+    band('heat', 0, 'quiet'),
+    band('heat', HEAT_NOTORIOUS, 'notorious'),
   ],
 };
 
@@ -91,11 +103,11 @@ export const INTEL_BANDS: Meter = {
   label: 'intel',
   watch: 'up',
   bands: [
-    { from: 0, name: 'rumour', means: 'their work shows only as rumour' },
-    { from: INTEL_TYPED, name: 'typed', means: 'their rumours say what kind of work it is' },
-    { from: INTEL_DELIVERS, name: 'delivers', means: 'and what it will deliver' },
-    { from: INTEL_OPERATIVES, name: 'operatives', means: 'their operatives on your worlds show, and are caught more often' },
-    { from: INTEL_DIG, name: 'dig', means: 'your watchers dig their secrets more easily, and you trace their dark raids' },
+    band('intel', 0, 'rumour'),
+    band('intel', INTEL_TYPED, 'typed'),
+    band('intel', INTEL_DELIVERS, 'delivers'),
+    band('intel', INTEL_OPERATIVES, 'operatives'),
+    band('intel', INTEL_DIG, 'dig'),
   ],
 };
 
@@ -104,11 +116,11 @@ export const FAVOUR_BANDS: Meter = {
   label: 'favour',
   watch: 'up',
   bands: [
-    { from: -100, name: 'bitter', means: '−2 on its stat, and its notables let a restless world go' },
-    { from: BITTER + 1, name: 'resentful', means: '−1 on its stat, and its notables withhold income' },
-    { from: RESENTFUL + 1, name: 'indifferent', means: 'nothing either way' },
-    { from: FAVOURED, name: 'favoured', means: '+1 on its stat, and its notables warm their worlds' },
-    { from: DOTING, name: 'doting', means: '+2 on its stat' },
+    band('favour', -100, 'bitter'),
+    band('favour', BITTER + 1, 'resentful'),
+    band('favour', RESENTFUL + 1, 'indifferent'),
+    band('favour', FAVOURED, 'favoured'),
+    band('favour', DOTING, 'doting'),
   ],
 };
 
@@ -117,9 +129,9 @@ export const STANDING_BANDS: Meter = {
   label: 'standing',
   watch: 'up',
   bands: [
-    { from: -100, name: 'unwilling', means: 'held only by force' },
-    { from: CONTENT_REGARD, name: 'content', means: 'stays with its holder unforced' },
-    { from: JOIN_REGARD, name: 'eager', means: 'an independent world joins, if no rival is close' },
+    band('standing', -100, 'unwilling'),
+    band('standing', CONTENT_REGARD, 'content'),
+    band('standing', JOIN_REGARD, 'eager'),
   ],
 };
 

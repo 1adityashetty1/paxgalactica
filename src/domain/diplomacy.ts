@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { StatNameSchema } from './checks.js';
 import { AgentClassSchema, type AgentClass } from './command.js';
+import { liveMeanings, say } from '../skin/lexicon.js';
 
 /**
  * Treaties and covert agents: the two standing structures that outlive the turn
@@ -283,18 +284,7 @@ export const TREATY_TYPES = [
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
 
-export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
-  cession: 'one party hands named worlds to the other, once and permanently; a price may ride with it',
-  contract: 'a commercial agreement that pays — a hire, an annuity, a charter fee; money for something given, not tribute',
-  non_aggression: 'neither party attacks the other; breaking it is a betrayal everyone sees',
-  mutual_defense: 'an attack on one, by anyone, obliges the other to answer: it goes to war with the attacker and sends the hulls it pledged',
-  coalition: 'a defence pact against the powers it names: an attack on one by them obliges the other to answer, and those powers resent it',
-  marriage: 'a notable of each party married to the other: a peace, a grant to each estate, and each world drawn toward the in-laws',
-  trade_accord: 'lanes stay open and income is shared on named systems',
-  tribute: 'one party pays the other every turn, in exchange for being left alone',
-  basing_rights: 'fleets of one party may transit and resupply in the other’s systems',
-  ceasefire: 'hostilities stop for a fixed number of turns and then lapse',
-};
+export const TREATY_TYPE_MEANING: Readonly<Record<TreatyType, string>> = liveMeanings('treatyTypes');
 
 /** A share of one system's income, granted by treaty. */
 export const IncomeShareSchema = z.object({
@@ -776,21 +766,7 @@ export const NOTE_TREATY: Record<NoteKind, TreatyType | null> = {
   safe_passage: 'trade_accord',
 };
 
-export const NOTE_TITLE: Record<NoteKind, string> = {
-  most_favoured: 'Most-favoured terms',
-  escort: 'Escort of the line',
-  line_of_credit: 'Line of credit',
-  sanctuary: 'Sanctuary',
-  safe_passage: 'Safe passage',
-};
-
-export const NOTE_MEANING: Record<NoteKind, string> = {
-  most_favoured: `a trade accord with the issuer for ${NOTE_TERM_TURNS} turns, and ${NOTE_INCOME_SHARE * 100}% of the income of the issuer's richest world`,
-  escort: `a mutual defence pact for ${NOTE_TERM_TURNS} turns: an attack on the holder calls up to ${NOTE_ESCORT_HULLS} of the issuer's hulls to the fight`,
-  line_of_credit: `an advance of ${NOTE_CREDIT} credits from the issuer, lent for ${NOTE_TERM_TURNS} turns at ${NOTE_CREDIT_RENT} a turn`,
-  sanctuary: `basing rights for ${NOTE_TERM_TURNS} turns: the holder's fleets may stand in the issuer's space without it being an attack`,
-  safe_passage: `a trade accord with the issuer for ${NOTE_TERM_TURNS} turns: neither raids nor blockades the other`,
-};
+export const NOTE_MEANING: Readonly<Record<NoteKind, string>> = liveMeanings('notes', { turns: NOTE_TERM_TURNS, share: NOTE_INCOME_SHARE * 100, hulls: NOTE_ESCORT_HULLS, credit: NOTE_CREDIT, rent: NOTE_CREDIT_RENT });
 
 /* ------------------------------------------------------------------ */
 /* Commodities                                                         */
@@ -2017,12 +1993,7 @@ export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
   kidnapping: 'wetworker',
 };
 
-export const AGENT_CLASS_MEANING: Record<AgentClass, string> = {
-  ghost: 'comes away with something: sight, money, a thing — surveillance, embezzlement and larceny',
-  agitator: 'stirs the many from a distance: a rumour, a forged letter, a crowd — subversion, discord and incitement',
-  sparrow: 'wins over one person, face to face: a captain, a notable, a lover — defection and seduction',
-  wetworker: 'breaks things, and takes people: a fleet, a fixture, a life, a hostage — sabotage, assassination and kidnapping',
-};
+export const AGENT_CLASS_MEANING: Readonly<Record<AgentClass, string>> = liveMeanings('agentClasses');
 
 /** Success chance a class gains on its own missions, and loses on anyone else's. */
 export const CLASS_SUCCESS_SHIFT = 10;
@@ -2080,27 +2051,7 @@ export const MISSION_EFFECTS: Record<AgentMission, readonly AgentEffect['kind'][
 /** What a power thinks of the one holding a person it lost to a kidnapping: it knows who did it. */
 export const KIDNAP_RESENTMENT = 30;
 
-export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
-  surveillance:
-    'reveals the target\'s hidden orders on this system; no damage, and the quietest mission there is',
-  embezzlement: 'skims credits from the system it sits on, every turn it succeeds',
-  larceny:
-    'ONE attempt to steal a named thing held on this world — a chart, a crate, a seal, a ledger. Take the original and it is yours and theirs no longer; take a COPY of paper and they keep it, you get a dossier, and it is quieter. Then the operative is back awaiting orders',
-  subversion: 'erodes a named stat while in place — the target governs, fights or builds worse',
-  sabotage: 'destroys fleet strength every turn it succeeds; loud, and easier to trace',
-  defection:
-    'talks crews out of the target\'s service and into yours, one or two hulls at a time. How many is your guile against their resolve, not your choice — and a power resolute enough simply cannot be turned',
-  discord:
-    'turns the power whose world this is against a THIRD power — forged grievances, planted letters, a rumour that keeps arriving. Slow, permanent, and the only mission aimed at a quarrel you are not in',
-  incitement:
-    'stirs the people of a world somebody else holds — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Far harder on a power\'s own home ground, where its people defend with the resolve the power was founded on',
-  assassination:
-    'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
-  kidnapping:
-    'ONE attempt to seize a named PERSON on this world — a notable in their seat, or an officer standing there — and carry them to a world you hold as your prisoner. Their seat stands empty, and their power knows exactly who has them. Then the operative is back awaiting orders',
-  seduction:
-    'courts a NOTABLE in their seat: while it lasts their world warms to you as to kin, what they say in bed reaches you, and after three turns you hold proof of the affair — which, published, voids their marriage and shames their estate',
-};
+export const AGENT_MISSION_MEANING: Readonly<Record<AgentMission, string>> = liveMeanings('missions');
 
 /**
  * What the mission itself costs in risk and persistence.
@@ -2687,15 +2638,15 @@ export function agentStanding(operations: number): string {
 export function describeEffect(effect: AgentEffect): string {
   switch (effect.kind) {
     case 'hull_damage':
-      return `−${effect.perTurn} fleet strength per turn`;
+      return say`−${effect.perTurn} {fleet} strength per turn`;
     case 'fixture_damage':
       return `−${effect.perTurn} from a fixture's yield per turn, until it is repaired`;
     case 'income_penalty':
-      return `−${effect.perTurn} credits per turn`;
+      return say`−${effect.perTurn} {credits} per turn`;
     case 'stat_debuff':
       return `−${effect.magnitude} ${effect.stat}`;
     case 'crew_defection':
-      return `talks up to ${effect.perTurn} hull(s) a turn out of the target's service, as far as guile beats resolve`;
+      return say`talks up to ${effect.perTurn} {hull}(s) a turn out of the target's service, as far as guile beats resolve`;
     case 'sedition':
       return `+${effect.perTurn} dissent a turn in the target's own institutions`;
     case 'intel':
@@ -2703,11 +2654,11 @@ export function describeEffect(effect: AgentEffect): string {
     case 'discord':
       return `−${effect.perTurn} a turn in the host's regard for ${effect.towardFactionId}, to a lifetime ${MAX_DISCORD_TOTAL}`;
     case 'incite':
-      return `−${effect.perTurn} a turn in the world's regard for whoever holds it`;
+      return say`−${effect.perTurn} a turn in the {world}'s regard for whoever holds it`;
     case 'turn_notable':
       return 'the notable works against their holder, whatever their estate thinks';
     case 'seduce':
-      return 'the notable\'s world warms to you, and proof of the affair follows';
+      return say`the notable\'s {world} warms to you, and proof of the affair follows`;
     case 'kidnap':
       return 'seizes a named person there, once, and holds them';
     case 'steal':

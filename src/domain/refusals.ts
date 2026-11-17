@@ -6,6 +6,7 @@ import { fleetName, resolveFleet } from './fleets.js';
 import { hullsIn } from './hulls.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import { FIXTURE_COST } from './diplomacy.js';
+import { assetKindWord, say, slugWords, unitWord } from '../skin/lexicon.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -105,11 +106,11 @@ export function sendsAsRuled(
   for (const op of ops) {
     const o = op as { op?: string; mission?: string; systemId?: string } | null;
     if (o?.op === 'deploy_agent' && !missions.has(`${o.mission}@${o.systemId}`)) {
-      dropped.push(`a ${o.mission ?? 'covert'} send at ${o.systemId ?? 'an unnamed world'}`);
+      dropped.push(`a ${o.mission ?? 'covert'} send at ${o.systemId ?? say`an unnamed {world}`}`);
       continue;
     }
     if (o?.op === 'lay_groundwork' && !places.has(o.systemId ?? '')) {
-      dropped.push(`groundwork at ${o.systemId ?? 'an unnamed world'}`);
+      dropped.push(`groundwork at ${o.systemId ?? say`an unnamed {world}`}`);
       continue;
     }
     kept.push(op);
@@ -284,11 +285,11 @@ export function foundsInWords(state: WorldState, action: string): Founds[] {
  */
 export function foundingRefusal(state: WorldState, actor: string, found: Founds): string | null {
   const shape = ASSET_ARCHETYPES.find((a) => a.kind === found.kind);
-  const name = found.kind.replace(/_/g, ' ');
+  const name = assetKindWord(found.kind);
   if (!shape?.fixture || !shape.modifies) return `There is no fixture called a ${name}.`;
   const world = state.systems.find((x) => x.id === found.systemId);
-  if (!world) return `There is no world "${found.systemId}".`;
-  if (world.controllerFactionId !== actor) return `A fixture is raised on a world you hold, and ${world.name} is not yours.`;
+  if (!world) return say`There is no {world} "${found.systemId}".`;
+  if (world.controllerFactionId !== actor) return say`A fixture is raised on a {world} you hold, and ${world.name} is not yours.`;
   const ground = WORLD_TYPE_STAT[world.worldType];
   if (!shape.modifies.includes(ground)) {
     return `${world.name} is ${world.worldType} ground, which makes ${ground}; a ${name} works ${shape.modifies.join(' and ')}, so it cannot stand there.`;
@@ -296,13 +297,13 @@ export function foundingRefusal(state: WorldState, actor: string, found: Founds)
   const slot = fixtureSlotRefusal(state, world, found.kind);
   if (slot) return slot;
   const credits = state.factions.find((f) => f.id === actor)?.credits ?? 0;
-  if (credits < FIXTURE_COST) return `A ${name} costs ${FIXTURE_COST} credits, and the treasury holds ${credits}.`;
+  if (credits < FIXTURE_COST) return say`A ${name} costs ${FIXTURE_COST} {credits}, and the treasury holds ${credits}.`;
   return null;
 }
 
 /** The ruled fixture, labelled for the order it becomes. */
 export function ruledFixture(state: WorldState, actor: string, found: Founds): RuledFixture {
-  const name = found.kind.replace(/_/g, ' ');
+  const name = assetKindWord(found.kind);
   const world = state.systems.find((x) => x.id === found.systemId)?.name ?? found.systemId;
   return { factionId: actor, systemId: found.systemId, kind: found.kind, label: `${name[0]!.toUpperCase()}${name.slice(1)} at ${world}` };
 }
@@ -361,11 +362,11 @@ export function spendsAsSaid(
     }
     const o = op as { op?: string; assetId?: string; count?: number; hull?: string } | null;
     if (o?.op === 'scuttle_ships' && !scuttling) {
-      dropped.push(`${o.count ?? 'some'} ${String(o.hull ?? 'hull').replace(/_/g, ' ')}${o.count === 1 ? '' : 's'} struck off`);
+      dropped.push(`${o.count ?? 'some'} ${unitWord(String(o.hull ?? 'hull'), o.count === 1 ? 1 : 2)} struck off`);
       continue;
     }
     if (o?.op === 'consume_asset' && o.assetId && !named(o.assetId)) {
-      dropped.push(`the ${(held.find((a) => a.id === o.assetId)?.kind ?? o.assetId).replace(/_/g, ' ')}`);
+      dropped.push(`the ${assetKindWord(held.find((a) => a.id === o.assetId)?.kind ?? o.assetId)}`);
       continue;
     }
     kept.push(op);
@@ -454,7 +455,7 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
   const sends = sendsAsRuled(built.ops, bounds.covert, bounds.groundwork);
   if (sends.dropped.length > 0) {
     notes.push(
-      `An operative is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
+      say`An {operative} is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
     );
   }
   const sways = swaysAsRolled(sends.ops, bounds.stat, bounds.outcome);
@@ -467,7 +468,7 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
   // nobody ruled is money the player might have expected, so it is said.
   if (committed.paying.length > 0) {
     notes.push(
-      `An income is recorded only when the arbiter ruled one: left out ${[...new Set(committed.paying)].map((k) => k.replace(/_/g, ' ')).join(', ')}.`,
+      `An income is recorded only when the arbiter ruled one: left out ${[...new Set(committed.paying)].map(slugWords).join(', ')}.`,
     );
   }
   const spent = bounds.said !== undefined ? spendsAsSaid(committed.ops, bounds.said, bounds.held ?? []) : { ops: committed.ops, dropped: [] };
@@ -579,7 +580,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
     case 'not_present': {
       const who = ground.factionId ?? actor;
       const world = state.systems.find((x) => x.id === ground.systemId);
-      if (!world) return `There is no world "${ground.systemId}".`;
+      if (!world) return say`There is no {world} "${ground.systemId}".`;
       const there =
         world.controllerFactionId === who ||
         hullsAt(world, who) > 0 ||
@@ -610,7 +611,7 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
       const id = ground.ref;
       // A fleet existing does not make a move of it done.
       if (state.systems.some((x) => (x.fleets ?? []).some((f) => f.id === id))) {
-        return `"${id}" is a fleet standing where it is; that it exists does not make the order already so.`;
+        return say`"${id}" is a {fleet} standing where it is; that it exists does not make the order already so.`;
       }
       // A voyage under way makes a move already so only if it is the actor's,
       // carries ships, and is the fleet the order names — an officer's passage
@@ -618,11 +619,11 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
       const voyage = state.pendingOrders.find((o) => o.id === id && isMovementType(o.type));
       if (voyage) {
         if (voyage.factionId !== actor) return `"${id}" is another power's order, not this one.`;
-        if (hullsIn(voyage.force) === (voyage.force.courier ?? 0)) return `"${id}" is an officer travelling alone; it carries no fleet, so no move of one is already under way.`;
+        if (hullsIn(voyage.force) === (voyage.force.courier ?? 0)) return say`"${id}" is an officer travelling alone; it carries no {fleet}, so no move of one is already under way.`;
         const mine = state.systems.flatMap((x) => (x.fleets ?? []).filter((f) => f.factionId === actor));
         const named = mine.find((f) => lower(action).includes(lower(fleetName(actor, f))));
         if (named && voyage.fleet?.id !== named.id) {
-          return `"${id}" is ${voyage.fleet ? fleetName(actor, voyage.fleet) : 'another voyage'}, not ${fleetName(actor, named)}, which stands at ${state.systems.find((x) => (x.fleets ?? []).includes(named))?.name} with no order.`;
+          return `"${id}" is ${voyage.fleet ? fleetName(actor, voyage.fleet) : say`another {voyage}`}, not ${fleetName(actor, named)}, which stands at ${state.systems.find((x) => (x.fleets ?? []).includes(named))?.name} with no order.`;
         }
       }
       // Work under way makes an order already so only where it is, and only if
@@ -636,12 +637,12 @@ export function checkGround(state: WorldState, actor: string, ground: RefusalGro
           .filter((x): x is NonNullable<typeof x> => !!x);
         const elsewhere = state.systems.filter((x) => said.includes(lower(x.name)) && !worlds.includes(x));
         if (elsewhere.length > 0 && !worlds.some((x) => said.includes(lower(x.name)))) {
-          return `"${id}" (${work.label}) is at ${worlds[0]?.name ?? 'another world'}, not at ${elsewhere[0]!.name}.`;
+          return `"${id}" (${work.label}) is at ${worlds[0]?.name ?? say`another {world}`}, not at ${elsewhere[0]!.name}.`;
         }
         const building = work.onComplete?.kind === 'found_fixture' ? work.onComplete.fixtureKind : null;
-        const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(k.kind.replace(/_/g, ' ')));
+        const asked = ASSET_ARCHETYPES.find((k) => k.fixture && said.includes(assetKindWord(k.kind)));
         if (building && asked && asked.kind !== building) {
-          return `"${id}" raises a ${building.replace(/_/g, ' ')}, not a ${asked.kind.replace(/_/g, ' ')}.`;
+          return `"${id}" raises a ${assetKindWord(building)}, not a ${assetKindWord(asked.kind)}.`;
         }
       }
       const exists = [

@@ -39,6 +39,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm play:web` | check auth (subscription only), build both halves, serve, open the browser |
 | `pnpm serve` | server only, no browser — useful with `pnpm dev:web` |
 | `pnpm dev:web` | Vite dev server with HMR, proxying `/api` to 4173 |
+| `pnpm skins` | the skin studio — write a skin over Pax Galactica's words, checked as the game checks one; saves a draft to `skins/<id>.json` |
 | `pnpm test` | the suite, with no network |
 | `pnpm replay <name>` | rebuild a saved campaign from its journal, no model calls |
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
@@ -49,7 +50,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
 | `pnpm app:macos` | build `dist-app/Pax Galactica.app`: the packed game, the official Node runtime and the Claude binary in one Mac app that starts the server and opens the browser, and stops it on Quit. Saves go to `~/.paxgalactica/saves`, the log to `~/Library/Logs/Pax Galactica.log`. The icon is drawn by `scripts/draw-app-icon.mjs` from the game's own sprites |
 | `node scripts/bughunt-scan.mjs <campaign>` | the mechanical half of a bug hunt: replays a played campaign and lists raw ids, bad plurals, spliced sentences, rejections by code, double payments, drift charged on an act, failed model calls — each with its turn and evidence |
-| `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline |
+| `node scripts/bughunt-gate.mjs [--record]` | what a bug-hunt round must pass before it is pushed: the three typechecks, the suite, and every `saves/bughunt*` replaying with no more rejections than the recorded baseline and every state machine keeping its rules at every step (`watchMachines`) |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
 
 **The bug-hunt loop** is the `bughunt` skill (`.claude/skills/bughunt/SKILL.md`):
@@ -4496,6 +4497,186 @@ events).
 The standing orders change only a prompt, so nothing replays differently;
 whether reactions keep their plans is the next playtest's to read off the
 trace.
+
+### Every machine keeps its rules, checked with no UI attached
+
+`src/domain/transitions.ts`, phase 1 of `docs/design-2026-11-15-skins.md`.
+A reading says what a machine is; this says what it may become.
+
+- **`worldViolations(state)`** holds any one world to its rules:
+  - `personViolations`, folded in;
+  - every keyed record named once;
+  - the relation reading the same both ways;
+  - one live truce a pair, and none past its last turn;
+  - a live debt owing something and a settled one nothing;
+  - an open bounty with money in it and a closed one empty;
+  - an order within its term;
+  - fixtures on a world, within their slots, no two alike, damage within the budget;
+  - one notable a seat, on a world that has it.
+- **`transitionViolations(before, after)`** holds two consecutive worlds to
+  each lifecycle's graph (`TREATY_MOVES`, `DEBT_MOVES`, `LOAN_MOVES`,
+  `OFFICER_MOVES` and five more):
+  - no record that is never removed goes missing;
+  - no status moves where its graph cannot reach;
+  - the fixed facts stay fixed: who a treaty binds, where a fixture stands,
+    and that a notable never moves from one estate to another;
+  - counts run one way only: a debt's balance, a bounty's payouts, an
+    officer's battles, an order's progress;
+  - an order that ended never comes back.
+- **The graphs are keyed by each status enum**, so a status added to a schema
+  fails the typecheck until it is given its edges. Reachability is checked
+  rather than single edges, because the harness samples once a turn and the
+  gate once a batch.
+- **`watchMachines()`** feeds both checks one world after another. The
+  bug-hunt gate runs it over every step of every save, and
+  `tests/transitions.test.ts` over 60 bot turns.
+
+Built against the code, then run over all 13 saves step by step and 100 bot
+turns with and without events. One rule was wrong and was changed: an
+independent world's notable takes an estate when the world joins a power, and
+gives it up when the world rises. Read-only, so nothing replays differently.
+
+## A skin names the core's slots
+
+`src/skin/`, phase 1 of `docs/design-2026-11-15-skins.md`. A skin never
+changes a number. It supplies words for:
+
+- the **lexicon**: a word for every role a model or player reads (unit
+  classes, terrains, order categories, asset kinds, Rim events, treaty types,
+  officer schools, note kinds, battle phases, fleet kinds, places, units of
+  account);
+- the five **powers**: name, title, voice, doctrine, each line's text,
+  estates, name stock, fleet names;
+- the 25 **systems** and four **sectors**;
+- the **art** each slot is drawn with.
+
+`SkinSchema` checks the skin's shape and completeness: every family keyed
+exhaustively, and stocks at the 20 given and 60 family names the draw is
+indexed by. `skinViolations(skin, coreSlotsOf(world))` checks what a schema
+cannot see:
+
+- the skin names exactly the core's slots;
+- each id family is a bijection that round-trips;
+- no family name sits in two stocks;
+- no power gives two schools one title;
+- no skin id could pass for a marked core id (`MARKED_ID`) or an ordinal
+  (`ORDINAL_ID`);
+- no word carries an underscore.
+
+A skin id may carry an underscore (`torpedo_boat`) as long as it does not
+begin like a marked id.
+
+**`paxGalactica()` is read off the game's own tables** rather than written out:
+
+- hull labels, `worldTypeLabel`, `RIM_EVENT_TITLE` and `NOTE_TITLE`;
+- the seed's sheets, `NAME_STOCKS`;
+- each power's fleet names as `fleetName` gives them, tested equal for every
+  power, kind and number up to 25.
+
+The lexicon is `PAX_LEXICON` in `src/skin/words.ts`.
+
+### The game writes through the lexicon (phase 2)
+
+`src/skin/lexicon.ts` holds the lexicon in force, read from a scope
+(`withLexicon`) the way `withNameStock` scopes the name stock.
+
+- **Its default words live in `words.ts`, a leaf.** The domain reads the
+  lexicon from deep inside the reducer, and the skin's schema reads the
+  domain's id tables at load, so any runtime import between them would be a
+  cycle.
+- **Prose is written with `say`.** It is a tagged template whose text names a
+  role by token (`{world}`, `{Fleets}`, `{credits}`, `{battleships}`,
+  `{rim}`, `{SHIP}`) and fills each from the lexicon.
+- **A word with no token comes from a helper:** `unitWord`, `orderWord`,
+  `treatyWord`, `rimEventWord`.
+- **A sentence about an id comes from `meaning()`.** A skin owns the sentence,
+  not only the nouns in it: what a stat covers, what an ethic or a treaty
+  does. A number in it is a `{mark}` the core fills.
+- **The domain's tables keep their names.** `STAT_MEANINGS`, `ACT_WORDS`,
+  `COMMANDER_ARCHETYPES` and the rest are `liveMeanings` views or getters, so
+  they read the lexicon in force.
+- **A `say` evaluated at module load is a leak.** It fills its tokens once,
+  from the default.
+
+`tests/skin-leaks.test.ts` is the static check. It parses every literal,
+template and JSX text in the core, `src/ui` and the client with rolldown's
+parser, resolved through Vite, and looks for the default skin's setting words.
+Those are the lexicon's words, less the neutral ones (`ORDINARY_WORDS`), plus
+`UNROLED_WORDS`.
+
+**A word is neutral by the thing it names.** It must make sense in a modern
+show about each of four periods: Three Kingdoms China, the Middle Byzantine
+Empire, the Seven Years' War and the First World War.
+- **The thing must exist there, whenever the word was coined.** A black
+  market passes; a torpedo does not.
+- **It may not presume ships,** because a skin may be landlocked. So every
+  naval word is setting: ship, hull, fleet, crew, sail, yards.
+- **Too modern is setting too:** a factory, a chamber of commerce.
+- **What passes:** the treaty types, most order categories, the people a
+  power keeps or holds, and most paper.
+
+Each file is held to the count recorded in `tests/skin-leaks.baseline.json`.
+A second ratchet, `tests/skin-ids.baseline.json`, counts ids and field names
+that carry one (`torpedo_boat`, `systemId`); phases 3 and 4 rename those.
+Re-record with `SKIN_LEAKS_RECORD=1`.
+
+**Hull classes, terrains and Rim events are setting in every form.** Their
+ids (`torpedo_boat`, `earthnight`, `ion_storm`) are scan words wherever they
+appear (`settingIds`), and no ordinary-word exemption reaches their words.
+Showing an id by spacing its underscores (`kind.replace(/_/g, ' ')`) counts as
+a leak: use `assetKindWord`, `orderWord`, `treatyWord` or `unitWord`.
+
+`src/skin/null.ts` builds the null lexicon, every word a sentinel.
+`tests/lexicon.test.ts` runs the routed readers under it.
+`tests/skin-runtime.test.ts` runs the game under it with no model and no
+browser:
+
+- 60 bot turns;
+- every Rim event through its sandbox;
+- every help page;
+- the epilogue;
+- every kind of model call, against a mocked client that records the system
+  prompt, user message and schema each would send.
+
+It masks the scenario's names, then holds each source to the setting words
+recorded in `tests/skin-runtime.baseline.json`.
+
+Under the null lexicon the dice differ, because the operative salt reads the
+log (decision 8, phase 3). Under Pax Galactica every token reads as the word
+it replaced, so the four harness boards are unchanged.
+
+### The skin studio
+
+`pnpm skins` opens `web/skins.html`, a dev-only page for writing a skin. Its
+base is `paxGalactica()`, read live: `buildSurface` (`src/skin/studio/`) walks
+the default skin and makes every word in it an entry keyed by its path into a
+`Skin` (`powers.vigil.redLines.1`, `lexicon.units.battleship.plural`), so a
+role added to the lexicon is editable the moment it exists. Art and
+coordinates are left out.
+
+**A draft stores only what it changes** (`SkinDraftSchema`): overrides by
+path, each remembering the base it replaced so a moved base marks it stale,
+and **renames** — proper nouns rewritten whole-word, longest first, in every
+entry not written by hand. `composeSkin` lays a draft over the base to make
+the whole `Skin`, and the studio holds it to `SkinSchema` and
+`skinViolations` on every edit, pinning each finding to its entry where it
+can. Its own checks add only what a finished skin cannot show: stale
+overrides, renamed names left in hand-written text, hyphenated families, and
+two powers or places a player could not tell apart. **Preview** runs the
+game's own producers under `withLexicon(skin.lexicon)`.
+
+**Organised by mechanical role, never by the setting's nouns**
+(`src/skin/studio/roles.ts`): units as line, screen, strike, lift, trade,
+sigint and dispatch; ground by the stat it gives; places as node, route,
+region, hub, presence and works; forces and accounts by what each does. A skin
+for an army on roads must be writable without a slot shown as "torpedo", and
+the studio's own labels and fields carry no setting word — `skin-leaks` holds
+`web/src/skins` at zero. An id the table does not know is grouped under
+"other", so a renamed family stays editable before the table catches up.
+
+Drafts are read and written by a Vite plugin (`scripts/skin-studio-plugin.ts`,
+`apply: 'serve'`), so neither the page nor its file access is in a build. Its
+"find hardcoded mentions" lists where a renamed name is still written in code.
 
 ## Treaties and agents
 
@@ -9107,6 +9288,8 @@ src/
               provider-ids.ts is the one I/O-free piece the browser imports.
   server/     index (node:http), router, session, settings, events, static, errors
   seed/       the 25-system Rim scenario
+  skin/       schema.ts (what a skin must name), paxgalactica.ts (the default,
+              read off the game's tables)
   ui/         layout.ts (pure map geometry), portrait.ts (avatar crops)
               + ansi256.ts
 web/          React + Vite client → dist/web

@@ -9,6 +9,7 @@ import {
   type CompulsionTrigger,
   type WorldState,
 } from './state.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Compulsions that a faction is currently failing to honour.
@@ -263,14 +264,14 @@ function evaluate(
       const enemies = warsFor(state, factionId);
       if (enemies.length === 0) return null;
       if (hasFleetUnderWay(state, factionId)) return null;
-      return `at war with ${enemies.map((id) => nameOf(state, id)).join(', ')} and no fleet under way`;
+      return say`at war with ${enemies.map((id) => nameOf(state, id)).join(', ')} and no {fleet} under way`;
     }
 
     case 'unanswered_incursion': {
       const trespassed = incursions(state, factionId);
       if (trespassed.length === 0) return null;
       if (hasFleetUnderWay(state, factionId)) return null;
-      return `foreign ships over ${trespassed.join(', ')} and nothing sent to answer them`;
+      return say`foreign {ships} over ${trespassed.join(', ')} and nothing sent to answer them`;
     }
 
     case 'no_plunder': {

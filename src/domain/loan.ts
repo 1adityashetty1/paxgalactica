@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { HULL_CLASSES, TypedStackSchema, hullsIn, type HullClass, type ShipStack } from './hulls.js';
+import { say } from '../skin/lexicon.js';
 
 /**
  * Loan: a thing lent out, which comes back.
@@ -265,7 +266,7 @@ export function drawMatching(
 export function describeOutstanding(loan: Loan): string {
   const out = loan.outstanding;
   if (out === null) return 'nothing';
-  if (out.kind === 'credits') return `${out.amount} credits`;
+  if (out.kind === 'credits') return say`${out.amount} {credits}`;
   if (out.kind === 'asset') return 'the article';
-  return `${hullsIn(out.stack)} hulls`;
+  return say`${hullsIn(out.stack)} {hulls}`;
 }

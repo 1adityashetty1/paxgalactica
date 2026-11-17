@@ -1,5 +1,6 @@
 import type { EpilogueView } from '../../../src/api/contract.js';
 import { ansi256ToHex } from '../color.js';
+import { say } from '../../../src/skin/lexicon.js';
 
 /**
  * The last page.
@@ -32,9 +33,9 @@ export function EpilogueStage({
   return (
     <div className="epilogue">
       <header className="epilogue-head">
-        <h2>The Rim, {epilogue.turn} turns on</h2>
+        <h2>{say`{Rim}, `}{epilogue.turn} turns on</h2>
         <p className="hint">
-          {epilogue.unaligned} worlds still answer to nobody.
+          {epilogue.unaligned}{say` {worlds} still answer to nobody.`}
           {epilogue.fallback && ' (The narration could not be written; this is the plain record.)'}
         </p>
       </header>
@@ -52,7 +53,7 @@ export function EpilogueStage({
           <p className="epilogue-text">{slideFor(f.factionId)}</p>
           <div className="epilogue-facts">
             <span>
-              {f.systems} worlds
+              {f.systems}{say` {worlds}`}
               {f.systemsDelta !== 0 && (
                 <span className={f.systemsDelta > 0 ? 'up' : 'down'}>
                   {' '}
@@ -61,7 +62,7 @@ export function EpilogueStage({
                 </span>
               )}
             </span>
-            <span>{f.fleet} hulls</span>
+            <span>{f.fleet}{say` {hulls}`}</span>
             <span className={f.net >= 0 ? 'up' : 'down'}>
               {f.net >= 0 ? '+' : ''}
               {f.net}/turn
@@ -97,7 +98,7 @@ export function EpilogueStage({
         {onLeave && (
           <div className="epilogue-exit">
             <button className="endtalk" onClick={onLeave}>
-              Leave the Rim
+              {say`Leave {rim}`}
             </button>
             <span className="hint">
               Start another campaign, resume a saved one, or come back to this ending.

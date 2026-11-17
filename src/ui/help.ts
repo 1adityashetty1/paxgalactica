@@ -24,6 +24,7 @@ import {
   worldLines,
   wrap,
 } from './helptext.js';
+import { placeWord, say } from '../skin/lexicon.js';
 
 /**
  * The help, as an index and a page per part of the game.
@@ -40,12 +41,12 @@ import {
  */
 
 export interface HelpTopic {
-  /** What the player types after `:help`. */
-  key: string;
+  /** What the player types after `:help`. A getter where it names a role. */
+  readonly key: string;
   /** Other words that reach the same page. */
-  aliases: readonly string[];
-  /** One line on the index. */
-  about: string;
+  readonly aliases: readonly string[];
+  /** One line on the index. A getter where it names a role, so it reads the lexicon in force. */
+  readonly about: string;
   lines: (state: WorldState | null) => string[];
 }
 
@@ -71,8 +72,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
           '  arrangement that forbids it, a thing already so — and names it. What no',
           '  mission can do yet is set aside and, on its own, costs no action.',
           '',
-          '  One action can mix open work and covert work: "sail to Vantic and land',
-          '  a watcher under the fleet\'s cover". The open part is rolled; the',
+          say`  One action can mix open work and covert work: "{sail} to Vantic and land`,
+          say`  a watcher under the {fleet}\'s cover". The open part is rolled; the`,
           '  operative is sent, and their own chance is rolled when they act.',
           '',
           '  Every action is tested against one of your five stats. A d20 is rolled',
@@ -100,14 +101,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         ],
         [
           'TIME',
-          '  Nothing takes longer than 5 turns. Fleet movement costs one turn per',
-          '  hyperlane jump and is never estimated. Everything else is estimated once,',
+          say`  Nothing takes longer than 5 turns. {Fleet} movement costs one turn per`,
+          say`  {hyperlane} {jump} and is never estimated. Everything else is estimated once,`,
           '  when the order is issued, and never re-rolled.',
         ],
         [
           'THE END',
           '  A campaign runs the number of turns chosen on the title screen. When the',
-          '  last is played the Rim is summed up, power by power, and the campaign',
+          say`  last is played {rim} is summed up, power by power, and the campaign`,
           '  stays open to read and save, but not to play.',
         ],
       ),
@@ -115,33 +116,40 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   {
     key: 'war',
     aliases: ['fleets', 'fleet', 'ships', 'battle', 'battles', 'combat', 'officers', 'military'],
-    about: 'ship classes, battles, standing orders, officers',
+    get about() {
+      return say`{ship} classes, battles, standing orders, officers`;
+    },
     lines: () =>
       sections(
         shipClassLines(),
         [
           'BATTLES',
-          '  The mix decides battles. A fleet of pure warships can sterilise an orbit',
-          '  and take nothing, and a navy you cannot pay for lays itself up.',
-          '  Parking ships over a world you do not own splits its income, closes its',
-          '  lanes and lets you talk to its crews — presence is not ownership, and it',
+          say`  The mix decides battles. A {fleet} of pure {warships} can sterilise an {orbit}`,
+          say`  and take nothing, and a {navy} you cannot pay for lays itself up.`,
+          say`  Parking {ships} over a {world} you do not own splits its income, closes its`,
+          say`  {lanes} and lets you talk to its {crews} — presence is not ownership, and it`,
           '  is not nothing either.',
           '  A losing defence breaks off at two to one. You can order your whole',
-          '  navy to hold whatever it costs, or to withdraw the moment it is',
-          '  outmatched and keep the fleet. One order covers every fleet at once,',
-          '  not a single world or squadron. A crusading power cannot be ordered',
+          say`  {navy} to hold whatever it costs, or to withdraw the moment it is`,
+          say`  outmatched and keep the {fleet}. One order covers every {fleet} at once,`,
+          say`  not a single {world} or {squadron}. A crusading power cannot be ordered`,
           '  to run.',
         ],
         officerLines(),
         [
           '  See also: :help diplomacy, for allies and the peace a losing power',
-          '  sues for; :help worlds, for holding what you take.',
+          say`  sues for; :help {worlds}, for holding what you take.`,
         ],
       ),
   },
   {
-    key: 'worlds',
-    aliases: ['world', 'standing', 'territory', 'courting', 'envoy', 'envoys'],
+    // What the player types after :help, so the lexicon's word for them.
+    get key() {
+      return placeWord('world', 2);
+    },
+    get aliases() {
+      return [placeWord('world'), 'standing', 'territory', 'courting', 'envoy', 'envoys'];
+    },
     about: 'standing, courting, holding down, risings, span of control',
     lines: () =>
       sections(worldLines(), ['SPAN OF CONTROL', ...spanLines()]),
@@ -149,17 +157,19 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   {
     key: 'trade',
     aliases: ['money', 'economy', 'income', 'lanes', 'tolls', 'raiding', 'raids', 'bounty', 'bounties'],
-    about: 'income, lanes, tolls, blockades, raiding, bounties, goods',
+    get about() {
+      return say`income, {lanes}, tolls, blockades, raiding, bounties, goods`;
+    },
     lines: () =>
       sections(
         [
           'MONEY',
-          '  Territory pays, and so does the lane network. You may charge any power',
-          `  for crossing your space — ${Math.round(BASE_TOLL_RATE * 100)}% of its cargo on the lane, ${Math.round(TOLL_RATE * 100)}% for`,
+          say`  Territory pays, and so does the {lane} network. You may charge any power`,
+          say`  for crossing your {space} — ${Math.round(BASE_TOLL_RATE * 100)}% of its {cargo} on the {lane}, ${Math.round(TOLL_RATE * 100)}% for`,
           '  an extortionist — and lifting that toll is a real concession to',
           '  offer — for good, for a number of turns, or for as long as a treaty',
-          '  between you holds, and then it comes back. Blockades sever lanes;',
-          '  commerce raiding takes the cargo, and both need a fleet already there.',
+          say`  between you holds, and then it comes back. Blockades sever {lanes};`,
+          say`  commerce raiding takes the {cargo}, and both need a {fleet} already there.`,
         ],
         raiderLines(),
         goodsLines(),
@@ -179,7 +189,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         [
           'ARRANGEMENTS',
           '  Not everything agreed is a treaty: a marriage, a charter, a share of',
-          '  what a lane earns, "if this happens, you pay me that". The arbiter',
+          say`  what a {lane} earns, "if this happens, you pay me that". The arbiter`,
           '  records it as agreed and holds both sides to it, and walking away',
           '  from one costs standing with the power you made it with.',
         ],
@@ -212,7 +222,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   {
     key: 'events',
     aliases: ['event', 'rim', 'random', 'luck'],
-    about: 'what the Rim does on its own',
+    get about() {
+      return say`what {rim} does on its own`;
+    },
     lines: () => [...rimLines(), ...eventListLines()],
   },
 ];
@@ -255,7 +267,7 @@ export function helpIndex(state: WorldState | null): string[] {
     '',
     ...(state
       ? [
-          'TRY THESE — plain English, no syntax, and these name your actual worlds',
+          say`TRY THESE — plain English, no syntax, and these name your actual {worlds}`,
           ...exampleActions(state),
           '',
         ]
@@ -325,16 +337,16 @@ export function exampleActions(state: WorldState | null): string[] {
   const force = Math.max(4, Math.floor((hullsAt(base, me) || 8) / 2));
 
   return [
-    ...(neutral ? [`  Send ${force} ships from ${base.name} to take ${neutral.name}.`] : []),
+    ...(neutral ? [say`  Send ${force} {ships} from ${base.name} to take ${neutral.name}.`] : []),
     // A power that lives by raiding is shown the quiet way to do it.
     ...(rival
       ? [
           state.factions.find((f) => f.id === me)?.tradeEthic === 'smuggler'
             ? `  Raid the shipping at ${rival.name} quietly, flying no colours.`
-            : `  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`,
+            : say`  Move ${force} {ships} to ${rival.name} and raid the shipping on that {lane}.`,
         ]
       : []),
-    `  Put the yards at ${base.name} to work on a squadron of escorts.`,
+    say`  Put the {yards} at ${base.name} to work on a {squadron} of {escorts}.`,
     `  Offer ${other.name} a dynastic marriage to seal an alliance.`,
   ];
 }

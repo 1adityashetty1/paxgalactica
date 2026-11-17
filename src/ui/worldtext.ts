@@ -1,4 +1,5 @@
 import type { WorldType } from '../domain/state.js';
+import { lexicon, liveMeanings } from '../skin/lexicon.js';
 
 /**
  * A line about what a world is like, keyed on what it is and who settled it.
@@ -113,15 +114,7 @@ const FLAVOUR: Partial<Record<Key, string[]>> = {
 };
 
 /** Said of a world nobody has written a line for yet. Keyed on type alone. */
-const BY_TYPE: Record<WorldType, string> = {
-  arid: 'Dry ground and thin air. Places like this raise soldiers because there is little else to raise.',
-  earthlike: 'Temperate and settled. Where there are people in numbers there are factions, and where there are factions there is leverage.',
-  earthnight: 'Lit end to end and awake at every hour. A world that never sleeps is a world that cannot be watched.',
-  oceanic: 'Deep water, and a population that feeds itself off it. Hard to starve, and therefore hard to move.',
-  ice: 'Frozen and inhabited anyway, which tells you most of what you need to know about the people.',
-  industrialmoon: 'A worked moon, ringed with yards. Everything here exists to make something else.',
-  gasgiant: 'A giant with skimmers in its cloud tops. Fuel and volatiles, and nowhere to stand.',
-};
+const BY_TYPE: Readonly<Record<WorldType, string>> = liveMeanings('terrainLines');
 
 /**
  * A stable index into a variant list.
@@ -164,20 +157,11 @@ export function worldFlavour(
 export const FLAVOUR_KEYS = Object.keys(FLAVOUR) as Key[];
 
 /**
- * What a world's type is called on screen. One table, read by the System panel
- * under the world's picture and by the help text's fixture section, so the two
- * cannot call the same ground by different names.
+ * What a world's type is called on screen: the lexicon's terrain word. One
+ * reading, by the System panel under the world's picture and by the help
+ * text's fixture section, so the two cannot call the same ground by different
+ * names.
  */
-const TYPE_LABEL: Record<WorldType, string> = {
-  earthlike: 'Terrestrial',
-  earthnight: 'Terrestrial, settled',
-  oceanic: 'Oceanic',
-  arid: 'Arid',
-  ice: 'Ice',
-  industrialmoon: 'Ringed moon',
-  gasgiant: 'Gas giant',
-};
-
 export function worldTypeLabel(type: WorldType): string {
-  return TYPE_LABEL[type] ?? 'Unsurveyed';
+  return lexicon().terrains[type]?.word ?? 'Unsurveyed';
 }

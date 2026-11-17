@@ -1,0 +1,11 @@
+{
+  "src/domain/command.ts": 1,
+  "src/domain/events.ts": 1,
+  "src/domain/fleets.ts": 1,
+  "src/domain/ops.ts": 4,
+  "src/domain/pronouns.ts": 1,
+  "src/domain/reducer.ts": 4,
+  "src/model/calls.ts": 9,
+  "src/ui/logview.ts": 2,
+  "src/ui/worldtext.ts": 15
+}

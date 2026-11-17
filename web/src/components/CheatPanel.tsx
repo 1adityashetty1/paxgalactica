@@ -10,6 +10,7 @@ import { archetypeFor } from '../../../src/domain/assets.js';
 import { COMMANDER_ARCHETYPES } from '../../../src/domain/command.js';
 import { NAVY_CLASSES } from '../../../src/domain/hulls.js';
 import { hullsAt, type WorldState } from '../../../src/domain/state.js';
+import { assetKindWord, say, unitWord } from '../../../src/skin/lexicon.js';
 
 /**
  * The cheat menu, opened with `:cheats`.
@@ -98,7 +99,7 @@ export function CheatPanel({
       </header>
 
       <div className="cheat-row">
-        <span className="cheat-label">Credits</span>
+        <span className="cheat-label">{say`{Credits}`}</span>
         {factionSelect(creditsFor, setCreditsFor)}
         {CHEAT_CREDITS.map((n) => (
           <button key={n} disabled={busy} onClick={go({ kind: 'credits', factionId: creditsFor, amount: n })}>
@@ -128,7 +129,7 @@ export function CheatPanel({
         <select value={assetKind} onChange={(e) => setAssetKind(e.target.value)}>
           {CHEAT_ASSET_KINDS.map((k) => (
             <option key={k} value={k}>
-              {k.replace(/_/g, ' ')}
+              {assetKindWord(k)}
               {archetypeFor(k)?.fixture ? ' (fixture)' : ''}
             </option>
           ))}
@@ -141,14 +142,14 @@ export function CheatPanel({
       </div>
 
       <div className="cheat-row">
-        <span className="cheat-label">Ships</span>
+        <span className="cheat-label">{say`{Ships}`}</span>
         {factionSelect(shipsFor, pickShipsFor)}
         <span className="muted">at</span>
         {worldSelect(shipsAt, setShipsAt, standsAt(shipsFor))}
         <select value={hull} onChange={(e) => setHull(e.target.value as typeof hull)}>
           {NAVY_CLASSES.map((h) => (
             <option key={h} value={h}>
-              {h.replace(/_/g, ' ')}
+              {unitWord(h)}
             </option>
           ))}
         </select>

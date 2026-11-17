@@ -18,6 +18,7 @@ import {
   yardQueueTons,
   type WorldState,
 } from './state.js';
+import { assetKindWord, say } from '../skin/lexicon.js';
 
 /**
  * What a power can do this turn, computed: its yards, the fixture slots its
@@ -48,8 +49,8 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   const bs = HULL_SPEC.battleship;
   out.push(
     held.length > 0
-      ? `Yards: ${berths} tons of hulls a turn (${Math.floor(berths / bs.tonnage)} battleships at ${bs.tonnage * CREDITS_PER_TON} each), ${room} of them free this turn${queued > 0 ? `, ${queued} tons queued` : ''}. A larger order is paid now and queued at that rate. Your treasury pays for ${afford} tons now.`
-      : 'Yards: none. You hold no world, so you cannot build hulls.',
+      ? say`{Yards}: ${berths} {tons} of {hulls} a turn (${Math.floor(berths / bs.tonnage)} {battleships} at ${bs.tonnage * CREDITS_PER_TON} each), ${room} of them free this turn${queued > 0 ? say`, ${queued} {tons} queued` : ''}. A larger order is paid now and queued at that rate. Your treasury pays for ${afford} {tons} now.`
+      : say`{Yards}: none. You hold no {world}, so you cannot build {hulls}.`,
   );
 
   // Fixture slots.
@@ -63,13 +64,13 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
     const stat = WORLD_TYPE_STAT[site.worldType];
     const kinds = ASSET_ARCHETYPES.filter(
       (k) => k.fixture && k.modifies?.includes(stat) && fixtureSlotRefusal(state, site, k.kind) === null,
-    ).map((k) => k.kind.replace(/_/g, ' '));
+    ).map((k) => assetKindWord(k.kind));
     return kinds.length > 0 ? [`${site.name} (${room} free; its ${stat} ground takes ${kinds.slice(0, 4).join(', ')})`] : [];
   });
   out.push(
     sites.length > 0
-      ? `Fixture slots free on your worlds: ${sites.slice(0, 5).join('; ')}. A fixture costs ${FIXTURE_COST}, and the next adds ${nextUpkeep} a turn to upkeep. Nothing can be built on a world you do not hold.`
-      : 'Fixture slots: none free on any world you hold.',
+      ? say`Fixture slots free on your {worlds}: ${sites.slice(0, 5).join('; ')}. A fixture costs ${FIXTURE_COST}, and the next adds ${nextUpkeep} a turn to upkeep. Nothing can be built on a {world} you do not hold.`
+      : say`Fixture slots: none free on any {world} you hold.`,
   );
 
   // Operatives.
@@ -82,7 +83,7 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   const free = slots - mine.length;
   out.push(
     [
-      `Operatives: ${mine.length} of ${slots} slots used — ${working.length} at work, ${travelling.length} on the way, ${idle.length} awaiting orders.`,
+      say`{Operatives}: ${mine.length} of ${slots} slots used — ${working.length} at work, ${travelling.length} on the way, ${idle.length} awaiting orders.`,
       idle.length > 0
         ? `Free to send now: ${idle.map((a) => `${a.name || a.id}${a.agentClass ? ` (${a.agentClass})` : ''} at ${nameOf(a.systemId)}`).join(', ')}.`
         : 'Nobody is free to send: sending one means recruiting first, which takes a whole action.',
@@ -100,11 +101,11 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
   const where = (c: (typeof active)[number]) => describePlace(state, whereaboutsOf(state, { kind: 'officer', id: c.id }));
   out.push(
     [
-      `Officers in post: ${active.length > 0 ? active.map((c) => `${c.name} (${c.archetype}) ${where(c)}`).join('; ') : 'none — your fleets fight without one'}. An officer sails only with a fleet leaving the world they stand on.`,
+      say`Officers in post: ${active.length > 0 ? active.map((c) => `${c.name} (${c.archetype}) ${where(c)}`).join('; ') : say`none — your {fleets} fight without one`}. An officer {sails} only with a {fleet} leaving the {world} they stand on.`,
       active.length >= MAX_ACTIVE_COMMANDERS
         ? `The roster is full at ${MAX_ACTIVE_COMMANDERS}.`
         : waiting.length > 0
-          ? `On your Lists to appoint: ${waiting.map((c) => `${c.name} (${c.archetype}, ${c.commissioned ? 'served, free' : `${COMMANDER_COST} credits`})`).join('; ')}.`
+          ? `On your Lists to appoint: ${waiting.map((c) => `${c.name} (${c.archetype}, ${c.commissioned ? 'served, free' : say`${COMMANDER_COST} {credits}`})`).join('; ')}.`
           : '',
     ]
       .filter(Boolean)
@@ -119,8 +120,8 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
     .filter((b) => b.line >= 0.5 || b.lift > 0);
   out.push(
     bases.length > 0
-      ? `Your fleets stand at: ${bases.map((b) => `${b.s.name} (${b.line.toFixed(1)} battleships' weight${b.lift > 0 ? `, lift for ${b.lift} troops` : ', no lift'})`).join('; ')}. A world is taken only by lift that lands; warships alone take nothing.`
-      : 'You have no fleet standing anywhere.',
+      ? say`Your {fleets} stand at: ${bases.map((b) => say`${b.s.name} (${b.line.toFixed(1)} {battleships}' weight${b.lift > 0 ? `, lift for ${b.lift} troops` : ', no lift'})`).join('; ')}. A {world} is taken only by lift that lands; {warships} alone take nothing.`
+      : say`You have no {fleet} standing anywhere.`,
   );
   const open = new Map<string, string>();
   for (const s of state.systems) {
@@ -131,16 +132,16 @@ export function capabilitiesOf(state: WorldState, me: string): string[] {
     const standing = s.regard?.[me];
     open.set(
       s.id,
-      `${s.name} (garrison ${s.garrison}${standing !== undefined ? `, its standing with you ${standing}` : ''}; ${orbit ? 'your ships are in its orbit' : `a jump from ${from!.name}`})`,
+      `${s.name} (garrison ${s.garrison}${standing !== undefined ? `, its standing with you ${standing}` : ''}; ${orbit ? say`your {ships} are in its {orbit}` : say`a {jump} from ${from!.name}`})`,
     );
   }
   if (open.size > 0) {
-    out.push(`Worlds that answer to nobody within reach — an envoy can court them, a landing can take them: ${[...open.values()].join('; ')}.`);
+    out.push(say`{Worlds} that answer to nobody within reach — an envoy can court them, a {landing} can take them: ${[...open.values()].join('; ')}.`);
   }
   // The envoy's reach, said as the reducer enforces it (`envoyRefusal`): the
   // counsellor urged one at a rival's world, which no order can send.
   out.push(
-    `An envoy goes only to a world you hold or to one that answers to nobody${open.size > 0 ? ' listed above' : ', and none is within your reach'}. A world another power holds cannot be courted; turning it against its holder is an operative's work (incitement).`,
+    say`An envoy goes only to a {world} you hold or to one that answers to nobody${open.size > 0 ? ' listed above' : ', and none is within your reach'}. A {world} another power holds cannot be courted; turning it against its holder is an operative's work (incitement).`,
   );
   return out;
 }

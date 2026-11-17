@@ -80,6 +80,7 @@ import { EstateSchema, NotableSchema, estateBonus } from './estates.js';
 // seats.ts reads this module only inside function bodies, so the cycle is
 // harmless at load time — the shape trade.ts already has.
 import { stipendCostFor, withheldFor } from './seats.js';
+import { assetKindWord, liveMeanings, say } from '../skin/lexicon.js';
 
 /**
  * An order is either a fleet movement — whose duration the reducer computes
@@ -150,13 +151,7 @@ export const WAR_ETHICS = [
 export const WarEthicSchema = z.enum(WAR_ETHICS);
 export type WarEthic = z.infer<typeof WarEthicSchema>;
 
-export const WAR_ETHIC_MEANING: Record<WarEthic, string> = {
-  expansionist: 'takes territory because it is there; every world it holds makes the rest pay better',
-  defensive: 'fights only when struck; its worlds are dug in, and storming one costs far more than taking it should',
-  opportunist: 'attacks the weak and the distracted, avoids fair fights, switches sides without embarrassment',
-  crusading: 'fights for legitimacy and grievance, and does not break off — it will win fights it should have fled and lose fleets it should have saved',
-  profiteer: 'war is a market it funds rather than joins; it earns from every war it stays out of, and loses that trade the moment it is in one',
-};
+export const WAR_ETHIC_MEANING: Readonly<Record<WarEthic, string>> = liveMeanings('warEthics');
 
 /** Where a power stands on commerce. Also sets its baseline income. */
 export const TRADE_ETHICS = [
@@ -169,13 +164,7 @@ export const TRADE_ETHICS = [
 export const TradeEthicSchema = z.enum(TRADE_ETHICS);
 export type TradeEthic = z.infer<typeof TradeEthicSchema>;
 
-export const TRADE_ETHIC_MEANING: Record<TradeEthic, string> = {
-  free_trade: 'open lanes enrich everyone; earns more the more of the galaxy is open, including lanes it has no stake in',
-  monopolist: 'trade is good when controlled; secures exclusive rights and punishes competitors',
-  extortionist: 'commerce is something that passes through your space and owes you a toll for the privilege',
-  autarkic: 'dependence is weakness; its own worlds trade with each other, an internal market no blockade elsewhere can touch, and it keeps little of the galactic lanes',
-  smuggler: 'the profitable cargo is the illegal one; runs blockades others cannot, and raids the shipping others depend on',
-};
+export const TRADE_ETHIC_MEANING: Readonly<Record<TradeEthic, string>> = liveMeanings('tradeEthics');
 
 /** Prosperity multiplier applied to system income. */
 /**
@@ -1591,21 +1580,21 @@ export function fixtureSlotRefusal(
   const building = underway
     ? state.pendingOrders.filter((o) => o.targetId === system.id && o.onComplete?.kind === 'found_fixture')
     : [];
-  const label = (k: string) => k.replace(/_/g, ' ');
+  const label = assetKindWord;
   if (perWorld === 1) {
-    if (standing[0]) return `${system.name} already carries a ${label(standing[0].kind)}; a world carries one fixture.`;
-    if (building[0]) return `A fixture is already being raised at ${system.name}; a world carries one.`;
+    if (standing[0]) return say`${system.name} already carries a ${label(standing[0].kind)}; a {world} carries one fixture.`;
+    if (building[0]) return say`A fixture is already being raised at ${system.name}; a {world} carries one.`;
     return null;
   }
   if (standing.some((a) => a.kind === kind)) {
-    return `${system.name} already has a ${label(kind)}; a world's fixtures must be different kinds.`;
+    return say`${system.name} already has a ${label(kind)}; a {world}'s fixtures must be different kinds.`;
   }
   if (building.some((o) => o.onComplete?.fixtureKind === kind)) {
-    return `A ${label(kind)} is already being raised at ${system.name}; a world's fixtures must be different kinds.`;
+    return say`A ${label(kind)} is already being raised at ${system.name}; a {world}'s fixtures must be different kinds.`;
   }
   if (standing.length + building.length >= perWorld) {
     const there = [...standing.map((a) => a.kind), ...building.map((o) => `${o.onComplete!.fixtureKind} (being raised)`)];
-    return `${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a world holds ${perWorld}.`;
+    return say`${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a {world} holds ${perWorld}.`;
   }
   return null;
 }

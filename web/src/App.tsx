@@ -11,7 +11,7 @@ import { SettingsPanel } from './components/SettingsPanel.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
-import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
+import { rimEventTitle } from '../../src/skin/lexicon.js';
 import { helpPage } from '../../src/ui/help.js';
 import { commandControls, screenMode } from '../../src/ui/mode.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
@@ -278,7 +278,7 @@ export function App() {
         <span className="turn">Turn {view.state.turn}</span>
         {view.sandboxEvent && (
           <span className="pill" title="Only this random event fires, every turn. Not a real campaign.">
-            sandbox: {RIM_EVENT_TITLE[view.sandboxEvent].toLowerCase()}
+            sandbox: {rimEventTitle(view.sandboxEvent).toLowerCase()}
           </span>
         )}
         <span style={{ color: player ? ansi256ToHex(player.displayColor) : undefined }}>

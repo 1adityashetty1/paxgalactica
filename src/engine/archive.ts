@@ -56,7 +56,7 @@ const README = `Pax Galactica campaign archive
 ==============================
 
 This file holds one saved campaign: its complete ops journal and its
-diplomatic transcripts. The journal is the campaign — the world is rebuilt
+diplomatic transcripts. The journal is the campaign — the game is rebuilt
 from it by replaying every op through the same pure reducer that produced
 them, so this archive is the whole game and not a snapshot of one.
 

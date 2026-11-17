@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { rollD20 } from './checks.js';
+import { say, schoolWords } from '../skin/lexicon.js';
 
 /**
  * Commanders: a named officer who takes one side of one battle.
@@ -77,34 +78,26 @@ import { rollD20 } from './checks.js';
  * stance or hull can do.
  */
 
-export const COMMANDER_ARCHETYPES = [
-  {
-    kind: 'lineofbattle',
-    phase: 'every exchange, and the landing',
+/** A school whose words are the lexicon's, read when they are asked for, so a skin describes it. */
+function school<K extends string>(kind: K) {
+  return {
+    kind,
+    /** Where in a battle it helps. */
+    get phase(): string {
+      return schoolWords(kind).phase;
+    },
     /** What it reads as in a battle report. */
-    effect: 'fights harder, everywhere',
+    get effect(): string {
+      return schoolWords(kind).effect;
+    },
     /** Voice for a prompt: what this officer is known for. */
-    known: 'holding formation under fire, and for being dull about it',
-  },
-  {
-    kind: 'gunnery',
-    phase: 'the torpedo strike',
-    effect: 'opens with a heavier salvo',
-    known: 'the opening salvo — they fire before the fleets close, and well',
-  },
-  {
-    kind: 'convoy',
-    phase: 'the withdrawal',
-    effect: 'brings more of a beaten fleet home',
-    known: 'getting a broken fleet out, which is a reputation nobody wants',
-  },
-  {
-    kind: 'assault',
-    phase: 'the landing',
-    effect: 'puts more of the lift arm onto the ground',
-    known: 'the landing itself — going down with the first wave, and being hard to throw off',
-  },
-] as const;
+    get known(): string {
+      return schoolWords(kind).known;
+    },
+  };
+}
+
+export const COMMANDER_ARCHETYPES = [school('lineofbattle'), school('gunnery'), school('convoy'), school('assault')] as const;
 
 export type CommanderArchetype = (typeof COMMANDER_ARCHETYPES)[number]['kind'];
 export const CommanderArchetypeSchema = z.enum(
@@ -576,7 +569,7 @@ export function commanderPassive(c: Commander): string {
     case 'gunnery':
       return `+${commanderIndustry(c)} industry`;
     case 'convoy':
-      return `-${Math.round(commanderUpkeepRelief(c) * 100)}% fleet upkeep`;
+      return say`-${Math.round(commanderUpkeepRelief(c) * 100)}% {fleet} upkeep`;
     case 'assault':
       return `+${commanderInfluence(c)} influence`;
   }
@@ -631,13 +624,13 @@ export function veterancyLabel(battles: number): string {
 export function commanderEffect(c: Commander): string {
   switch (c.archetype) {
     case 'lineofbattle':
-      return `+${commanderMight(c)} might in every exchange, and the landing`;
+      return say`+${commanderMight(c)} might in every exchange, and the {landing}`;
     case 'gunnery':
-      return `+${Math.round(commanderStrike(c) * 100)}% on the opening salvo`;
+      return say`+${Math.round(commanderStrike(c) * 100)}% on the opening {salvo}`;
     case 'convoy':
       return `-${commanderRelief(c)}% off a withdrawal`;
     case 'assault':
-      return `+${Math.round(commanderAssault(c) * 100)}% troops ashore in a landing`;
+      return say`+${Math.round(commanderAssault(c) * 100)}% troops ashore in a {landing}`;
   }
 }
 
@@ -908,7 +901,7 @@ export function stockAgentLists(state: {
  * front, the Combine carries it behind the house name the way it carries every
  * other obligation.
  */
-interface NameStock {
+export interface NameStock {
   first: string[];
   last: string[];
   /** One per archetype. The name a power gives that school of officer. */
@@ -1094,6 +1087,9 @@ export const GENERATED_PERSON_WORDS: readonly string[] = [
 
 /** The name stock an independent world's notable is drawn from. */
 export const RIM_STOCK = 'rim';
+
+/** Every stock, read-only, for the skin to be built from: the five powers' and `RIM_STOCK`. */
+export const NAME_STOCKS: Readonly<Record<string, Readonly<NameStock>>> = NAME_STOCK;
 
 const FALLBACK = NAME_STOCK['drajk']!;
 

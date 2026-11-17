@@ -34,6 +34,10 @@ import { ShipStackSchema } from './hulls.js';
  * second source of truth for something the journal can already regenerate.
  */
 
+/** A battle's phases, in the order they are fought. */
+export const BATTLE_PHASES = ['strike', 'orbital', 'ground'] as const;
+export type BattlePhase = (typeof BATTLE_PHASES)[number];
+
 export const BATTLE_OUTCOMES = [
   /** Nobody in orbit, nobody on the ground. Walked in. */
   'unopposed',
@@ -117,7 +121,7 @@ export type BattleOfficer = z.infer<typeof BattleOfficerSchema>;
 export const BattleRoundSchema = z.object({
   /** Stamped per round so rounds can span turns without a schema change. */
   turn: z.number().int().min(0),
-  phase: z.enum(['strike', 'orbital', 'ground']),
+  phase: z.enum(BATTLE_PHASES),
   outcome: z.enum(BATTLE_OUTCOMES),
   /**
    * The two numbers the break-off test actually compared, rounded for display.

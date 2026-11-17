@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { liveMeanings, meaning } from '../skin/lexicon.js';
 
 /**
  * D&D-style faction statistics.
@@ -16,13 +17,7 @@ export const STAT_NAMES = ['might', 'guile', 'industry', 'influence', 'resolve']
 export type StatName = (typeof STAT_NAMES)[number];
 export const StatNameSchema = z.enum(STAT_NAMES);
 
-export const STAT_MEANINGS: Record<StatName, string> = {
-  might: 'fleets, guns, and the will to use them — battles, raids, invasions, blockades',
-  guile: 'spies, saboteurs, bribes, smuggling, forged writs, assassination',
-  industry: 'shipyards, factories, logistics — anything that must be BUILT or supplied',
-  influence: 'diplomacy, treaties, propaganda, courting client worlds, buying loyalty',
-  resolve: 'holding on — sieges endured, unrest suppressed, long programmes not abandoned',
-};
+export const STAT_MEANINGS: Readonly<Record<StatName, string>> = liveMeanings('stats');
 
 export const FactionStatsSchema = z.object({
   might: z.number().int().min(1).max(20),
@@ -141,14 +136,25 @@ export function resolveCheck(
 }
 
 /** Difficulty guidance, so the model prices actions on a stable scale. */
-export const DIFFICULTY_BANDS: { dc: number; label: string; example: string }[] = [
-  { dc: 5, label: 'trivial', example: 'a courier run through your own space' },
-  { dc: 10, label: 'straightforward', example: 'levying troops on a loyal world' },
-  { dc: 13, label: 'demanding', example: 'turning a rival’s minor official' },
-  { dc: 16, label: 'hard', example: 'storming a fortified system, or a treaty against real interests' },
-  { dc: 19, label: 'formidable', example: 'toppling a government, or building beyond your means' },
-  { dc: 22, label: 'near-impossible', example: 'what your faction was never built to do' },
+export const DIFFICULTY_BANDS: readonly { dc: number; label: string; readonly example: string }[] = [
+  difficulty(5, 'trivial'),
+  difficulty(10, 'straightforward'),
+  difficulty(13, 'demanding'),
+  difficulty(16, 'hard'),
+  difficulty(19, 'formidable'),
+  difficulty(22, 'near-impossible'),
 ];
+
+/** A difficulty band whose worked example is the skin's, read when it is asked for. */
+function difficulty(dc: number, label: string): { dc: number; label: string; readonly example: string } {
+  return {
+    dc,
+    label,
+    get example() {
+      return meaning('difficulty', label);
+    },
+  };
+}
 
 export function describeCheck(result: CheckResult): string {
   return `${result.stat} check: d20 ${result.roll} ${formatModifier(result.modifier)} = ${result.total} vs DC ${result.difficulty} → ${result.outcome.replace('_', ' ')}`;

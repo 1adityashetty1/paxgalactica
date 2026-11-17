@@ -30,6 +30,7 @@ import {
   type WorldState,
 } from './state.js';
 import type { DurationCategory } from './duration.js';
+import { orderWord, say } from '../skin/lexicon.js';
 
 /**
  * Leverage: what one power has over another, read off the board.
@@ -154,13 +155,13 @@ export function describeSecret(state: WorldState, secret: Secret): string {
     case 'covert_operation': {
       const agent = (state.agents ?? []).find((a) => a.id === secret.ref);
       return agent
-        ? `${who} has an operative working ${agent.mission ?? 'unseen'} at ${where(agent.systemId)}`
-        : `${who} runs an operative it has never owned to`;
+        ? say`${who} has an {operative} working ${agent.mission ?? 'unseen'} at ${where(agent.systemId)}`
+        : say`${who} runs an {operative} it has never owned to`;
     }
     case 'secret_programme': {
       const order = state.pendingOrders.find((o) => o.id === secret.ref);
       return order
-        ? `${who} is running ${order.type.replace(/_/g, ' ')} at ${where(order.targetId)} in secret`
+        ? `${who} is running ${orderWord(order.type)} at ${where(order.targetId)} in secret`
         : `${who} ran a programme it never admitted to`;
     }
     case 'default':
@@ -298,7 +299,7 @@ export function concessionBudget(state: WorldState, conceder: string, other: str
   }
   if (underDuressFrom(state, other, conceder) > 0) {
     scale += 0.25;
-    because.push('their ships over your worlds');
+    because.push(say`their {ships} over your {worlds}`);
   }
   if ((state.debts ?? []).some((d) => isDebtLive(d) && d.debtorFactionId === conceder && d.creditorFactionId === other)) {
     scale += 0.25;

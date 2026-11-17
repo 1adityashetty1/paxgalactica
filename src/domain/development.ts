@@ -2,6 +2,7 @@ import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMissio
 import { MAX_DURATION, type DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { doneAt } from './words.js';
+import { assetKindWord, assetUnit, say, slugWords, unitWord } from '../skin/lexicon.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
 import {
   addShipsAt,
@@ -357,7 +358,7 @@ function fixtureBuilt(kind: string, stat: string | undefined): string | null {
   if (stat === wants) return null;
   return stat === undefined
     ? `A ${shape.kind} is built, not come by: it takes a ${wants} undertaking, and nothing here tested ${wants}.`
-    : `A ${shape.kind.replace(/_/g, ' ')} takes ${wants}, and this was ${/^[aeiou]/.test(stat) ? 'an' : 'a'} ${stat} undertaking; the fixture was not begun.`;
+    : `A ${assetKindWord(shape.kind)} takes ${wants}, and this was ${/^[aeiou]/.test(stat) ? 'an' : 'a'} ${stat} undertaking; the fixture was not begun.`;
 }
 
 /** Work declared as its own op whose whole point is a payload (intent-ops §1). */
@@ -404,7 +405,7 @@ export function boundPayloadsToOutcome(
         const had = Number(o.durationTurns ?? 0);
         if (had < MAX_DURATION) {
           builtNotes.push(
-            `A partial result: the ${kind.replace(/_/g, ' ')} goes up, slower — ${MAX_DURATION} turns${had > 0 ? ` rather than ${had}` : ''}.`,
+            `A partial result: the ${assetKindWord(kind)} goes up, slower — ${MAX_DURATION} turns${had > 0 ? ` rather than ${had}` : ''}.`,
           );
           kept.push({ ...o, durationTurns: MAX_DURATION });
           changed = true;
@@ -425,7 +426,7 @@ export function boundPayloadsToOutcome(
     // label shape. It goes up slower instead.
     if (wrong === null && outcome === 'partial') {
       changed = true;
-      builtNotes.push(`A partial result: the ${kind.replace(/_/g, ' ')} goes up, slower — ${MAX_DURATION} turns.`);
+      builtNotes.push(`A partial result: the ${assetKindWord(kind)} goes up, slower — ${MAX_DURATION} turns.`);
       return { ...o, durationTurns: Math.max(Number(o.durationTurns ?? 0), MAX_DURATION) };
     }
     const reason = wrong;
@@ -459,13 +460,13 @@ export function boundPayloadsToOutcome(
         continue;
       }
       touched = true;
-      const hull = String(o.hull ?? 'battleship').replace(/_/g, ' ');
+      const hulls = unitWord(String(o.hull ?? 'battleship'), 2);
       if (failed) {
-        notes.push(`The yards lay down nothing: the attempt to build ${o.count} ${hull}s failed, and nothing is spent on it.`);
+        notes.push(say`The {yards} lay down nothing: the attempt to build ${o.count} ${hulls} failed, and nothing is spent on it.`);
         continue;
       }
       const half = Math.max(1, Math.floor(o.count / 2));
-      if (half < o.count) notes.push(`A partial result: the yards lay down ${half} ${hull}s rather than ${o.count}.`);
+      if (half < o.count) notes.push(say`A partial result: the {yards} lay down ${half} ${hulls} rather than ${o.count}.`);
       bounded.push({ ...o, count: half });
     }
     if (touched) ops = bounded;
@@ -534,7 +535,7 @@ export function boundPayloadsToOutcome(
           !!op && typeof op === 'object' && (op as { op?: unknown }).op === 'deploy_agent';
         if (isAgent) {
           notes.push(
-            'The attempt failed, so nobody was placed: the operative never reached their posting, and the fee bought nothing.',
+            say`The attempt failed, so nobody was placed: the {operative} never reached their posting, and the fee bought nothing.`,
           );
         }
         return !isAgent;
@@ -556,7 +557,7 @@ export function boundPayloadsToOutcome(
       continue;
     }
     // A label is a name the writer gave the work, quoted; the op is a kind of it.
-    const what = o.label ? `"${String(o.label)}"` : `the ${String(o.op).replace(/_/g, ' ')}`;
+    const what = o.label ? `"${String(o.label)}"` : `the ${slugWords(String(o.op))}`;
     if (failed) {
       notes.push(`The attempt failed, so ${what} was never started and nothing was paid for it.`);
       strippedWork = true;
@@ -663,11 +664,11 @@ export function describeOrderEffect(effect: OrderEffect): string {
     case 'fortify':
       return `+${n} garrison capacity`;
     case 'commission_ships':
-      return `${n} new ${HULL_SPEC[effect.hull].label}${n === 1 ? '' : 's'}`;
+      return `${n} new ${unitWord(effect.hull, n)}`;
     case 'found_fixture':
-      return `a ${effect.fixtureKind.replace(/_/g, ' ') || 'fixture'}`;
+      return `a ${assetKindWord(effect.fixtureKind) || 'fixture'}`;
     case 'repair_fixture':
-      return `${n} point${n === 1 ? '' : 's'} of repair to ${effect.fixtureKind ? `the ${effect.fixtureKind.replace(/_/g, ' ')}` : 'a damaged fixture'}`;
+      return `${n} point${n === 1 ? '' : 's'} of repair to ${effect.fixtureKind ? `the ${assetKindWord(effect.fixtureKind)}` : 'a damaged fixture'}`;
     case 'court':
       return n >= 2 ? 'an envoy' : 'half an envoy';
   }
@@ -736,15 +737,15 @@ export function applyOrderEffect(
       const gained = system.strategicValue - before;
       if (gained <= 0) {
         return {
-          note: `${doneAt(label, system.name)}, but the world is already developed as far as it can be (strategic value ${before}).`,
+          note: say`${doneAt(label, system.name)}, but the {world} is already developed as far as it can be (strategic value ${before}).`,
           delivered: false,
         };
       }
       const whose = stillOurs
         ? ''
         : holder
-          ? ` The works now serve ${holder}, who holds the world.`
-          : ' The world answers to nobody now, and the works serve whoever comes for it.';
+          ? say` The works now serve ${holder}, who holds the {world}.`
+          : say` The {world} answers to nobody now, and the works serve whoever comes for it.`;
       return {
         note: `${doneAt(label, system.name)}: strategic value ${before} -> ${system.strategicValue}.${whose}`,
         delivered: true,
@@ -756,7 +757,7 @@ export function applyOrderEffect(
       system.garrisonMax = before + effect.magnitude;
       const whose = stillOurs
         ? ''
-        : ` The works stand, and they defend ${holder ?? 'whoever takes the world next'}.`;
+        : ` The works stand, and they defend ${holder ?? say`whoever takes the {world} next`}.`;
       return {
         note: `${doneAt(label, system.name)}: garrison capacity ${before} -> ${system.garrisonMax}.${whose}`,
         delivered: true,
@@ -766,7 +767,7 @@ export function applyOrderEffect(
     case 'raise_garrison': {
       if (!stillOurs) {
         return {
-          note: `${doneAt(label, system.name)}, but the world has changed hands and the levy dispersed.`,
+          note: say`${doneAt(label, system.name)}, but the {world} has changed hands and the levy dispersed.`,
           delivered: false,
         };
       }
@@ -788,7 +789,7 @@ export function applyOrderEffect(
     case 'commission_ships': {
       if (!stillOurs) {
         return {
-          note: `${doneAt(label, system.name)}, but the yards were lost with the world and the hulls with them.`,
+          note: say`${doneAt(label, system.name)}, but the {yards} were lost with the {world} and the {hulls} with them.`,
           delivered: false,
         };
       }
@@ -815,7 +816,7 @@ export function applyOrderEffect(
       else mend.damage = after;
       const whole = fixtureIntegrity(mend);
       return {
-        note: `${doneAt(label, system.name)}: the ${mend.kind.replace(/_/g, ' ')} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
+        note: `${doneAt(label, system.name)}: the ${assetKindWord(mend.kind)} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
         delivered: true,
       };
     }
@@ -837,22 +838,22 @@ export function applyOrderEffect(
       }
       if (holder === null) {
         return {
-          note: `${doneAt(label, system.name)}, but the world has fallen out of anyone's hands and the ${shape.kind.replace(/_/g, ' ')} stands empty.`,
+          note: say`${doneAt(label, system.name)}, but the {world} has fallen out of anyone's hands and the ${assetKindWord(shape.kind)} stands empty.`,
           delivered: false,
         };
       }
       const whose = stillOurs
         ? ''
-        : ' It serves the power that holds the world now.';
+        : say` It serves the power that holds the {world} now.`;
       return {
         note: `${doneAt(label, system.name)}: ${describeOrderEffect(effect)} stands.${whose}`,
         delivered: true,
         fixture: {
           kind: shape.kind,
-          text: `${shape.kind.replace(/_/g, ' ')} at ${system.name}`,
+          text: `${assetKindWord(shape.kind)} at ${system.name}`,
           heldBy: holder,
           quantity: 1,
-          unit: shape.unit,
+          unit: assetUnit(shape.kind),
           divisible: false,
           valuePerUnit: {},
           speculative: false,
@@ -1029,7 +1030,7 @@ export function routeCovertAction(
     ],
     notes: added.map(
       (c) =>
-        `Covert work is run by operatives: a ${c.mission} agent was placed at ${c.systemId}, charged and capped like any other. It resolves on the tick.`,
+        say`Covert work is run by {operatives}: a ${c.mission} agent was placed at ${c.systemId}, charged and capped like any other. It resolves on the tick.`,
     ),
   };
 }

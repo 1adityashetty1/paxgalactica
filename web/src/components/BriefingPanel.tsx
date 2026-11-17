@@ -4,6 +4,7 @@ import { BattleCard } from './BattleCard.js';
 import { RimEventCard } from './RimEventCard.js';
 import type { StagedItem } from './types.js';
 import { ansi256ToHex } from '../color.js';
+import { say } from '../../../src/skin/lexicon.js';
 
 /**
  * The standing brief, always on screen.
@@ -80,7 +81,7 @@ export function BriefingPanel({
               {briefing.ledger.net}/turn
             </span>
             <span className="sub">
-              +{briefing.ledger.territory} territory · +{briefing.ledger.routes} lanes · −
+              +{briefing.ledger.territory} territory · +{briefing.ledger.routes}{say` {lanes} · −`}
               {briefing.ledger.upkeep} upkeep
               {briefing.ledger.agentUpkeep > 0 && ` · −${briefing.ledger.agentUpkeep} agents`}
               {/* Its own term, because it rises with the count: the next
@@ -140,7 +141,7 @@ export function BriefingPanel({
               turn as on its first. */}
           {briefing.events.length > 0 && (
             <div className="brief-group">
-              <h4>The Rim</h4>
+              <h4>{say`{Rim}`}</h4>
               {briefing.events.map((e) => (
                 <RimEventCard key={e.id} event={e} compact />
               ))}
@@ -151,7 +152,7 @@ export function BriefingPanel({
               reach leaning toward somebody, and anything that joined or rose. */}
           {(briefing.worlds ?? []).length > 0 && (
             <div className="brief-group">
-              <h4>Worlds</h4>
+              <h4>{say`{Worlds}`}</h4>
               <ul>
                 {briefing.worlds.map((w, i) => (
                   <li
@@ -351,7 +352,7 @@ export function BriefingPanel({
             </div>
           )}
 
-          {briefing.quiet && <p className="empty">Nothing under way. The Rim is quiet.</p>}
+          {briefing.quiet && <p className="empty">{say`Nothing under way. {Rim} is quiet.`}</p>}
         </>
       )}
     </section>
