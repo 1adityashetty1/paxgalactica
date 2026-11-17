@@ -275,6 +275,21 @@ export function lexiconIndex(lexicon: Lexicon, fam: (typeof ID_FAMILIES)[number]
 }
 
 /**
+ * A skin as it arrives — a file, a studio draft, a menu choice — held to both
+ * checks in order: `SkinSchema` first, and `skinViolations` only on what the
+ * schema accepted. `skinViolations` reads a parsed `Skin` and is not built to
+ * survive one that is not (a missing plural is a crash, not a finding), so a
+ * caller with untrusted input asks here.
+ */
+export function checkSkin(input: unknown, core: CoreSlots): { skin: Skin | null; issues: string[] } {
+  const parsed = SkinSchema.safeParse(input);
+  if (!parsed.success) {
+    return { skin: null, issues: parsed.error.issues.map((i) => `${i.path.join('.') || 'skin'}: ${i.message}`) };
+  }
+  return { skin: parsed.data, issues: skinViolations(parsed.data, core) };
+}
+
+/**
  * Everything wrong with a skin that its schema cannot see. Empty when the skin
  * can be played. Run against the core's slots, so a skin that adds a world,
  * drops a power or names an estate the core does not have is caught.
