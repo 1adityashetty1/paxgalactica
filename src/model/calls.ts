@@ -981,6 +981,29 @@ export async function resolveAction(
     };
   }
 
+  /* --- 1b'''. An envoy goes only where an envoy can ------------------- */
+  // An envoy to a world another power holds, or to an independent one out of
+  // reach, is refused by the order (`envoyRefusal`), so it is turned away here
+  // as inadmissible — no roll, no action, no cost — rather than rolled and then
+  // found to have courted nothing (bughunt 2026-11-17: an envoy to Drajk-held
+  // Tulgarn was priced at DC 14 and rolled). The rule is the reducer's, read
+  // through `envoysRefused` rather than restated.
+  if (priced.appraisal.admissible && !priced.appraisal.negotiation) {
+    const refused = envoysRefused(state, state.playerFactionId, action);
+    if (refused.length > 0) {
+      const why = refused.join(' ');
+      return {
+        output: { narrative: why, ops: [], inadmissible: why },
+        check: null,
+        roll: 0,
+        attempts: priced.attempts,
+        costUsd: priced.costUsd + relevanceCost,
+        ruling,
+        notes,
+      };
+    }
+  }
+
   /* --- 1b'. Covert work needs somebody on the books -------------------- */
   // Recruiting an operative and sending one are two actions (version 11), so a
   // covert attempt by a power with nobody to send is not a thing that can be
@@ -1142,10 +1165,19 @@ export async function resolveAction(
   // number meant neither ever reached the dice — a faction at 100 dissent
   // rolled exactly as well as one whose institutions were behind it.
   const stats = effectiveStats(state, state.playerFactionId);
-  const check: CheckResult | null =
+  const rolledCheck: CheckResult | null =
     !rolled || stat === undefined || difficulty === undefined
       ? null
       : resolveCheck(stat, stats[stat], roll, difficulty);
+  // Taking the acting power's own people off its own Lists cannot fail: they
+  // are waiting to be asked, and nobody resists it. The arbiter prices it
+  // trivial, but a natural 1 still failed one, spent 40 credits on "bungled
+  // papers" and recruited nobody (bughunt 2026-11-17). The roll is kept, so the
+  // log stays auditable, and its outcome is floored at a success.
+  const check: CheckResult | null =
+    rolledCheck && takesOffTheLists(action) && (rolledCheck.outcome === 'failure' || rolledCheck.outcome === 'critical_failure')
+      ? { ...rolledCheck, outcome: 'success' }
+      : rolledCheck;
 
   // Every check is written to the log, so a campaign's luck is auditable.
   //
@@ -1669,6 +1701,18 @@ export function sendingIsTheAct(state: WorldState, action: string, ground: { kin
  * envoy at a rival's world, which the order then refused; the rule is the
  * reducer's, so the check reads it rather than restating it.
  */
+/**
+ * Whether a declaration takes someone off the acting power's own Lists: an
+ * operative recruited, an officer appointed, a notable seated. Read off the
+ * words, as the levy and bounty checks are, and only for those three acts,
+ * which `recruitmentAlone` already keeps from riding with anything else.
+ */
+export function takesOffTheLists(action: string): boolean {
+  const acts = /\b(?:recruit|recruits|recruiting|appoint|appoints|appointing|seat|seats|seating|enlist|enlists)\b/i.test(action);
+  const people = /\b(?:lists?|operatives?|agents?|spies|spy|ghosts?|agitators?|sparrows?|wetworkers?|officers?|notables?|governors?|chancellors?|commodores?|admirals?|marshals?|brigadiers?)\b/i.test(action);
+  return acts && people;
+}
+
 export function envoysRefused(state: WorldState, viewerId: string, counsel: string): string[] {
   if (!regardRecorded(state)) return [];
   const out: string[] = [];

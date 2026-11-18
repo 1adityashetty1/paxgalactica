@@ -23,6 +23,18 @@ record**. You do not write them.
 2. **`ops`** — only the terms the record has no field for: the treaties and
    their types and conditions, commitments, debts, loans, favours owed, an
    ultimatum given way to, a dossier, the record of what was said.
+3. **`leaderGives`** — the leader's side of an agreed deal that the record
+   does not show. The other power is meant to write down what it understood
+   the leader to give, and sometimes does not. When the leader said, in their
+   own words, that they hand something over and the deal it belongs to was
+   agreed, write it here: a thing they hold (its id, from the leader's own
+   shelf in the state block) in `assets`, a sum paid once in `pays`, a world
+   they hold in `cedes`, a power they stop tolling in `lifts`, a favour owed
+   to them that they let go in `obligations`. Only what the leader gives, never
+   what the other power gives; nothing already on the record; nothing merely
+   offered or refused. The engine checks that each is the leader's to give,
+   and builds none of it unless the accord also lands something from the other
+   power, so the leader is never left paying for nothing.
 
 **Do not write `pay`, `transfer_asset`, `release_obligation`,
 `assign_obligation`, `set_toll_policy`, a `cession`, or `terms.payment`,
@@ -395,6 +407,9 @@ them sail.
   as a record rather than a scene. If nothing was agreed, say so plainly.
 - `accepted` — every recorded term agreed, as `by:kind`; empty when nothing was.
 - `ops` — the terms the record has no field for, or an empty list.
+- `leaderGives` — `{ assets, pays, cedes, lifts, obligations }`: the
+  leader's own side of an agreed deal that the record does not show; empty
+  when there is none.
 
 Be conservative. A campaign where every pleasant conversation silently becomes
 a treaty is a campaign where diplomacy means nothing.

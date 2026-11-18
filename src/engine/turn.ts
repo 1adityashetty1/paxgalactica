@@ -241,7 +241,7 @@ async function reviseRejected(
       user,
       // A correction re-emits the ops alone: which concessions were agreed was
       // settled by the first pass, and the transfers they name are not its to touch.
-      schema: source === 'extraction' ? ExtractionOutputSchema.omit({ accepted: true }) : ModelTurnOutputSchema,
+      schema: source === 'extraction' ? ExtractionOutputSchema.omit({ accepted: true, leaderGives: true }) : ModelTurnOutputSchema,
       maxRetries: 1,
     });
     return { ops: res.value.ops, narrative: res.value.narrative, costUsd: res.costUsd };
@@ -1802,6 +1802,105 @@ export function transfersFromRecord(
   return { ops, notes };
 }
 
+/**
+ * The leader's side of an agreed deal that the record left out, built from
+ * extraction's `leaderGives` and nothing else, once each part is checked to be
+ * the leader's to give. The other power's persona is told to record both sides
+ * and sometimes records only its own: a captured operative was the price of a
+ * pact, the pact landed and the operative stayed (bughunt 2026-11-17).
+ *
+ * Giving your own away needs no record of the other side's consent, which is
+ * why this one class of transfer may come from extraction at all:
+ * - a thing the leader holds that can change hands and is not already moving;
+ * - money the record does not already move from the leader;
+ * - a world the leader holds, ceded, when the record cedes none of the leader's;
+ * - a toll the leader stops charging a power;
+ * - a favour owed to the leader, let go.
+ *
+ * **And never for nothing.** `othersSide` says whether the accord lands any
+ * term from the other power — a concession of theirs agreed, or a treaty
+ * formed. Without one, the leader's side is not built: a deal whose other half
+ * never reached the record must not leak the leader's half away. Anything
+ * dropped is said.
+ */
+export function leaderGivesOutsideRecord(
+  state: WorldState,
+  gives: { assets: readonly string[]; pays: number; cedes?: readonly string[]; lifts?: readonly string[]; obligations?: readonly string[] },
+  player: string,
+  other: string,
+  built: readonly Record<string, unknown>[],
+  othersSide: boolean,
+): { ops: Record<string, unknown>[]; notes: string[] } {
+  const ops: Record<string, unknown>[] = [];
+  const notes: string[] = [];
+  const me = getFaction(state, player)?.name ?? player;
+  const them = getFaction(state, other)?.name ?? other;
+  const anything =
+    gives.assets.length + (gives.cedes?.length ?? 0) + (gives.lifts?.length ?? 0) + (gives.obligations?.length ?? 0) > 0 || gives.pays > 0;
+  if (!anything) return { ops, notes };
+  if (!othersSide) {
+    notes.push(`Nothing of ${me}'s was handed over: ${them}'s side of the deal is not on the record, and the leader's half is not given for nothing.`);
+    return { ops, notes };
+  }
+  const moving = new Set(built.filter((o) => o.op === 'transfer_asset').map((o) => String(o.assetId)));
+  for (const id of new Set(gives.assets)) {
+    const asset = state.assets.find((a) => a.id === id);
+    if (!asset || asset.heldBy !== player) {
+      notes.push(`Left out: "${id}" is not a thing ${me} holds.`);
+      continue;
+    }
+    if (asset.portable === false) {
+      notes.push(say`Left out: ${asset.text.replace(/[.\s]+$/, '')} stands on its {node} and goes only with it.`);
+      continue;
+    }
+    if (moving.has(id)) continue;
+    moving.add(id);
+    ops.push({ op: 'transfer_asset', assetId: id, toFactionId: other, reason: "(the leader's side of the terms agreed)" });
+    notes.push(`Not on the record but said and agreed: ${asset.text.replace(/[.\s]+$/, '')} goes to ${them}.`);
+  }
+  const paying =
+    built.some((o) => o.op === 'pay' && o.factionId === player) ||
+    built.some((o) => o.op === 'form_treaty' && (o.terms as { payment?: Record<string, number> } | undefined)?.payment?.[player] !== undefined);
+  if (gives.pays > 0 && !paying) {
+    ops.push({ op: 'pay', factionId: player, to: other, amount: gives.pays, for: "the leader's side of the terms agreed" });
+  }
+  const ceding = built.some(
+    (o) => o.op === 'form_treaty' && o.treatyType === 'cession' && Array.isArray(o.parties) && (o.parties as string[])[0] === player,
+  );
+  const worlds = [...new Set(gives.cedes ?? [])].filter((id) => state.systems.find((x) => x.id === id)?.controllerFactionId === player);
+  for (const id of new Set(gives.cedes ?? [])) if (!worlds.includes(id)) notes.push(say`Left out: "${id}" is not a {node} ${me} holds.`);
+  if (worlds.length > 0 && !ceding) {
+    ops.push({
+      op: 'form_treaty',
+      treatyType: 'cession',
+      parties: [player, other],
+      terms: { territory: worlds },
+      summary: `${worlds.map((id) => state.systems.find((x) => x.id === id)?.name ?? id).join(', ')} ceded to ${them}`,
+    });
+  }
+  const lifting = built.some((o) => o.op === 'set_toll_policy' && o.factionId === player);
+  const charging = getFaction(state, player)?.tollTargets ?? [];
+  const lifts = new Set((gives.lifts ?? []).filter((id) => charging.includes(id)));
+  if (lifts.size > 0 && !lifting) {
+    ops.push({ op: 'set_toll_policy', factionId: player, targets: charging.filter((id) => !lifts.has(id)) });
+  }
+  const releasing = new Set(built.filter((o) => o.op === 'release_obligation' || o.op === 'assign_obligation').map((o) => String(o.obligationId)));
+  for (const id of new Set(gives.obligations ?? [])) {
+    const owed = (state.obligations ?? []).find((o) => o.id === id);
+    if (!owed || owed.holderFactionId !== player) {
+      notes.push(`Left out: "${id}" is not a favour owed to ${me}.`);
+      continue;
+    }
+    if (releasing.has(id)) continue;
+    ops.push(
+      owed.debtorFactionId === other
+        ? { op: 'release_obligation', obligationId: id, reason: "the leader's side of the terms agreed" }
+        : { op: 'assign_obligation', obligationId: id, toHolderFactionId: other, reason: "the leader's side of the terms agreed" },
+    );
+  }
+  return { ops, notes };
+}
+
 /** The ops the record writes, which extraction no longer may (§3). */
 const RECORD_OPS = new Set(['pay', 'adjust_credits', 'transfer_asset', 'release_obligation', 'assign_obligation', 'set_toll_policy']);
 
@@ -1963,6 +2062,21 @@ export async function closeChannel(
   const agreed = conceded.filter((c) => accepted.has(`${c.by}:${c.kind}`));
   const unknownTerms = [...accepted].filter((k) => !conceded.some((c) => `${c.by}:${c.kind}` === k));
   const built = transfersFromRecord(campaign.state, agreed, player, factionId);
+  // The leader's own side, where the other power recorded only its own.
+  // Never for nothing: only when the accord lands a term from the other power.
+  const othersSide =
+    agreed.some((c) => c.by === factionId) ||
+    extraction.output.ops.some((o) => (o as { op?: string }).op === 'form_treaty');
+  const given = leaderGivesOutsideRecord(
+    campaign.state,
+    extraction.output.leaderGives ?? { assets: [], pays: 0 },
+    player,
+    factionId,
+    built.ops,
+    othersSide,
+  );
+  built.ops.push(...given.ops);
+  built.notes.push(...given.notes);
   const stripped = withoutRecordTransfers(extraction.output.ops);
   // A treaty the record ends is ended once: extraction's own break of it would
   // be refused as already void, and sink the accord. And only the record names
