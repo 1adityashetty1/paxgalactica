@@ -2638,15 +2638,15 @@ export function agentStanding(operations: number): string {
 export function describeEffect(effect: AgentEffect): string {
   switch (effect.kind) {
     case 'hull_damage':
-      return say`−${effect.perTurn} {fleet} strength per turn`;
+      return say`−${effect.perTurn} {group} strength per turn`;
     case 'fixture_damage':
       return `−${effect.perTurn} from a fixture's yield per turn, until it is repaired`;
     case 'income_penalty':
-      return say`−${effect.perTurn} {credits} per turn`;
+      return say`−${effect.perTurn} {money_units} per turn`;
     case 'stat_debuff':
       return `−${effect.magnitude} ${effect.stat}`;
     case 'crew_defection':
-      return say`talks up to ${effect.perTurn} {hull}(s) a turn out of the target's service, as far as guile beats resolve`;
+      return say`talks up to ${effect.perTurn} {unit}(s) a turn out of the target's service, as far as guile beats resolve`;
     case 'sedition':
       return `+${effect.perTurn} dissent a turn in the target's own institutions`;
     case 'intel':
@@ -2654,11 +2654,11 @@ export function describeEffect(effect: AgentEffect): string {
     case 'discord':
       return `−${effect.perTurn} a turn in the host's regard for ${effect.towardFactionId}, to a lifetime ${MAX_DISCORD_TOTAL}`;
     case 'incite':
-      return say`−${effect.perTurn} a turn in the {world}'s regard for whoever holds it`;
+      return say`−${effect.perTurn} a turn in the {node}'s regard for whoever holds it`;
     case 'turn_notable':
       return 'the notable works against their holder, whatever their estate thinks';
     case 'seduce':
-      return say`the notable\'s {world} warms to you, and proof of the affair follows`;
+      return say`the notable\'s {node} warms to you, and proof of the affair follows`;
     case 'kidnap':
       return 'seizes a named person there, once, and holds them';
     case 'steal':

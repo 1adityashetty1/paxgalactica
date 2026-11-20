@@ -1582,19 +1582,19 @@ export function fixtureSlotRefusal(
     : [];
   const label = assetKindWord;
   if (perWorld === 1) {
-    if (standing[0]) return say`${system.name} already carries a ${label(standing[0].kind)}; a {world} carries one fixture.`;
-    if (building[0]) return say`A fixture is already being raised at ${system.name}; a {world} carries one.`;
+    if (standing[0]) return say`${system.name} already carries a ${label(standing[0].kind)}; a {node} carries one fixture.`;
+    if (building[0]) return say`A fixture is already being raised at ${system.name}; a {node} carries one.`;
     return null;
   }
   if (standing.some((a) => a.kind === kind)) {
-    return say`${system.name} already has a ${label(kind)}; a {world}'s fixtures must be different kinds.`;
+    return say`${system.name} already has a ${label(kind)}; a {node}'s fixtures must be different kinds.`;
   }
   if (building.some((o) => o.onComplete?.fixtureKind === kind)) {
-    return say`A ${label(kind)} is already being raised at ${system.name}; a {world}'s fixtures must be different kinds.`;
+    return say`A ${label(kind)} is already being raised at ${system.name}; a {node}'s fixtures must be different kinds.`;
   }
   if (standing.length + building.length >= perWorld) {
     const there = [...standing.map((a) => a.kind), ...building.map((o) => `${o.onComplete!.fixtureKind} (being raised)`)];
-    return say`${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a {world} holds ${perWorld}.`;
+    return say`${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a {node} holds ${perWorld}.`;
   }
   return null;
 }

@@ -125,7 +125,7 @@ export function shipClassLines(): string[] {
   const first = byLoss[0]!;
   const last = byLoss.at(-1)!;
   return [
-    say`{SHIP} CLASSES — ${CREDITS_PER_TON} {credits} a {ton} to build, ${UPKEEP_PER_TON} a {ton} every turn after`,
+    say`{UNIT_ALT} CLASSES — ${CREDITS_PER_TON} {money_units} a {size_unit} to build, ${UPKEEP_PER_TON} a {size_unit} every turn after`,
     ...NAVY_CLASSES.map((h) => {
       const { tonnage } = HULL_SPEC[h];
       const label = unitWord(h);
@@ -134,8 +134,8 @@ export function shipClassLines(): string[] {
     }),
     `  ${capitalise(names(unarmed))} cannot fight. Losses fall on ${plural(first)}`,
     `  first and ${plural(last)} last, so a screen is what brings a convoy home.`,
-    say`  Your {yards} lay down ${YARD_TONS_BASE} {tons} a turn, ${YARD_TONS_PER_POINT} more a point of industry;`,
-    say`  a bigger order is paid now and queued, and lost if the {world} is lost.`,
+    say`  Your {works} lay down ${YARD_TONS_BASE} {size_units} a turn, ${YARD_TONS_PER_POINT} more a point of industry;`,
+    say`  a bigger order is paid now and queued, and lost if the {node} is lost.`,
   ];
 }
 
@@ -158,18 +158,18 @@ export function fixtureLines(state: WorldState | null): string[] {
   const nth = (n: number) => fixtureUpkeepForCount(n) - fixtureUpkeepForCount(n - 1);
   const example = state ? exampleFixture(state) : null;
   return [
-    say`FIXTURES — what a {world} can be built into`,
-    say`  A fixture is a building that raises your stats while you hold its {world}:`,
-    say`  a ${assetKindWord('factory')}, a ${assetKindWord('military_base')}, a ${assetKindWord('stock_exchange')}. Each {world} carries ${count(MAX_FIXTURES_PER_WORLD)},`,
+    say`FIXTURES — what a {node} can be built into`,
+    say`  A fixture is a building that raises your stats while you hold its {node}:`,
+    say`  a ${assetKindWord('factory')}, a ${assetKindWord('military_base')}, a ${assetKindWord('stock_exchange')}. Each {node} carries ${count(MAX_FIXTURES_PER_WORLD)},`,
     '  no two of the same kind, and its ground decides which: each must raise',
     '  the stat the ground does.',
     ...ground,
     `  It gives +${MAX_ASSET_STAT} to one stat, or +${MAX_ASSET_STAT / 2} to each of two. All of yours together`,
-    say`  add at most +${MAX_FIXTURE_BONUS} to any one stat. It costs ${FIXTURE_COST} {credits} and at least ${turns} turns`,
-    say`  of construction on a {world} you hold, and the bill rises with how many you`,
+    say`  add at most +${MAX_FIXTURE_BONUS} to any one stat. It costs ${FIXTURE_COST} {money_units} and at least ${turns} turns`,
+    say`  of construction on a {node} you hold, and the bill rises with how many you`,
     `  run: your first costs ${nth(1)} a turn, your second ${nth(2)}, your third ${nth(3)}. Every`,
-    say`  power opens with one. Whoever holds the {world} when it finishes owns it,`,
-    say`  and taking a {world} takes what is built on it.`,
+    say`  power opens with one. Whoever holds the {node} when it finishes owns it,`,
+    say`  and taking a {node} takes what is built on it.`,
     '  A saboteur can wreck one, a point of what it yields at a time, and it',
     `  still costs its upkeep; a repair programme puts it back, ${EFFECT_COST.repair_fixture} a point.`,
     ...(example ? [`  Try: ${example}`] : []),
@@ -182,8 +182,8 @@ export function fixtureLines(state: WorldState | null): string[] {
  */
 export function spanLines(): string[] {
   return [
-    say`  You can govern only so many {worlds}: your homeland, or more with good`,
-    say`  influence (${SPAN_BASE} plus its modifier). Each {world} past that costs`,
+    say`  You can govern only so many {nodes}: your homeland, or more with good`,
+    say`  influence (${SPAN_BASE} plus its modifier). Each {node} past that costs`,
     `  ${SPAN_DISSENT_PER_WORLD} dissent every turn — conquest is braked by administration.`,
   ];
 }
@@ -195,15 +195,15 @@ export function spanLines(): string[] {
  */
 export function worldLines(): string[] {
   return [
-    say`{WORLDS} WITH A VIEW OF THEIR OWN`,
-    say`  Every {world} has a standing with every power. One that answers to nobody`,
+    say`{NODES} WITH A VIEW OF THEIR OWN`,
+    say`  Every {node} has a standing with every power. One that answers to nobody`,
     `  joins the power it regards at ${JOIN_REGARD} or better, ${JOIN_LEAD} clear of the next:`,
-    say`  send it an envoy, and give it what it wants. A {world} you hold stays while`,
-    say`  it is content with you (${CONTENT_REGARD} or better) or held down by your {warships}`,
+    say`  send it an envoy, and give it what it wants. A {node} you hold stays while`,
+    say`  it is content with you (${CONTENT_REGARD} or better) or held down by your {fighters}`,
     '  over it — fewer of them the higher your resolve. Neither, and its garrison',
     '  deserts until it rises and answers to nobody. An operative sent to incite',
-    say`  a {world} another power holds turns it against them, hardest at home.`,
-    say`  What a {world} wants, by the stat its ground makes:`,
+    say`  a {node} another power holds turns it against them, hardest at home.`,
+    say`  What a {node} wants, by the stat its ground makes:`,
     ...STAT_NAMES.map((stat) => {
       const want = WANT_OF_STAT[stat];
       return `    ${stat.padEnd(10)}${want.padEnd(12)}${WANT_MEANS[want]}`;
@@ -221,7 +221,7 @@ export function peaceLines(): string[] {
     `  victim and ${TRUCE_BREAKING_REPUTATION_COST} with every other power.`,
     '  Every power holds one promissory note, a favour signed in advance. Give',
     '  yours away and the holder may call it in, with no need to ask: a trade',
-    say`  accord, a defence pact, basing rights or a line of {credit}, for ${NOTE_TERM_TURNS} turns.`,
+    say`  accord, a defence pact, basing rights or a line of {money_unit}, for ${NOTE_TERM_TURNS} turns.`,
   ];
 }
 
@@ -279,12 +279,12 @@ function darkShare(): string {
 export function raiderLines(): string[] {
   return [
     "THE RAIDER'S LEDGER",
-    say`  Post a bounty on a power and your {credits} wait in escrow: prizes raided`,
-    say`  from it pay out {credit} for {credit}, its {hulls} destroyed ${BOUNTY_PER_TON} a {ton}.`,
+    say`  Post a bounty on a power and your {money_units} wait in escrow: prizes raided`,
+    say`  from it pay out {money_unit} for {money_unit}, its {units} destroyed ${BOUNTY_PER_TON} a {size_unit}.`,
     '  A raid can run dark — say so when you order it: "raid it quietly, no',
     '  colours". Nobody is told whose it is and it costs no standing or heat',
     `  while it stays dark, but it takes ${darkShare()} the prizes. Each power it robs`,
-    say`  may trace it, helped by {listeners} nearby; traced, it runs open, they`,
+    say`  may trace it, helped by {sigint_units} nearby; traced, it runs open, they`,
     '  resent it double, and they hold proof to publish or blackmail you with.',
     '  Raiders you cannot name show up on your Trade tab as what they took.',
     '  A raider can be paid to leave you alone (protection) or to go after',
@@ -297,7 +297,7 @@ export function heatLines(): string[] {
   return [
     'HEAT',
     '  Covert work, unlicensed raids and broken pacts make a power notorious.',
-    say`  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} {rim} answers: crackdowns, a price`,
+    say`  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} {map} answers: crackdowns, a price`,
     '  on your head, contacts turned, a neighbour massing on your border.',
   ];
 }
@@ -311,10 +311,10 @@ export function officerLines(): string[] {
     '  is of one school, and helps only in a battle they are at:',
     ...COMMANDER_ARCHETYPES.map((a) => `  · ${a.effect} — ${a.phase}`),
     '  Appoint them off your Lists, where one of each school always waits;',
-    say`  nobody is put in post any other way, so a {fleet} whose officers have all`,
-    say`  fallen fights without one. Name one in an order and they {sail} with that`,
-    say`  {fleet}. They grow better after ${seasoned} engagements and again after ${veteran}, and fall`,
-    say`  or are taken when the {fleet} around them does. One ransomed home goes`,
+    say`  nobody is put in post any other way, so a {group} whose officers have all`,
+    say`  fallen fights without one. Name one in an order and they {move} with that`,
+    say`  {group}. They grow better after ${seasoned} engagements and again after ${veteran}, and fall`,
+    say`  or are taken when the {group} around them does. One ransomed home goes`,
     '  back on the Lists and returns to post for nothing. The senior one in',
     '  post also improves something at home.',
   ];
@@ -324,7 +324,7 @@ export function officerLines(): string[] {
 export function rimLines(): string[] {
   const oneIn = Math.round(1 / RIM_EVENT_RATE);
   return [
-    say`{RIM} MOVES ON ITS OWN`,
+    say`{MAP} MOVES ON ITS OWN`,
     `  About one turn in ${count(oneIn)}, something happens nobody ordered: one of`,
     `  ${count(RIM_HAZARDS.length)} hazards, which lean on whoever is ahead, or one of ${count(RIM_BOONS.length)} boons, which`,
     '  lean on whoever is behind. Never two in a turn. A card in the feed says',
@@ -361,9 +361,9 @@ export function operativeLines(): string[] {
   return [
     'OPERATIVES',
     `  Recruiting one is an action: one of those waiting on your Lists signs`,
-    say`  on at a {world} you hold. Sending them on a mission is another. A`,
+    say`  on at a {node} you hold. Sending them on a mission is another. A`,
     '  recalled operative, or one ransomed home, goes back on the Lists.',
-    say`  They travel ${AGENT_JUMPS_PER_TURN} {jumps} a turn and cost ${AGENT_UPKEEP} a turn`,
+    say`  They travel ${AGENT_JUMPS_PER_TURN} {steps} a turn and cost ${AGENT_UPKEEP} a turn`,
     `  to keep. How many you can run is ${MAX_AGENTS_BASE} plus your guile modifier. Each`,
     '  mission is paid when they are sent; a failure can get them caught,',
     '  and a caught operative is a prisoner the other side can ransom.',
@@ -398,8 +398,8 @@ export function operativeLines(): string[] {
     '  SENT, NOT ROLLED',
     '  A covert order is not rolled when you give it. The operative sets out,',
     '  and their own chance — guile, class, method, groundwork — is rolled',
-    say`  when they act. Open work in the same order, like the {fleet} covering a`,
-    say`  {landing}, is rolled on its own; the sending goes ahead either way.`,
+    say`  when they act. Open work in the same order, like the {group} covering a`,
+    say`  {disembarking}, is rolled on its own; the sending goes ahead either way.`,
     '  One already on a mission takes a new one if you name them. Whatever no',
     '  mission can do yet is set aside, and on its own costs you no action.',
     '',
@@ -416,14 +416,14 @@ export function intelLines(): string[] {
   return [
     'INTEL',
     '  Everything you cannot see is a rumour until somebody of yours is',
-    say`  standing in it: a watcher, or a {listener} over the {world}. What you see`,
+    say`  standing in it: a watcher, or a {sigint_unit} over the {node}. What you see`,
     `  you remember for ${INTEL_MEMORY_TURNS} turns after the sight is lost.`,
     '  The longer you watch a power, the better you know it:',
     `    ${String(INTEL_TYPED).padStart(3)}  its rumours say what kind of work it is`,
     `    ${String(INTEL_DELIVERS).padStart(3)}  …and what the work will deliver`,
-    say`    ${String(INTEL_OPERATIVES).padStart(3)}  its operatives on your {worlds} show`,
+    say`    ${String(INTEL_OPERATIVES).padStart(3)}  its operatives on your {nodes} show`,
     `    ${String(INTEL_DIG).padStart(3)}  your watchers dig deeper, and trace its dark raids`,
-    say`  A watcher, or a {listener} over their {world}, teaches fastest; a {listener}`,
+    say`  A watcher, or a {sigint_unit} over their {node}, teaches fastest; a {sigint_unit}`,
     '  nearby half as fast; a trade accord or a battle a little. A',
     '  counter-intelligence programme on your own ground wears their picture',
     '  of you down and catches their people there more often.',
@@ -468,8 +468,8 @@ export function allyLines(): string[] {
     'ALLIES',
     '  A mutual defence pact answers an attack by anyone; a coalition answers',
     '  only the powers it names, and they resent it. Either way, an attack on',
-    say`  one puts the other at war with the attacker, and the {warships} it`,
-    say`  pledged come from {worlds} within ${count(PLEDGE_REACH)} {jumps}, once a turn. An ally already`,
+    say`  one puts the other at war with the attacker, and the {fighters} it`,
+    say`  pledged come from {nodes} within ${count(PLEDGE_REACH)} {steps}, once a turn. An ally already`,
     '  at peace with the attacker is not called.',
     `  A power whose enemies together outweigh it ${count(EXHAUSTION_RATIO)} to one, or whose wars`,
     `  are eating its last ${count(EXHAUSTION_RUNWAY_TURNS)} turns of savings, sues one of them for peace and`,
@@ -494,22 +494,22 @@ export function eventListLines(): string[] {
 export function assetLines(): string[] {
   const things = ASSET_ARCHETYPES.filter((a) => !a.fixture).length;
   return [
-    say`ASSETS — things that are neither {credits} nor {ships}`,
+    say`ASSETS — things that are neither {money_units} nor {units_alt}`,
     '  Prisoners, a dossier, a relic, a hold of ore, a chart: worth different',
     '  amounts to different powers, which is what makes them worth trading.',
     `  The game knows ${things} kinds and will hear of more. Every one is won by`,
-    say`  attempting something, never by claiming it, and sits on a {world} —`,
-    say`  take the {world} and you take what is on it. Move a thing between your`,
-    say`  own {worlds} through your own {space} whenever you like; the Assets tab`,
+    say`  attempting something, never by claiming it, and sits on a {node} —`,
+    say`  take the {node} and you take what is on it. Move a thing between your`,
+    say`  own {nodes} through your own {territory} whenever you like; the Assets tab`,
     '  lists yours.',
     '  · people — prisoners, a captured officer or operative: worth most to',
     '    the power that lost them. Hand them home, sell them on, question',
-    say`    them for a dossier, execute them, or move them between your {worlds};`,
+    say`    them for a dossier, execute them, or move them between your {nodes};`,
     '    each is remembered, and an execution by everyone.',
     '  · paper — a dossier, a seal, a charter. A promissory note is a favour',
     `    signed in advance, worth ${NOTE_VALUE} to anyone but the power that wrote it.`,
     '  · debts and loans — money owed and paid down by instalment, up to',
-    say`    ${MAX_DEBT_PRINCIPAL}; or a {squadron}, {credits} or a thing lent and expected back.`,
+    say`    ${MAX_DEBT_PRINCIPAL}; or a {group_alt}, {money_units} or a thing lent and expected back.`,
     '    Agreed in a channel; missing a payment costs standing every turn.',
   ];
 }
@@ -536,29 +536,29 @@ export function courtHelpLines(state?: WorldState | null): string[] {
     '',
     'SEATS AND NOTABLES',
     ...wrap(
-      say`Every {world} has a governor, and a {hub} a chancellor beside them, each of one of its holder's estates. Favoured, a notable wins its {world} over; at ${RESENTFUL} it keeps back half the {world}'s income and sours it; at ${BITTER}, on a {world} not content, it lets the {world} go.`,
+      say`Every {node} has a governor, and a {hub} a chancellor beside them, each of one of its holder's estates. Favoured, a notable wins its {node} over; at ${RESENTFUL} it keeps back half the {node}'s income and sours it; at ${BITTER}, on a {node} not content, it lets the {node} go.`,
     ),
     ...wrap(
       `Your Lists are the notables waiting for a seat, and every seat you fill comes from them; each estate always has someone listed. Nobody on the Lists can be reached by an operative.`,
     ),
     ...wrap(
-      say`Taking a {world} takes whoever sits it prisoner, and its seats stand empty, doing nothing, until you appoint. A killing empties a seat too. "Appoint Corvan Hale as Governor of Kalzir" is an action; taking a filled seat sends its notable back to the Lists and costs the {world} ${RESEAT_REGARD} regard.`,
+      say`Taking a {node} takes whoever sits it prisoner, and its seats stand empty, doing nothing, until you appoint. A killing empties a seat too. "Appoint Corvan Hale as Governor of Kalzir" is an action; taking a filled seat sends its notable back to the Lists and costs the {node} ${RESEAT_REGARD} regard.`,
     ),
     ...wrap(
-      say`An estate counts its people in office. Whenever one of its notables leaves a seat on your {world} — replaced, taken in a conquest, sent home by a cession, killed or carried off — its favour falls ${SEAT_VACATED_FAVOUR} at once, whoever caused it.`,
+      say`An estate counts its people in office. Whenever one of its notables leaves a seat on your {node} — replaced, taken in a conquest, sent home by a cession, killed or carried off — its favour falls ${SEAT_VACATED_FAVOUR} at once, whoever caused it.`,
     ),
     '',
     'MARRIAGE',
     ...wrap(
-      say`A marriage pairs a seated notable with one off the other side's Lists, who goes to live at that court as a ward. With another power it is a treaty, agreed in a channel: a peace, and the seated spouse's {world} warms to the in-laws by ${MARRIAGE_REGARD}.`,
+      say`A marriage pairs a seated notable with one off the other side's Lists, who goes to live at that court as a ward. With another power it is a treaty, agreed in a channel: a peace, and the seated spouse's {node} warms to the in-laws by ${MARRIAGE_REGARD}.`,
     ),
     ...wrap(
-      say`The ward is surety. If their own power breaks the match or attacks, the court keeps them prisoner; if the court breaks it, they are lost. With a {world} that answers to nobody it is an action: yours goes to live there, and the {world} says yes at a standing of ${MARRIAGE_CONSENT_REGARD}.`,
+      say`The ward is surety. If their own power breaks the match or attacks, the court keeps them prisoner; if the court breaks it, they are lost. With a {node} that answers to nobody it is an action: yours goes to live there, and the {node} says yes at a standing of ${MARRIAGE_CONSENT_REGARD}.`,
     ),
     '',
     'WHO GOES WHERE',
     ...wrap(
-      say`Officers command {fleets}, notables sit seats, operatives work unseen, and nobody moves from one to another. A seduction courts a notable; a subversion can turn one; the knife can kill one. :help espionage has the missions.`,
+      say`Officers command {groups}, notables sit seats, operatives work unseen, and nobody moves from one to another. A seduction courts a notable; a subversion can turn one; the knife can kill one. :help espionage has the missions.`,
     ),
   ];
 }

@@ -2130,6 +2130,30 @@ export const ExtractionOutputSchema = z.object({
    * each power wrote its concession down.
    */
   accepted: z.array(z.string().min(1)).default([]),
+  /**
+   * What the leader said, in their own words, they hand over as their side of
+   * an agreed deal, when the record does not show it. The other power's
+   * persona is told to record both sides and sometimes records only its own:
+   * a playtest returned a captured operative as the price of a pact, the pact
+   * landed and the operative stayed (bughunt 2026-11-17). Only the leader's
+   * own holdings and money: giving your own away needs nobody's consent, so
+   * the engine builds it (`leaderGivesOutsideRecord`) once it has checked that
+   * each thing is the leader's to give.
+   */
+  leaderGives: z
+    .object({
+      /** Ids of things the leader holds, from the leader's shelf in the state block. */
+      assets: z.array(z.string().min(1)).max(8).default([]),
+      /** The sum the leader said they pay once. */
+      pays: z.number().int().min(0).max(100000).default(0),
+      /** Ids of places the leader holds and said they cede. */
+      cedes: z.array(z.string().min(1)).max(12).default([]),
+      /** Powers the leader said they stop tolling. */
+      lifts: z.array(z.string().min(1)).max(4).default([]),
+      /** Favours owed to the leader that they said they let go. */
+      obligations: z.array(z.string().min(1)).max(6).default([]),
+    })
+    .default({ assets: [], pays: 0, cedes: [], lifts: [], obligations: [] }),
   // "Nothing was agreed" is the commonest honest outcome of a conversation.
   ops: z.array(ExtractionOpSchema).default([]),
 });

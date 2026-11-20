@@ -146,7 +146,7 @@ export function personViolations(state: WorldState): string[] {
     const held = holders('commanderId', c.id).length;
     if (c.status === 'active') {
       if ((c.atSystemId ? 1 : 0) + voyages !== 1) {
-        out.push(say`officer ${c.id} is active and ${c.atSystemId ? 'standing somewhere' : 'standing nowhere'} on ${voyages} {voyage}(s)`);
+        out.push(say`officer ${c.id} is active and ${c.atSystemId ? 'standing somewhere' : 'standing nowhere'} on ${voyages} {march}(s)`);
       }
       if (held > 0) out.push(`officer ${c.id} is active and held as an asset`);
     } else {

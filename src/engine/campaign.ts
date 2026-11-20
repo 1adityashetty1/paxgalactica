@@ -844,9 +844,9 @@ function sentAgainst(state: WorldState, ops: readonly unknown[]): string[] {
     if (!contested) continue;
     const force =
       o.force === undefined
-        ? say`every {hull} there`
+        ? say`every {unit} there`
         : typeof o.force === 'number'
-          ? say`${o.force} {hulls}`
+          ? say`${o.force} {units}`
           : Object.entries(o.force as Record<string, number>).map(([k, n]) => countUnits(k, n)).join(', ');
     out.push(`${getFaction(state, o.factionId ?? '')?.name ?? o.factionId} sends ${force} from ${origin?.name ?? o.originId} to ${target.name}`);
   }

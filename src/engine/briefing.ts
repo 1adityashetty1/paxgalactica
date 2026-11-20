@@ -44,7 +44,7 @@ export function worldsOnTheBoard(state: WorldState): BriefingWorld[] {
       if (!h || h.shortfall <= 0) continue;
       out.push({
         kind: 'restless', systemId: s.id, name: s.name, factionId: me, mine: true,
-        text: say`${s.name} is restless: it wants ${h.need.toFixed(1)} {battleship}-equivalents of your {warships} over it and has ${h.have.toFixed(1)}, and stands at ${h.regard} with you. Its garrison is deserting — ${s.garrison} left.`,
+        text: say`${s.name} is restless: it wants ${h.need.toFixed(1)} {line_unit}-equivalents of your {fighters} over it and has ${h.have.toFixed(1)}, and stands at ${h.regard} with you. Its garrison is deserting — ${s.garrison} left.`,
       });
     } else if (s.controllerFactionId === null && envoyRefusal(state, s, me) === null) {
       const best = state.factions
@@ -271,8 +271,8 @@ export function endedLines(state: WorldState, report: TurnReport): { text: strin
       if (e.reason === 'cancelled') out.push({ text: `${what}: recalled.`, tone: 'info' });
       else if (e.reason === 'interrupted') {
         out.push(e.by ? { text: `${what}: interrupted by ${name(e.by)}.`, tone: 'bad' } : { text: `${what}: stood down.`, tone: 'info' });
-      } else if (e.reason === 'aborted') out.push({ text: say`${what}: aborted — the {world} was lost, and its {yards} with it.`, tone: 'bad' });
-      else out.push({ text: say`${what}: ended — no {ships} of yours are left to sustain it.`, tone: 'bad' });
+      } else if (e.reason === 'aborted') out.push({ text: say`${what}: aborted — the {node} was lost, and its {works} with it.`, tone: 'bad' });
+      else out.push({ text: say`${what}: ended — no {units_alt} of yours are left to sustain it.`, tone: 'bad' });
     } else if (e.by === me && e.reason === 'interrupted') {
       out.push({ text: `You stood down ${name(e.factionId)}'s ${e.covert ? 'work' : e.label} at ${e.where}.`, tone: 'good' });
     }
@@ -303,7 +303,7 @@ export function ultimatumLines(state: WorldState, me: string): { text: string; t
       d.kind === 'tribute'
         ? `${d.perTurn} a turn in tribute`
         : d.kind === 'cession'
-          ? (state.systems.find((x) => x.id === d.systemId)?.name ?? say`a {world}`)
+          ? (state.systems.find((x) => x.id === d.systemId)?.name ?? say`a {node}`)
           : d.kind === 'basing_rights'
             ? treatyWord('basing_rights')
             : d.kind === 'trade_accord'

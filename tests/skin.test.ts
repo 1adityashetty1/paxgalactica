@@ -6,6 +6,7 @@ import { PAX_LEXICON } from '../src/skin/words.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { paxGalactica } from '../src/skin/paxgalactica.js';
 import {
+  checkSkin,
   coreSlotsOf,
   fleetNameFrom,
   lexiconIndex,
@@ -136,3 +137,16 @@ describe('the marks', () => {
     for (const id of ['ark-1', 'meridian', 'Sekkar Gate']) expect(ORDINAL_ID.test(id)).toBe(false);
   });
 });
+
+describe('a skin as it arrives', () => {
+  it('is parsed before it is checked, so a malformed one is a finding and not a crash', () => {
+    const core = coreSlotsOf(createSeedState('meridian'));
+    const broken = structuredClone(paxGalactica()) as unknown as { lexicon: { places: { node: { alt: { word: string; plural?: string } } } } };
+    delete broken.lexicon.places.node.alt.plural;
+    const { skin, issues } = checkSkin(broken, core);
+    expect(skin).toBeNull();
+    expect(issues.some((i) => i.startsWith('lexicon.places.node.alt.plural'))).toBe(true);
+    expect(checkSkin(paxGalactica(), core)).toEqual({ skin: paxGalactica(), issues: [] });
+  });
+});
+

@@ -742,7 +742,7 @@ export class GameSession {
     // the epilogue that run after the tick.
     const turn = campaign.state.turn;
     const { outcome, costUsd, briefing } = await this.traced('end_turn', async () => {
-      const outcome = await this.exclusive(say`The {galaxy} turns`, () =>
+      const outcome = await this.exclusive(say`The {map_alt} turns`, () =>
         endTurn(campaign, (reaction) => {
           // Pushed as it is written, not with the other two at the end. The
           // board moves with it, and the progress line names the power that is
@@ -762,7 +762,7 @@ export class GameSession {
       let costUsd = outcome.costUsd;
       if (campaign.isOver && this.epilogue === null) {
         const written = await span('epilogue', { turn, phase: 'epilogue' }, () =>
-          this.exclusive(say`{Rim} settles`, () => writeEpilogue(campaign)),
+          this.exclusive(say`{Map} settles`, () => writeEpilogue(campaign)),
         );
         this.epilogue = written.view;
         campaign.epilogue = written.view;

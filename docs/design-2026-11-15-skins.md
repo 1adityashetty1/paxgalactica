@@ -666,7 +666,7 @@ they were played.
      own it.
      - `src/skin/lexicon.ts`: the lexicon in a scope (`withLexicon`,
        `withLexiconAsync`), its helpers, and `say`, a tagged template whose
-       `{world}`-style tokens it fills.
+       role tokens (`{node}`, `{groups}`, `{line_units}`) it fills.
      - `src/skin/words.ts`: the default words, a leaf. It holds the moved
        tables (hull labels, Rim titles, note titles, terrain names, the
        archetypes' texts) and nineteen sentence tables (`meanings`).
@@ -681,6 +681,13 @@ they were played.
        - every help page;
        - the epilogue;
        - all ten kinds of model call, built against a mocked client.
+   - **The lexicon's slots are roles** (2026-11-17): node, region, route,
+     step, hub, presence, defence, works, capacity, map and territory; unit,
+     fighter, group, crew, force, goods, volley, munition and march; move and
+     disembark; money and size. Where Pax Galactica uses two words for one
+     role (world and system, lane and hyperlane, yards and shipyard, the Rim
+     and galaxy, hull and ship, fleet and squadron), the second is the slot's
+     optional `alt`, so the default reads exactly as before.
    - **Which words are neutral** (2026-11-16): those a modern show about
      Three Kingdoms China, the Middle Byzantine Empire, the Seven Years' War
      and the First World War could all use, because the thing they name

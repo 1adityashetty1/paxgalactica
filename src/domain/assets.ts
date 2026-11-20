@@ -366,7 +366,7 @@ export function serializeArchetypes(): string {
       a.divisible ? 'splits into lots' : 'one thing',
       a.uses === null ? null : a.uses === 1 ? 'played once, then spent' : `played ${a.uses} times`,
       a.speculative ? 'worth is a BAND, nobody has settled it' : null,
-      a.fixture ? say`stands on a {world}; changes hands only with it` : null,
+      a.fixture ? say`stands on a {node}; changes hands only with it` : null,
     ]
       .filter((x): x is string => x !== null)
       .join(' · ');

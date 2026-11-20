@@ -59,7 +59,7 @@ export function TradePanel({
           <span>{ledger.territory}/turn</span>
         </div>
         <div className="ledger-row">
-          <span>{say`{Lanes}`}</span>
+          <span>{say`{Routes}`}</span>
           <span className={ledger.routes >= 0 ? 'good' : 'bad'}>
             {ledger.routes >= 0 ? '+' : ''}
             {ledger.routes}/turn
@@ -73,7 +73,7 @@ export function TradePanel({
         )}
         {(ledger.internalMarket ?? 0) > 0 && (
           <div className="ledger-row sub">
-            <span title={say`Your own connected {worlds} trading with each other. An autarkist's economy: no toll, no foreign share, and no blockade elsewhere touches it — only a blockade or a raid on one of your own {worlds}.`}>
+            <span title={say`Your own connected {nodes} trading with each other. An autarkist's economy: no toll, no foreign share, and no blockade elsewhere touches it — only a blockade or a raid on one of your own {nodes}.`}>
               …of which your internal market
             </span>
             <span className="good">+{ledger.internalMarket}</span>
@@ -87,7 +87,7 @@ export function TradePanel({
         )}
         {(ledger.lostToRaids ?? 0) > 0 && (
           <div className="ledger-row sub">
-            <span title={say`Taken off your {lanes} by raiders this turn, already out of the figure above. A raid run dark takes it without saying whose it is.`}>
+            <span title={say`Taken off your {routes} by raiders this turn, already out of the figure above. A raid run dark takes it without saying whose it is.`}>
               …lost to raiders
             </span>
             <span className="bad">−{ledger.lostToRaids}</span>
@@ -95,7 +95,7 @@ export function TradePanel({
         )}
         {(ledger.bounties ?? 0) > 0 && (
           <div className="ledger-row">
-            <span title={say`Bounties posted on the powers you raided pay out of escrow, {credit} for {credit} on what you took.`}>
+            <span title={say`Bounties posted on the powers you raided pay out of escrow, {money_unit} for {money_unit} on what you took.`}>
               Bounties collected
             </span>
             <span className="good">+{ledger.bounties}/turn</span>
@@ -103,20 +103,20 @@ export function TradePanel({
         )}
         {ledger.occupation > 0 && (
           <div className="ledger-row">
-            <span title={say`A share of what each {world} you took from somebody else pays you. Institutions built for another state do not administer themselves.`}>
+            <span title={say`A share of what each {node} you took from somebody else pays you. Institutions built for another state do not administer themselves.`}>
               Occupied ground
             </span>
             <span className="bad">−{ledger.occupation}/turn</span>
           </div>
         )}
         <div className="ledger-row sub">
-          <span>{say`{Galaxy} {lanes} open`}</span>
+          <span>{say`{Map_alt} {routes} open`}</span>
           <span>{Math.round(earnings.openness * 100)}%</span>
         </div>
         {earnings.uncollected > 0 && (
           <div className="ledger-row sub">
-            <span title={say`Trade crossing unaligned {systems} nobody has a {fleet} on.`}>
-              {say`Unclaimed on neutral {space}`}
+            <span title={say`Trade crossing unaligned {nodes_alt} nobody has a {group} on.`}>
+              {say`Unclaimed on neutral {territory}`}
             </span>
             <span>{earnings.uncollected}/turn</span>
           </div>
@@ -124,11 +124,11 @@ export function TradePanel({
       </section>
 
       <h4>
-        {say`Your {lanes} `}<span className="muted">({mine.length} of {all.length})</span>
+        {say`Your {routes} `}<span className="muted">({mine.length} of {all.length})</span>
       </h4>
       {mine.length === 0 && (
         <p className="muted">
-          {say`You touch none of the {galaxy}'s trade {lanes}. Take a {hub}, or park a {fleet} on a neutral junction to work the traffic crossing it.`}
+          {say`You touch none of the {map_alt}'s trade {routes}. Take a {hub}, or park a {group} on a neutral junction to work the traffic crossing it.`}
         </p>
       )}
       <ul className="lane-list">
@@ -181,7 +181,7 @@ function Lane({
   const nameFaction = (id: string) => state.factions.find((f) => f.id === id)?.name ?? id;
 
   return (
-    <li className={interference.length > 0 ? say`{lane} cut` : 'lane'}>
+    <li className={interference.length > 0 ? say`{route} cut` : 'lane'}>
       <div className="lane-head">
         <span className="lane-ends">
           <button className="linkish" style={{ color: colorOf(holderOf(a)) }} onClick={() => onSelect(a)}>

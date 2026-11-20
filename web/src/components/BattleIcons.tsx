@@ -493,7 +493,7 @@ export function StackGlyphs({
   if (classes.length === 0) {
     if (!fallback || fallback <= 0) return null;
     return (
-      <span className="ob-strength" title={say`${fallback} {ships}`}>
+      <span className="ob-strength" title={say`${fallback} {units_alt}`}>
         <ShipIcon size={size} />
         <span className="ob-count">×{fallback}</span>
       </span>

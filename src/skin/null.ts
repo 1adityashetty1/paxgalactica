@@ -35,6 +35,7 @@ export function nullLexicon(): Words {
         const swapped: Record<string, unknown> = { ...entry, word: w, synonyms: [] };
         if ('id' in entry) swapped.id = id;
         if ('plural' in entry) swapped.plural = `${w}s`;
+        if ('alt' in entry) swapped.alt = { word: `${w}alt`, plural: `${w}alts` };
         if ('unit' in entry) swapped.unit = `${w}u`;
         if ('from' in entry) swapped.from = `${w}from`;
         if ('wanted' in entry) swapped.wanted = `${w}wanted`;
@@ -59,6 +60,8 @@ export function paxWords(options: { units?: boolean } = {}): string[] {
   for (const entries of Object.values(PAX_LEXICON)) {
     for (const entry of Object.values(entries as Record<string, Record<string, unknown>>)) {
       for (const k of fields) if (typeof entry[k] === 'string') found.add(entry[k] as string);
+      const second = entry.alt as { word: string; plural: string } | undefined;
+      if (second) found.add(second.word).add(second.plural);
       for (const s of (entry.synonyms as string[] | undefined) ?? []) found.add(s);
     }
   }

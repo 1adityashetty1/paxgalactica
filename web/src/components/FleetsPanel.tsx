@@ -103,19 +103,19 @@ export function FleetsPanel({
     <div className="fleet-panel">
       {yards && yards.capacity > 0 && (
         <p
-          className={say`meta {yards}`}
-          title={say`Your industry sets how many {tons} your {yards} lay down a turn. A build lays down what fits now; the rest is paid for and waits in the queue, which has the next turn's {yards} first. Lose the {world} and its queue is aborted, and what was paid for it is lost.`}
+          className={say`meta {works}`}
+          title={say`Your industry sets how many {size_units} your {works} lay down a turn. A build lays down what fits now; the rest is paid for and waits in the queue, which has the next turn's {works} first. Lose the {node} and its queue is aborted, and what was paid for it is lost.`}
         >
-          <strong>{say`{Yards}`}</strong> {yards.capacity}{say` {tons} a turn (`}{Math.floor(yards.capacity / battleship)}{say` {battleships}) ·`}{' '}
+          <strong>{say`{Works}`}</strong> {yards.capacity}{say` {size_units} a turn (`}{Math.floor(yards.capacity / battleship)}{say` {line_units}) ·`}{' '}
           {Math.max(0, yards.capacity - yards.used)} free this turn
           {yards.queued > 0 &&
-            say` · ${yards.queued} {tons} queued, done in ${Math.ceil(yards.queued / yards.capacity)} turn${Math.ceil(yards.queued / yards.capacity) === 1 ? '' : 's'}`}
+            say` · ${yards.queued} {size_units} queued, done in ${Math.ceil(yards.queued / yards.capacity)} turn${Math.ceil(yards.queued / yards.capacity) === 1 ? '' : 's'}`}
         </p>
       )}
       {(mine.length > 0 || mineUnderWay.length > 0) && (
         <>
           <h4>
-            {say`Your {fleets} `}<span className="muted">({mine.length + mineUnderWay.length})</span>
+            {say`Your {groups} `}<span className="muted">({mine.length + mineUnderWay.length})</span>
           </h4>
           <p className="hint">
             Move one by name. Renaming, splitting and merging are free and land with the turn.
@@ -134,7 +134,7 @@ export function FleetsPanel({
               />
             ))}
             {mineUnderWay.map((o) => (
-              <li key={o.id} className={say`{fleet}-row own-{fleet}`}>
+              <li key={o.id} className={say`{group}-row own-{group}`}>
                 <strong>{fleetName(me, o.fleet!)}</strong>
                 <span className="muted">
                   {' '}
@@ -176,7 +176,7 @@ export function FleetsPanel({
                     overrides it, so that is what is shown for the Vigil. */}
                 <span
                   className="muted"
-                  title={say`One standing order for its whole {navy}, every {fleet} at once: what they do when a defence goes badly. Hold never breaks off, stand breaks off at two to one, withdraw leaves the moment it is outmatched. Changed by declaring it.`}
+                  title={say`One standing order for its whole {force}, every {group} at once: what they do when a defence goes badly. Hold never breaks off, stand breaks off at two to one, withdraw leaves the moment it is outmatched. Changed by declaring it.`}
                 >
                   {' · '}
                   {f.warEthic === 'crusading' ? 'never runs' : f.stance}
@@ -194,7 +194,7 @@ export function FleetsPanel({
             <span className="muted">({notable.length})</span>
           </h4>
           <p className="hint">
-            {say`{Ships} in a {system} you do not own still take a share of its income, and can blockade, raid or suborn from there.`}
+            {say`{Units_alt} in a {node_alt} you do not own still take a share of its income, and can blockade, raid or suborn from there.`}
           </p>
           <ul className="fleet-list">
             {notable.map(({ system, crews }) => (
@@ -214,7 +214,7 @@ export function FleetsPanel({
       )}
 
       <h4>
-        {say`All {hulls} by {system} `}<span className="muted">({occupied.length}{say` {systems})`}</span>
+        {say`All {units} by {node_alt} `}<span className="muted">({occupied.length}{say` {nodes_alt})`}</span>
       </h4>
       <ul className="fleet-list">
         {occupied.map(({ system, crews }) => (
@@ -280,7 +280,7 @@ function Row({
   const holder = system.controllerFactionId;
 
   return (
-    <li className={income.contested ? say`{fleet}-row contested` : 'fleet-row'}>
+    <li className={income.contested ? say`{group}-row contested` : 'fleet-row'}>
       <button className="linkish" onClick={() => onSelect(system.id)}>
         <span style={{ color: holder ? colorOf(holder) : '#888' }}>{system.name}</span>
       </button>
@@ -299,7 +299,7 @@ function Row({
               fleetsAt(system, id).filter((f) => f.number > 0).length > 0
                 ? fleetsAt(system, id).filter((f) => f.number > 0).map((f) => `${fleetName(id, f)}: ${describeStack(f.stack)}`).join('; ')
                 : describeStack(stackAt(system, id))
-            }${id === holder ? say` (holds this {world})` : ' (present, does not hold it)'}`}
+            }${id === holder ? say` (holds this {node})` : ' (present, does not hold it)'}`}
           >
             {/* Total first, because that is what the eye counts down the
                 column; the composition follows it, because a squadron of
@@ -374,7 +374,7 @@ function OwnFleet({
   );
 
   return (
-    <li className={say`{fleet}-row own-{fleet}`}>
+    <li className={say`{group}-row own-{group}`}>
       <strong>{name}</strong>{' '}
       <button className="linkish" onClick={() => onSelect(system.id)}>
         at {system.name}
@@ -397,8 +397,8 @@ function OwnFleet({
         ) : (
           <button
             className="chip"
-            onClick={() => onDraft(lift ? say`Move ${name}, without {landing}, to ` : `Move ${name} to `)}
-            title={lift ? say`Write the order on the command line. Its {lifters} stay aboard; {landing} is an action of its own.` : 'Write the order on the command line'}
+            onClick={() => onDraft(lift ? say`Move ${name}, without {disembarking}, to ` : `Move ${name} to `)}
+            title={lift ? say`Write the order on the command line. Its {lift_units} stay aboard; {disembarking} is an action of its own.` : 'Write the order on the command line'}
           >
             move
           </button>
@@ -407,7 +407,7 @@ function OwnFleet({
           <button
             className="chip"
             onClick={() => onDraft(`Land ${name}'s troops at ${system.name}.`)}
-            title={say`An action of its own: the {lifters} aboard put their troops down on ${system.name}, against its garrison`}
+            title={say`An action of its own: the {lift_units} aboard put their troops down on ${system.name}, against its garrison`}
           >
             land
           </button>
@@ -421,7 +421,7 @@ function OwnFleet({
           </button>
         )}
         {!courier && fleet.commanderId && (
-          <button className="chip" onClick={() => onOrganise({ op: 'relieve_command', fleet: fleet.id })} title={say`The officer stays at this {world}, without a command`}>
+          <button className="chip" onClick={() => onOrganise({ op: 'relieve_command', fleet: fleet.id })} title={say`The officer stays at this {node}, without a command`}>
             relieve
           </button>
         )}
@@ -461,7 +461,7 @@ function OwnFleet({
             setMode('idle');
           }}
         >
-          <input value={newName} maxLength={60} placeholder={fleetName(me, { number: fleet.number, name: null, kind: fleet.kind })} onChange={(e) => setNewName(e.target.value)} aria-label={say`{Fleet} name`} />
+          <input value={newName} maxLength={60} placeholder={fleetName(me, { number: fleet.number, name: null, kind: fleet.kind })} onChange={(e) => setNewName(e.target.value)} aria-label={say`{Group} name`} />
           <button type="submit" className="chip">save</button>
         </form>
       )}

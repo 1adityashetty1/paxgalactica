@@ -51,7 +51,7 @@ export function FactionPicker({
     <div className="picker">
       <h1>PAX GALACTICA</h1>
       <p className="tagline">
-        {say`Four {sectors} of {rim}. Five powers. No authority worth the name.`}
+        {say`Four {regions} of {map}. Five powers. No authority worth the name.`}
       </p>
 
       {error && <p className="error">{error}</p>}
@@ -123,7 +123,7 @@ export function FactionPicker({
         <span className="length-value">{maxTurns} turns</span>
       </div>
       <p className="hint">
-        {say`When the last turn is played the campaign ends and {rim} is summed up. Long enough to matter, short enough to finish — a {shipyard} takes five turns, and a war rather longer.`}
+        {say`When the last turn is played the campaign ends and {map} is summed up. Long enough to matter, short enough to finish — a {works_alt} takes five turns, and a war rather longer.`}
       </p>
 
       <h2>Sandbox</h2>

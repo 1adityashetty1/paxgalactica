@@ -242,7 +242,7 @@ export function worldViolations(state: WorldState): string[] {
   for (const a of state.assets ?? []) {
     if (a.portable) continue;
     if (a.atSystemId === null || !systems.has(a.atSystemId)) {
-      out.push(say`fixture ${a.id} stands on no {world}`);
+      out.push(say`fixture ${a.id} stands on no {node}`);
       continue;
     }
     if ((a.damage ?? 0) > fixtureIntegrity(a)) out.push(`fixture ${a.id} has ${a.damage} damage against ${fixtureIntegrity(a)}`);
